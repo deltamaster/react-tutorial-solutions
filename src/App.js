@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Markdown from "react-markdown";
 
 function QnAApp() {
   const [question, setQuestion] = useState("");
@@ -51,7 +52,7 @@ function QnAApp() {
       </p>
 
       <button onClick={handleSubmit}>Submit Question</button>
-      <div>{isLoading ? "Loading..." : response}</div>
+      <Markdown>{isLoading ? "Loading..." : response}</Markdown>
     </div>
   );
 }
