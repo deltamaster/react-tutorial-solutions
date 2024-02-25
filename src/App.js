@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 function QnAApp() {
   const [question, setQuestion] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [response, setResponse] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const MAX_QUESTION_LENGTH = 30000; // Maximum allowed question length
+
+  const fullConvsersationHistoryRef = useRef([]); // Ref to store previous questions
 
   useEffect(() => {
     // Retrieve stored API key from local storage (optional)
@@ -27,14 +29,23 @@ function QnAApp() {
     }
 
     if (question.length > MAX_QUESTION_LENGTH) {
-      setError(`Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`);
+      setError(
+        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`
+      );
       return;
     }
 
     setIsLoading(true);
-    setError(null); // Clear any previous errors
+    setError(null);
 
     try {
+      fullConvsersationHistoryRef.current.push({
+        role: "user",
+        parts: [{ text: question }],
+      });
+
+      setQuestion("");
+
       const apiResponse = await fetch(
         "https://jp-gw.azure-api.net/gemini-pro/gemini-pro:generateContent?key=" +
           apiKey,
@@ -42,12 +53,10 @@ function QnAApp() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Ocp-Apim-Subscription-Key": "YOUR_SUBSCRIPTION_KEY", // Replace with your subscription key
+            "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050", // Replace with your subscription key
           },
           body: JSON.stringify({
-            contents: [{
-              parts: [{ text: question }],
-            }],
+            contents: fullConvsersationHistoryRef.current,
             generationConfig: {
               stopSequences: [],
               temperature: 1.0,
@@ -63,7 +72,11 @@ function QnAApp() {
       }
 
       const responseData = await apiResponse.json();
-      setResponse(responseData.candidates[0].content.parts[0].text);
+
+      fullConvsersationHistoryRef.current.push({
+        role: "model",
+        parts: [{ text: responseData.candidates[0].content.parts[0].text }],
+      });
     } catch (error) {
       console.error("Error:", error);
       setError("An error occurred. Please try again later.");
@@ -89,22 +102,35 @@ function QnAApp() {
         />
         {error && <span className="error">{error}</span>}
       </p>
-      <p>
-        <textarea
-          rows={5}
-          maxLength={MAX_QUESTION_LENGTH}
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Enter your question (max 30000 characters)"
-        />
-        {error && <span className="error">{error}</span>}
-      </p>
-      <button onClick={handleSubmit}>Submit Question</button>
-      {isLoading ? (
-        <p>Loading...</p>
-      ) : (
-        <Markdown>{response}</Markdown>
-      )}
+
+      <div>
+        {fullConvsersationHistoryRef.current.map((content, index) => (
+          <div key={index} class={content.role}>
+            <Markdown remarkPlugins={[remarkGfm]}>
+              {content.parts[0].text}
+            </Markdown>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ float: "left", width: "100%", clear: "both" }}>
+        {isLoading ? <p>Loading...</p> : <p></p>}
+      </div>
+
+      <div style={{ float: "left", width: "100%", clear: "both" }}>
+        <p>
+          <textarea
+            rows={5}
+            maxLength={MAX_QUESTION_LENGTH}
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Enter your question (max 30000 characters)"
+            style={{ float: "left", width: "100%", clear: "both" }}
+          />
+          {error && <span className="error">{error}</span>}
+        </p>
+        <button onClick={handleSubmit}>Send</button>
+      </div>
     </div>
   );
 }

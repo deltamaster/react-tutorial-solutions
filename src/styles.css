@@ -1,80 +1,62 @@
+* {
+  box-sizing: border-box;
+}
+
 body {
-    font: 14px "Century Gothic", Futura, sans-serif;
-    margin: 20px;
-  }
+  font-family: sans-serif;
+  margin: 20px;
+  padding: 0;
+}
 
-  .active {
-    font-weight: 600;
-  }
+h1 {
+  margin-top: 0;
+  font-size: 22px;
+}
 
-  .inactive {
-    font-weight: normal;
-  }
-  
-  ol, ul {
-    padding-left: 30px;
-  }
-  
-  .board-row:after {
-    clear: both;
-    content: "";
-    display: table;
-  }
-  
-  .status {
-    margin-bottom: 10px;
-  }
-  
-  .square {
-    background: #fff;
-    border: 1px solid #999;
-    float: left;
-    font-size: 24px;
-    font-weight: bold;
-    line-height: 34px;
-    height: 34px;
-    margin-right: -1px;
-    margin-top: -1px;
-    padding: 0;
-    text-align: center;
-    width: 34px;
-  }
-  
-  .square:focus {
-    outline: none;
-  }
-  
-  .kbd-navigation .square:focus {
-    background: #ddd;
-  }
+h2 {
+  margin-top: 0;
+  font-size: 20px;
+}
 
-  .winningSquares {
-    color: #000;
-    background: rgb(142, 252, 99);
-  }
+h3 {
+  margin-top: 0;
+  font-size: 18px;
+}
 
-  .draw {
-    text-align: center;
-    width: 102px;
-    height: 102px;
-    background-color: #ddd;
-    padding: 20px;
-  }
+h4 {
+  margin-top: 0;
+  font-size: 16px;
+}
 
-  .win {
-    text-align: center;
-  }
+h5 {
+  margin-top: 0;
+  font-size: 14px;
+}
 
-  .reset {
-    padding: 5px;
-  }
-  
-  .game {
-    display: flex;
-    flex-direction: row;
-  }
-  
-  .game-info {
-    margin-left: 20px;
-  }
-  
+h6 {
+  margin-top: 0;
+  font-size: 12px;
+}
+
+code {
+  font-size: 1.2em;
+}
+
+ul {
+  padding-inline-start: 20px;
+}
+
+.user {
+  display: block;
+  float: left;
+  width: 70%;
+  font-style: italic;
+  clear: both;
+}
+
+.model {
+  display: block;
+  float: right;
+  width: 70%;
+  clear: both;
+}
