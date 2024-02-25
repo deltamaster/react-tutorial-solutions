@@ -21,7 +21,20 @@ function QnAApp() {
           "Content-Type": "application/json",
           "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050",
         },
-        body: JSON.stringify({ contents: [{ parts: [{ text: question }] }] }),
+        body: JSON.stringify({
+            "contents": [{
+                "parts":[
+                    {"text": question}
+                ]
+            }],
+            "generationConfig": {
+                "stopSequences": [],
+                "temperature": 1.0,
+                //"maxOutputTokens": 800,
+                "topP": 1,
+                "topK": 1
+            }
+        }),
       }
     );
 
@@ -44,10 +57,10 @@ function QnAApp() {
       <p>
         <textarea
           rows={5} // Adjust rows as needed for starting height
-          maxLength={1000} // Set max characters
+          maxLength={30000} // Set max characters
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Enter your question (max 1000 characters)"
+          placeholder="Enter your question (max 30000 characters)"
         />
       </p>
 
