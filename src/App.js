@@ -55,8 +55,24 @@ function QnAApp() {
             "Content-Type": "application/json",
             "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050", // Replace with your subscription key
           },
+
           body: JSON.stringify({
             contents: fullConvsersationHistoryRef.current,
+            safety_settings: [
+              { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+              {
+                category: "HARM_CATEGORY_HATE_SPEECH",
+                threshold: "BLOCK_NONE",
+              },
+              {
+                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                threshold: "BLOCK_NONE",
+              },
+              {
+                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+                threshold: "BLOCK_NONE",
+              },
+            ],
             generationConfig: {
               stopSequences: [],
               temperature: 1.0,
@@ -105,7 +121,12 @@ function QnAApp() {
 
       <div>
         {fullConvsersationHistoryRef.current.map((content, index) => (
-          <div key={index} class={content.role}>
+          <div key={index} className={content.role}>
+            {content.role === "user" ? (
+              <p style={{ fontWeight: "bold" }}>You: </p>
+            ) : (
+              <p style={{ fontWeight: "bold" }}>Bot: </p>
+            )}
             <Markdown remarkPlugins={[remarkGfm]}>
               {content.parts[0].text}
             </Markdown>
