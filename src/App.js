@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import Button from "react-bootstrap/Button";
+import Alert from "react-bootstrap/Alert";
+import Container from "react-bootstrap/Container";
+import Row from "react-bootstrap/Row";
+import Col from "react-bootstrap/Col";
+import "bootstrap/dist/css/bootstrap.min.css"; // Import Bootstrap CSS
 
 function QnAApp() {
   const [question, setQuestion] = useState("");
@@ -107,52 +113,73 @@ function QnAApp() {
   };
 
   return (
-    <div>
-      <p>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder="Enter API Key"
-          onBlur={handleSaveApiKey} // Store API key on blur (optional)
-        />
-        {error && <span className="error">{error}</span>}
-      </p>
-
-      <div>
-        {fullConvsersationHistoryRef.current.map((content, index) => (
-          <div key={index} className={content.role}>
-            {content.role === "user" ? (
-              <p style={{ fontWeight: "bold" }}>You: </p>
-            ) : (
-              <p style={{ fontWeight: "bold" }}>Bot: </p>
-            )}
-            <Markdown remarkPlugins={[remarkGfm]}>
-              {content.parts[0].text}
-            </Markdown>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ float: "left", width: "100%", clear: "both" }}>
-        {isLoading ? <p>Loading...</p> : <p></p>}
-      </div>
-
-      <div style={{ float: "left", width: "100%", clear: "both" }}>
-        <p>
+    <Container>
+      <Row>
+        <Col xs={12} className="mb-3 mt-3">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Enter API Key"
+            onBlur={handleSaveApiKey} // Store API key on blur (optional)
+          />
+          {error && <span className="error">{error}</span>}
+        </Col>
+      </Row>
+      <Row>
+        <Col xs={12}>
+          <Alert variant="primary">
+            There is no filter on offending response. Use the tool at your own
+            risk.
+          </Alert>
+        </Col>
+      </Row>
+      <Row>
+        <div>
+          {fullConvsersationHistoryRef.current.map((content, index) => (
+            <div key={index} className={content.role}>
+              {content.role === "user" ? (
+                <p style={{ fontWeight: "bold" }}>You: </p>
+              ) : (
+                <p style={{ fontWeight: "bold" }}>Bot: </p>
+              )}
+              <Markdown remarkPlugins={[remarkGfm]}>
+                {content.parts[0].text}
+              </Markdown>
+            </div>
+          ))}
+        </div>
+      </Row>
+      <Row>
+        {isLoading ? (
+          <Col xs={12}>
+            <div class="spinner-border text-secondary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </Col>
+        ) : (
+          <p></p>
+        )}
+      </Row>
+      <Row>
+        <Col xs={10}>
           <textarea
             rows={5}
             maxLength={MAX_QUESTION_LENGTH}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Enter your question (max 30000 characters)"
-            style={{ float: "left", width: "100%", clear: "both" }}
+            className="w-100"
           />
           {error && <span className="error">{error}</span>}
-        </p>
-        <button onClick={handleSubmit}>Send</button>
-      </div>
-    </div>
+        </Col>
+        <Col xs={2} className="h-auto align-bottom">
+          <Button onClick={handleSubmit} className="w-100">
+            Send
+          </Button>
+        </Col>
+      </Row>
+    </Container>
   );
 }
 
