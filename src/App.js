@@ -24,7 +24,7 @@ function QnAApp() {
     // Retrieve stored API key and conversation history from local storage
     const storedApiKey = localStorage.getItem("geminiApiKey");
     const storedConversationHistory = localStorage.getItem(
-      "conversationHistory"
+      "conversationHistory",
     );
 
     if (storedApiKey) {
@@ -55,7 +55,7 @@ function QnAApp() {
 
     if (question.length > MAX_QUESTION_LENGTH) {
       setError(
-        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`
+        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`,
       );
       return;
     }
@@ -69,7 +69,6 @@ function QnAApp() {
         parts: [{ text: question }],
       });
       setConversationHistory(fullConvsersationHistoryRef.current);
-
       setQuestion("");
 
       const apiResponse = await fetch(
@@ -106,14 +105,23 @@ function QnAApp() {
               topK: 10,
             },
           }),
-        }
+        },
       );
 
       if (!apiResponse.ok) {
-        lastQuestion = fullConvsersationHistoryRef.current.pop();
+        let lastQuestion = fullConvsersationHistoryRef.current.pop();
+        console.log(lastQuestion);
         setQuestion(lastQuestion.parts[0].text);
         setConversationHistory(fullConvsersationHistoryRef.current);
-        throw new Error(`API request failed with status ${apiResponse.status}`);
+        const errorBody = await apiResponse.json().catch(() => null);
+        let errMsg = "";
+        console.log(errorBody.error);
+        if (errorBody && errorBody.error.message) {
+          errMsg = errorBody.error.message;
+        }
+        throw new Error(
+          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
+        );
       }
 
       const responseData = await apiResponse.json();
@@ -125,11 +133,11 @@ function QnAApp() {
       setConversationHistory(fullConvsersationHistoryRef.current);
       localStorage.setItem(
         "conversationHistory",
-        JSON.stringify(conversationHistory)
+        JSON.stringify(conversationHistory),
       );
     } catch (error) {
-      console.error("Error:", error);
-      setError("An error occurred. Please try again later.");
+      console.error(error);
+      setError(`An error occurred. ${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -181,8 +189,8 @@ function QnAApp() {
       <Row>
         {isLoading ? (
           <Col xs={12}>
-            <div class="spinner-border text-secondary" role="status">
-              <span class="visually-hidden">Loading...</span>
+            <div className="spinner-border text-secondary" role="status">
+              <span className="visually-hidden">Loading...</span>
             </div>
           </Col>
         ) : (
@@ -199,7 +207,7 @@ function QnAApp() {
             placeholder="Enter your question (max 30000 characters)"
             className="w-100"
           />
-          {error && <Alert variant="error">{error}</Alert>}
+          {error && <Alert variant="warning">{error}</Alert>}
         </Col>
         <Col xs={2} className="h-auto align-bottom">
           <Button onClick={handleSubmit} className="w-100">
