@@ -6,6 +6,7 @@ import Alert from "react-bootstrap/Alert";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
+import * as Icon from "react-bootstrap-icons";
 import "bootstrap/dist/css/bootstrap.min.css"; // Import Bootstrap CSS
 
 function QnAApp() {
@@ -17,14 +18,32 @@ function QnAApp() {
   const MAX_QUESTION_LENGTH = 30000; // Maximum allowed question length
 
   const fullConvsersationHistoryRef = useRef([]); // Ref to store previous questions
+  const [conversationHistory, setConversationHistory] = useState([]);
 
   useEffect(() => {
-    // Retrieve stored API key from local storage (optional)
+    // Retrieve stored API key and conversation history from local storage
     const storedApiKey = localStorage.getItem("geminiApiKey");
+    const storedConversationHistory = localStorage.getItem(
+      "conversationHistory"
+    );
+
     if (storedApiKey) {
       setApiKey(storedApiKey);
     }
+
+    if (storedConversationHistory) {
+      const history = JSON.parse(storedConversationHistory);
+      fullConvsersationHistoryRef.current = history;
+      setConversationHistory(history); // Update the state with the stored history
+    }
   }, []);
+
+  const resetConversation = (e) => {
+    e.preventDefault();
+    fullConvsersationHistoryRef.current = [];
+    setConversationHistory(fullConvsersationHistoryRef.current);
+    console.log("Conversation history reset.");
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -49,6 +68,7 @@ function QnAApp() {
         role: "user",
         parts: [{ text: question }],
       });
+      setConversationHistory(fullConvsersationHistoryRef.current);
 
       setQuestion("");
 
@@ -90,6 +110,9 @@ function QnAApp() {
       );
 
       if (!apiResponse.ok) {
+        lastQuestion = fullConvsersationHistoryRef.current.pop();
+        setQuestion(lastQuestion.parts[0].text);
+        setConversationHistory(fullConvsersationHistoryRef.current);
         throw new Error(`API request failed with status ${apiResponse.status}`);
       }
 
@@ -99,6 +122,11 @@ function QnAApp() {
         role: "model",
         parts: [{ text: responseData.candidates[0].content.parts[0].text }],
       });
+      setConversationHistory(fullConvsersationHistoryRef.current);
+      localStorage.setItem(
+        "conversationHistory",
+        JSON.stringify(conversationHistory)
+      );
     } catch (error) {
       console.error("Error:", error);
       setError("An error occurred. Please try again later.");
@@ -123,20 +151,20 @@ function QnAApp() {
             placeholder="Enter API Key"
             onBlur={handleSaveApiKey} // Store API key on blur (optional)
           />
-          {error && <span className="error">{error}</span>}
         </Col>
       </Row>
       <Row>
         <Col xs={12}>
           <Alert variant="primary">
-            There is no filter on offending response. Use the tool at your own
-            risk.
+            <Icon.ShieldExclamation />
+            &nbsp; There is no filter on offending response. Use the tool at
+            your own risk.
           </Alert>
         </Col>
       </Row>
       <Row>
         <div>
-          {fullConvsersationHistoryRef.current.map((content, index) => (
+          {conversationHistory.map((content, index) => (
             <div key={index} className={content.role}>
               {content.role === "user" ? (
                 <p style={{ fontWeight: "bold" }}>You: </p>
@@ -171,11 +199,16 @@ function QnAApp() {
             placeholder="Enter your question (max 30000 characters)"
             className="w-100"
           />
-          {error && <span className="error">{error}</span>}
+          {error && <Alert variant="error">{error}</Alert>}
         </Col>
         <Col xs={2} className="h-auto align-bottom">
           <Button onClick={handleSubmit} className="w-100">
-            Send
+            <Icon.Send />
+          </Button>
+        </Col>
+        <Col xs={2} className="h-auto align-bottom">
+          <Button onClick={resetConversation} className="w-100">
+            <Icon.ArrowCounterclockwise />
           </Button>
         </Col>
       </Row>
