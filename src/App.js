@@ -12,12 +12,12 @@ import "bootstrap/dist/css/bootstrap.min.css"; // Import Bootstrap CSS
 // Custom hook for local storage
 function useLocalStorage(key, initialValue) {
   const [storedValue, setStoredValue] = useState(() => {
+    const item = localStorage.getItem(key);
     try {
-      const item = localStorage.getItem(key);
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
       // Not JSON
-      return initialValue;
+      return item;
     }
   });
 
