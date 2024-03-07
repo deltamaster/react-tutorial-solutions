@@ -9,46 +9,118 @@ import Col from "react-bootstrap/Col";
 import * as Icon from "react-bootstrap-icons";
 import "bootstrap/dist/css/bootstrap.min.css"; // Import Bootstrap CSS
 
+// Custom hook for local storage
+function useLocalStorage(key, initialValue) {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+      // Not JSON
+      return initialValue;
+    }
+  });
+
+  const setValue = (value) => {
+    try {
+      const valueToStore =
+        value instanceof Function ? value(storedValue) : value;
+      setStoredValue(valueToStore);
+      localStorage.setItem(key, JSON.stringify(valueToStore));
+    } catch (error) {
+      // Not JSON
+    }
+  };
+
+  return [storedValue, setValue];
+}
+
+// API key input component
+function ApiKeyInput({ apiKey, setApiKey }) {
+  const handleSaveApiKey = () => {
+    localStorage.setItem("geminiApiKey", apiKey);
+  };
+
+  return (
+    <input
+      type="password"
+      value={apiKey}
+      onChange={(e) => setApiKey(e.target.value)}
+      placeholder="Enter API Key"
+      onBlur={handleSaveApiKey} // Store API key on blur (optional)
+    />
+  );
+}
+
+// Conversation history component
+function ConversationHistory({ history }) {
+  return (
+    <div>
+      {history.map((content, index) => (
+        <div key={index} className={content.role}>
+          {content.role === "user" ? (
+            <p style={{ fontWeight: "bold" }}>You: </p>
+          ) : (
+            <p style={{ fontWeight: "bold" }}>Bot: </p>
+          )}
+          <Markdown remarkPlugins={[remarkGfm]}>
+            {content.parts[0].text}
+          </Markdown>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Question input component
+function QuestionInput({ question, setQuestion, MAX_QUESTION_LENGTH }) {
+  return (
+    <textarea
+      rows={5}
+      maxLength={MAX_QUESTION_LENGTH}
+      value={question}
+      onChange={(e) => setQuestion(e.target.value)}
+      placeholder="Enter your question (max 30000 characters)"
+      className="w-100"
+    />
+  );
+}
+
+// Loading spinner component
+function LoadingSpinner({ isLoading }) {
+  return isLoading ? (
+    <div className="spinner-border text-secondary" role="status">
+      <span className="visually-hidden">Loading...</span>
+    </div>
+  ) : null;
+}
+
+// Error alert component
+function ErrorAlert({ error }) {
+  return error ? <Alert variant="warning">{error}</Alert> : null;
+}
+
 function QnAApp() {
+  const initialPrompt = `You are a professional assistant. You should be helpful, accurate, analytical and well-formatted when answering serious questions. Always include citation when referencing sources. Ask probing question when appropriate.
+  You should be creative and relaxed when answering other questions and can be more chatty and conversational.`;
+  const initialResponse = "OK. I will do my best.";
   const [question, setQuestion] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useLocalStorage("geminiApiKey", "");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const MAX_QUESTION_LENGTH = 30000; // Maximum allowed question length
 
-  const fullConvsersationHistoryRef = useRef([]); // Ref to store previous questions
-  const [conversationHistory, setConversationHistory] = useState([]);
+  const [conversationHistory, setConversationHistory] = useLocalStorage(
+    "conversationHistory",
+    [],
+  );
+  const conversationHistoryRef = useRef(conversationHistory); // Ref to store previous questions
 
-  useEffect(() => {
-    // Retrieve stored API key and conversation history from local storage
-    const storedApiKey = localStorage.getItem("geminiApiKey");
-    const storedConversationHistory = localStorage.getItem(
-      "conversationHistory",
-    );
-
-    if (storedApiKey) {
-      setApiKey(storedApiKey);
-    }
-
-    if (storedConversationHistory) {
-      const history = JSON.parse(storedConversationHistory);
-      fullConvsersationHistoryRef.current = history;
-      setConversationHistory(history); // Update the state with the stored history
-    }
-  }, []);
-
-  const resetConversation = (e) => {
-    e.preventDefault();
-    const newConversationHistory = [];
-    fullConvsersationHistoryRef.current = newConversationHistory;
-    setConversationHistory(newConversationHistory);
-
-    localStorage.setItem(
-      "conversationHistory",
-      JSON.stringify(newConversationHistory),
-    );
-
+  // Reset conversation history
+  const resetConversation = () => {
+    conversationHistoryRef.current = [];
+    setConversationHistory([]);
     console.log("Conversation history reset.");
   };
 
@@ -71,13 +143,24 @@ function QnAApp() {
     setError(null);
 
     try {
-      fullConvsersationHistoryRef.current.push({
+      conversationHistoryRef.current.push({
         role: "user",
         parts: [{ text: question }],
       });
-      setConversationHistory(fullConvsersationHistoryRef.current);
+      setConversationHistory(conversationHistoryRef.current);
       setQuestion("");
 
+      let conversationIncludingPrompt = [...conversationHistoryRef.current];
+      conversationIncludingPrompt.unshift(
+        {
+          role: "user",
+          parts: [{ text: initialPrompt }],
+        },
+        {
+          role: "model",
+          parts: [{ text: initialResponse }],
+        },
+      );
       const apiResponse = await fetch(
         "https://jp-gw.azure-api.net/gemini-pro/gemini-pro:generateContent?key=" +
           apiKey,
@@ -89,7 +172,7 @@ function QnAApp() {
           },
 
           body: JSON.stringify({
-            contents: fullConvsersationHistoryRef.current,
+            contents: conversationIncludingPrompt,
             safety_settings: [
               { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
               {
@@ -116,10 +199,6 @@ function QnAApp() {
       );
 
       if (!apiResponse.ok) {
-        let lastQuestion = fullConvsersationHistoryRef.current.pop();
-        console.log(lastQuestion);
-        setQuestion(lastQuestion.parts[0].text);
-        setConversationHistory(fullConvsersationHistoryRef.current);
         const errorBody = await apiResponse.json().catch(() => null);
         let errMsg = "";
         console.log(errorBody.error);
@@ -133,39 +212,27 @@ function QnAApp() {
 
       const responseData = await apiResponse.json();
 
-      fullConvsersationHistoryRef.current.push({
+      conversationHistoryRef.current.push({
         role: "model",
         parts: [{ text: responseData.candidates[0].content.parts[0].text }],
       });
-      setConversationHistory(fullConvsersationHistoryRef.current);
-      localStorage.setItem(
-        "conversationHistory",
-        JSON.stringify(conversationHistory),
-      );
+      setConversationHistory(conversationHistoryRef.current);
     } catch (error) {
       console.error(error);
       setError(`An error occurred. ${error}`);
+      let lastQuestion = conversationHistoryRef.current.pop();
+      setQuestion(lastQuestion.parts[0].text);
+      setConversationHistory(conversationHistoryRef.current);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleSaveApiKey = () => {
-    // Store API key in local storage (optional)
-    localStorage.setItem("geminiApiKey", apiKey);
   };
 
   return (
     <Container>
       <Row>
         <Col xs={12} className="mb-3 mt-3">
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Enter API Key"
-            onBlur={handleSaveApiKey} // Store API key on blur (optional)
-          />
+          <ApiKeyInput apiKey={apiKey} setApiKey={setApiKey} />
         </Col>
       </Row>
       <Row>
@@ -178,43 +245,19 @@ function QnAApp() {
         </Col>
       </Row>
       <Row>
-        <div>
-          {conversationHistory.map((content, index) => (
-            <div key={index} className={content.role}>
-              {content.role === "user" ? (
-                <p style={{ fontWeight: "bold" }}>You: </p>
-              ) : (
-                <p style={{ fontWeight: "bold" }}>Bot: </p>
-              )}
-              <Markdown remarkPlugins={[remarkGfm]}>
-                {content.parts[0].text}
-              </Markdown>
-            </div>
-          ))}
-        </div>
+        <ConversationHistory history={conversationHistory} />
       </Row>
       <Row>
-        {isLoading ? (
-          <Col xs={12}>
-            <div className="spinner-border text-secondary" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-          </Col>
-        ) : (
-          <p></p>
-        )}
+        <LoadingSpinner isLoading={isLoading} />
       </Row>
       <Row>
         <Col xs={10}>
-          <textarea
-            rows={5}
-            maxLength={MAX_QUESTION_LENGTH}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Enter your question (max 30000 characters)"
-            className="w-100"
+          <QuestionInput
+            question={question}
+            setQuestion={setQuestion}
+            MAX_QUESTION_LENGTH={MAX_QUESTION_LENGTH}
           />
-          {error && <Alert variant="warning">{error}</Alert>}
+          <ErrorAlert error={error} />
         </Col>
         <Col xs={2} className="h-auto align-bottom">
           <Button onClick={handleSubmit} className="w-100">
