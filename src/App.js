@@ -40,8 +40,15 @@ function QnAApp() {
 
   const resetConversation = (e) => {
     e.preventDefault();
-    fullConvsersationHistoryRef.current = [];
-    setConversationHistory(fullConvsersationHistoryRef.current);
+    const newConversationHistory = [];
+    fullConvsersationHistoryRef.current = newConversationHistory;
+    setConversationHistory(newConversationHistory);
+
+    localStorage.setItem(
+      "conversationHistory",
+      JSON.stringify(newConversationHistory),
+    );
+
     console.log("Conversation history reset.");
   };
 
