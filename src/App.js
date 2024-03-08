@@ -128,7 +128,8 @@ function QnAApp() {
   const initialPrompt = `You are a professional assistant. You should be helpful, accurate, analytical and well-formatted when answering serious questions. Always include citation when referencing sources. Ask probing question when appropriate.
   You should be creative and relaxed when answering other questions and can be more chatty and conversational.`;
   const initialResponse = "OK. I will do my best.";
-  const nextQuestionPrompt = `Use the same language you used in your above response.
+  const nextQuestionPrompt = `Ignore the language I use in this particular question.
+  Use the same language you used in your above response.
   请使用与你之前的对话相同的语言来回答下面的问题。
   Based on your above response, please predict a short follow up question that I may ask.
   基于你之前的对话，预测我可能提出的问题。
@@ -216,7 +217,7 @@ function QnAApp() {
           threshold: "BLOCK_NONE",
         },
       ];
-      generationConfig = {
+      const generationConfig = {
         stopSequences: [],
         temperature: 1.0,
         topP: 0.8, // Adjusted topP value for better balance
