@@ -8,6 +8,7 @@ import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
 import * as Icon from "react-bootstrap-icons";
 import "bootstrap/dist/css/bootstrap.min.css"; // Import Bootstrap CSS
+import { Next } from "react-bootstrap/esm/PageItem";
 
 // Custom hook for local storage
 function useLocalStorage(key, initialValue) {
@@ -95,6 +96,29 @@ function LoadingSpinner({ isLoading }) {
   ) : null;
 }
 
+// Next question component
+function NextQuestion({ nextQuestion, setQuestion }) {
+  if (nextQuestion) {
+    return (
+      <Alert variant="info">
+        <Icon.Magic />
+        &nbsp; You may want to ask:
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            setQuestion(nextQuestion);
+          }}
+        >
+          {nextQuestion}
+        </a>
+      </Alert>
+    );
+  } else {
+    return <div />;
+  }
+}
+
 // Error alert component
 function ErrorAlert({ error }) {
   return error ? <Alert variant="warning">{error}</Alert> : null;
@@ -104,16 +128,25 @@ function QnAApp() {
   const initialPrompt = `You are a professional assistant. You should be helpful, accurate, analytical and well-formatted when answering serious questions. Always include citation when referencing sources. Ask probing question when appropriate.
   You should be creative and relaxed when answering other questions and can be more chatty and conversational.`;
   const initialResponse = "OK. I will do my best.";
+  const nextQuestionPrompt = `Use the same language you used in your above response.
+  请使用与你之前的对话相同的语言来回答下面的问题。
+  Based on your above response, please predict a short follow up question that I may ask.
+  基于你之前的对话，预测我可能提出的问题。
+  Ignore the probing question if you asked one in your above response.
+  Respond with your predicted question in plaintext ONLY without any other information.
+  回复仅包含问题本身的纯文本，不要包含其他任何内容。
+  No markdown. Be extremely concise.`;
   const [question, setQuestion] = useState("");
   const [apiKey, setApiKey] = useLocalStorage("geminiApiKey", "");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [nextQuestion, setNextQuestion] = useState("");
 
   const MAX_QUESTION_LENGTH = 30000; // Maximum allowed question length
 
   const [conversationHistory, setConversationHistory] = useLocalStorage(
     "conversationHistory",
-    [],
+    []
   );
   const conversationHistoryRef = useRef(conversationHistory); // Ref to store previous questions
 
@@ -121,12 +154,14 @@ function QnAApp() {
   const resetConversation = () => {
     conversationHistoryRef.current = [];
     setConversationHistory([]);
+    setNextQuestion("");
     console.log("Conversation history reset.");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    setNextQuestion("");
     if (!apiKey) {
       setError("Please enter your API key.");
       return;
@@ -134,7 +169,7 @@ function QnAApp() {
 
     if (question.length > MAX_QUESTION_LENGTH) {
       setError(
-        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`,
+        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`
       );
       return;
     }
@@ -159,44 +194,43 @@ function QnAApp() {
         {
           role: "model",
           parts: [{ text: initialResponse }],
-        },
+        }
       );
-      const apiResponse = await fetch(
-        "https://jp-gw.azure-api.net/gemini-pro/gemini-pro:generateContent?key=" +
-          apiKey,
+      const apiRequestUrl = `https://jp-gw.azure-api.net/gemini-pro/gemini-pro:generateContent?key=${apiKey}`;
+      const requestHeader = {
+        "Content-Type": "application/json",
+        "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050", // Replace with your subscription key
+      };
+      const safetySettings = [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050", // Replace with your subscription key
-          },
-
-          body: JSON.stringify({
-            contents: conversationIncludingPrompt,
-            safety_settings: [
-              { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-              {
-                category: "HARM_CATEGORY_HATE_SPEECH",
-                threshold: "BLOCK_NONE",
-              },
-              {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_NONE",
-              },
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_NONE",
-              },
-            ],
-            generationConfig: {
-              stopSequences: [],
-              temperature: 1.0,
-              topP: 0.8, // Adjusted topP value for better balance
-              topK: 10,
-            },
-          }),
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_NONE",
         },
-      );
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_NONE",
+        },
+      ];
+      generationConfig = {
+        stopSequences: [],
+        temperature: 1.0,
+        topP: 0.8, // Adjusted topP value for better balance
+        topK: 10,
+      };
+      let apiResponse = await fetch(apiRequestUrl, {
+        method: "POST",
+        headers: requestHeader,
+        body: JSON.stringify({
+          contents: conversationIncludingPrompt,
+          safety_settings: safetySettings,
+          generationConfig: generationConfig,
+        }),
+      });
 
       if (!apiResponse.ok) {
         const errorBody = await apiResponse.json().catch(() => null);
@@ -206,17 +240,51 @@ function QnAApp() {
           errMsg = errorBody.error.message;
         }
         throw new Error(
-          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
+          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`
         );
       }
 
-      const responseData = await apiResponse.json();
+      let responseData = await apiResponse.json();
 
       conversationHistoryRef.current.push({
         role: "model",
         parts: [{ text: responseData.candidates[0].content.parts[0].text }],
       });
       setConversationHistory(conversationHistoryRef.current);
+      conversationIncludingPrompt.push({
+        role: "model",
+        parts: [{ text: responseData.candidates[0].content.parts[0].text }],
+      });
+
+      // Predict follow-up question
+      conversationIncludingPrompt.push({
+        role: "user",
+        parts: [{ text: nextQuestionPrompt }],
+      });
+      apiResponse = await fetch(apiRequestUrl, {
+        method: "POST",
+        headers: requestHeader,
+        body: JSON.stringify({
+          contents: conversationIncludingPrompt,
+          safety_settings: safetySettings,
+          generationConfig: generationConfig,
+        }),
+      });
+      if (!apiResponse.ok) {
+        const errorBody = await apiResponse.json().catch(() => null);
+        let errMsg = "";
+        console.log(errorBody.error);
+        if (errorBody && errorBody.error.message) {
+          errMsg = errorBody.error.message;
+        }
+        return; // siliently ignore error
+      }
+      try {
+        responseData = await apiResponse.json();
+        setNextQuestion(responseData.candidates[0].content.parts[0].text);
+      } catch (error) {
+        console.log(error);
+      }
     } catch (error) {
       console.error(error);
       setError(`An error occurred. ${error}`);
@@ -248,7 +316,14 @@ function QnAApp() {
         <ConversationHistory history={conversationHistory} />
       </Row>
       <Row>
-        <LoadingSpinner isLoading={isLoading} />
+        <Col xs={12}>
+          <LoadingSpinner isLoading={isLoading} />
+        </Col>
+      </Row>
+      <Row>
+        <Col xs={12}>
+          <NextQuestion nextQuestion={nextQuestion} setQuestion={setQuestion} />
+        </Col>
       </Row>
       <Row>
         <Col xs={10}>
