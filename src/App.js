@@ -74,6 +74,24 @@ function ConversationHistory({ history }) {
   );
 }
 
+// Conversation history component
+function ConversationHistory1({ history }) {
+  return (
+    <div>
+      {history.map((content, index) => (
+        <div key={index} className={content.role}>
+          {content.role === "Me" ? (
+            <p style={{ fontWeight: "bold" }}>You: </p>
+          ) : (
+            <p style={{ fontWeight: "bold" }}>Bot: </p>
+          )}
+          <Markdown remarkPlugins={[remarkGfm]}>{content.text}</Markdown>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Question input component
 function QuestionInput({ question, setQuestion, MAX_QUESTION_LENGTH }) {
   return (
@@ -224,15 +242,16 @@ function QnAApp() {
   const initialResponse = "OK. I will do my best.";
   const nextQuestionPrompt = `Ignore the language I use in this particular question.
   Use the same language you used in your above response.
-  请使用与你之前的对话相同的语言来回答下面的问题。
-  Based on your above response, please predict a short follow up question that I may ask.
-  基于你之前的对话，预测我可能提出的问题。
+  请使用与你上一条回复相同的语言来回答下面的问题。
+  What should I ask next if you were me?
   Ignore the probing question if you asked one in your above response.
   Respond with your predicted question in plaintext ONLY without any other information.
   回复仅包含问题本身的纯文本，不要包含其他任何内容。
-  No markdown. Be extremely concise.`;
+  No markdown. Be extremely concise.
+  The next questions may be （下一个问题可能是）: `;
   const [question, setQuestion] = useState("");
   const [question1, setQuestion1] = useState("");
+  const [conversation1, setConversation1] = useState([]);
   const [response1, setResponse1] = useState("");
   const [apiKey, setApiKey] = useLocalStorage("geminiApiKey", "");
   const [isLoading, setIsLoading] = useState(false);
@@ -278,6 +297,10 @@ function QnAApp() {
     setConversationHistory([]);
     setNextQuestion("");
     console.log("Conversation history reset.");
+  };
+
+  const resetConversation1 = () => {
+    setConversation1([]);
   };
 
   const restoreConversation = (text) => {
@@ -349,6 +372,13 @@ function QnAApp() {
         topP: 0.8, // Adjusted topP value for better balance
         topK: 10,
       };
+      const generationConfigForNextQuestion = {
+        stopSequences: [],
+        maxOutputTokens: 30,
+        temperature: 1,
+        topP: 0.8, // Adjusted topP value for better balance
+        topK: 5,
+      };
       let apiResponse = await fetch(apiRequestUrl, {
         method: "POST",
         headers: requestHeader,
@@ -372,15 +402,17 @@ function QnAApp() {
       }
 
       let responseData = await apiResponse.json();
+      let responseText = responseData.candidates[0].content.parts[0].text;
+      responseText = responseText.replace(/：\*\*/g, ":** ");
 
       conversationHistoryRef.current.push({
         role: "model",
-        parts: [{ text: responseData.candidates[0].content.parts[0].text }],
+        parts: [{ text: responseText }],
       });
       setConversationHistory(conversationHistoryRef.current);
       conversationIncludingPrompt.push({
         role: "model",
-        parts: [{ text: responseData.candidates[0].content.parts[0].text }],
+        parts: [{ text: responseText }],
       });
 
       // Predict follow-up question
@@ -394,7 +426,7 @@ function QnAApp() {
         body: JSON.stringify({
           contents: conversationIncludingPrompt,
           safety_settings: safetySettings,
-          generationConfig: generationConfig,
+          generationConfig: generationConfigForNextQuestion,
         }),
       });
       if (!apiResponse.ok) {
@@ -408,7 +440,11 @@ function QnAApp() {
       }
       try {
         responseData = await apiResponse.json();
-        setNextQuestion(responseData.candidates[0].content.parts[0].text);
+        let myNextQuestion = responseData.candidates[0].content.parts[0].text;
+        myNextQuestion = myNextQuestion.replace(/[\*\r\n]/g, "");
+        let parts = myNextQuestion.split(/[:：]/);
+        myNextQuestion = parts[parts.length - 1];
+        setNextQuestion(myNextQuestion);
       } catch (error) {
         console.log(error);
       }
@@ -425,16 +461,14 @@ function QnAApp() {
 
   const handleSubmit1 = async (e) => {
     e.preventDefault();
-
-    if (!apiKey) {
-      setError1("Please enter your API key.");
-      return;
-    }
-
-    if (question.length > MAX_QUESTION_LENGTH) {
-      setError1(
-        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`,
-      );
+    try {
+      if (!apiKey) throw new Error("Please enter your API key.");
+      if (!question1) throw new Error("Where's your question?");
+      if (!imageBase64.mime_type)
+        throw new Error("Please upload an image first.");
+    } catch (error) {
+      console.error(error);
+      setError1(`An error occurred. ${error}`);
       return;
     }
 
@@ -464,10 +498,23 @@ function QnAApp() {
       ];
       const generationConfig = {
         stopSequences: [],
-        temperature: 0.5,
-        topP: 0.8, // Adjusted topP value for better balance
-        topK: 10,
+        temperature: 0.8,
+        topP: 1, // Adjusted topP value for better balance
+        topK: 5,
       };
+
+      let prompt1 = `"Me:" represents the beginning of my question （我的问题）. "You:" represents the beginning of your previous response （你先前的回复）.
+      Analyze the content in the picture first.
+      Here starts the dialog （下面是对话正文）. Use the language in the dialog （请使用对话正文的语言）.`;
+      let conversationTmp = [...conversation1];
+      conversationTmp.push({ role: "Me", text: question1 });
+      setConversation1(conversationTmp);
+      let conversationArr = conversationTmp.map(
+        (item) => `${item.role}: ${item.text}`,
+      );
+      conversationArr.unshift(prompt1);
+      conversationArr.push("You: ");
+      let conversationStr = conversationArr.join("\n");
       let apiResponse = await fetch(apiRequestUrl, {
         method: "POST",
         headers: requestHeader,
@@ -475,7 +522,7 @@ function QnAApp() {
           contents: [
             {
               role: "user",
-              parts: [{ text: question1 }, { inline_data: imageBase64 }],
+              parts: [{ text: conversationStr }, { inline_data: imageBase64 }],
             },
           ],
           safety_settings: safetySettings,
@@ -496,7 +543,11 @@ function QnAApp() {
       }
 
       let responseData = await apiResponse.json();
-      setResponse1(responseData.candidates[0].content.parts[0].text);
+      let responseText = responseData.candidates[0].content.parts[0].text;
+      setResponse1(responseText);
+      conversationTmp.push({ role: "You", text: responseText });
+      setConversation1(conversationTmp);
+      setQuestion1("");
     } catch (error) {
       console.error(error);
       setError1(`An error occurred. ${error}`);
@@ -592,10 +643,7 @@ function QnAApp() {
           <Row>
             <Col xs={12}>
               <LoadingSpinner isLoading={isLoading1} />
-              <div className={"model"}>
-                <p style={{ fontWeight: "bold" }}>Bot: </p>
-                <Markdown remarkPlugins={[remarkGfm]}>{response1}</Markdown>
-              </div>
+              <ConversationHistory1 history={conversation1} />
             </Col>
           </Row>
           <Row>
@@ -610,6 +658,11 @@ function QnAApp() {
             <Col xs={2} className="h-auto align-bottom">
               <Button onClick={handleSubmit1} className="w-100">
                 <Icon.Send />
+              </Button>
+            </Col>
+            <Col xs={2} className="h-auto">
+              <Button onClick={resetConversation1} className="w-100">
+                <Icon.ArrowCounterclockwise />
               </Button>
             </Col>
           </Row>
