@@ -6,9 +6,10 @@ import Alert from "react-bootstrap/Alert";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
+import Tab from "react-bootstrap/Tab";
+import Tabs from "react-bootstrap/Tabs";
 import * as Icon from "react-bootstrap-icons";
 import "bootstrap/dist/css/bootstrap.min.css"; // Import Bootstrap CSS
-import { Next } from "react-bootstrap/esm/PageItem";
 
 // Custom hook for local storage
 function useLocalStorage(key, initialValue) {
@@ -185,6 +186,38 @@ const UploadButton = ({ storageKey, restoreHandler }) => {
   );
 };
 
+const PictureUploader = ({ onImageUpload }) => {
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type.match("image.*")) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64Image = e.target.result;
+        onImageUpload(base64Image); // Call the passed-in callback function with the base64 image data
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert("Please select an image file.");
+    }
+  };
+
+  return (
+    <div className="mb-3">
+      <input
+        type="file"
+        className="form-control"
+        id="upload-button"
+        onChange={handleFileChange}
+        style={{ display: "none" }}
+        accept="image/*" // Accept images only
+      />
+      <label className="btn btn-primary" htmlFor="upload-button">
+        Upload Picture
+      </label>
+    </div>
+  );
+};
+
 function QnAApp() {
   const initialPrompt = `You are a professional assistant. You should be helpful, accurate, analytical and well-formatted when answering serious questions. Always include citation when referencing sources. Ask probing question when appropriate.
   You should be creative and relaxed when answering other questions and can be more chatty and conversational.`;
@@ -199,16 +232,43 @@ function QnAApp() {
   回复仅包含问题本身的纯文本，不要包含其他任何内容。
   No markdown. Be extremely concise.`;
   const [question, setQuestion] = useState("");
+  const [question1, setQuestion1] = useState("");
+  const [response1, setResponse1] = useState("");
   const [apiKey, setApiKey] = useLocalStorage("geminiApiKey", "");
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoading1, setIsLoading1] = useState(false);
   const [error, setError] = useState(null);
+  const [error1, setError1] = useState(null);
   const [nextQuestion, setNextQuestion] = useState("");
+  const [imageBase64, setImageBase64] = useState({ mime_type: "", data: "" });
+  const [imagePreview, setImagePreview] = useState(null);
+
+  const handleImageUpload = (base64Image) => {
+    // Split the base64 string into parts using a regex pattern
+    const matches = base64Image.match(/^data:(.+);base64,(.*)$/);
+    if (matches.length !== 3) {
+      throw new Error("Invalid base64 image data!");
+    }
+
+    // Extract the MIME type and base64 data from the matches
+    const mimeType = matches[1];
+    const data = matches[2];
+
+    // Construct the JSON object
+    const imageJson = {
+      mime_type: mimeType,
+      data: data,
+    };
+
+    setImageBase64(imageJson); // Store the JSON object in the parent component's state
+    setImagePreview(base64Image); // Update image preview in the parent component
+  };
 
   const MAX_QUESTION_LENGTH = 30000; // Maximum allowed question length
 
   const [conversationHistory, setConversationHistory] = useLocalStorage(
     "conversationHistory",
-    []
+    [],
   );
   const conversationHistoryRef = useRef(conversationHistory); // Ref to store previous questions
 
@@ -236,7 +296,7 @@ function QnAApp() {
 
     if (question.length > MAX_QUESTION_LENGTH) {
       setError(
-        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`
+        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`,
       );
       return;
     }
@@ -261,7 +321,7 @@ function QnAApp() {
         {
           role: "model",
           parts: [{ text: initialResponse }],
-        }
+        },
       );
       const apiRequestUrl = `https://jp-gw.azure-api.net/gemini-pro/gemini-pro:generateContent?key=${apiKey}`;
       const requestHeader = {
@@ -285,7 +345,7 @@ function QnAApp() {
       ];
       const generationConfig = {
         stopSequences: [],
-        temperature: 1.0,
+        temperature: 0.5,
         topP: 0.8, // Adjusted topP value for better balance
         topK: 10,
       };
@@ -307,7 +367,7 @@ function QnAApp() {
           errMsg = errorBody.error.message;
         }
         throw new Error(
-          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`
+          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
         );
       }
 
@@ -363,6 +423,88 @@ function QnAApp() {
     }
   };
 
+  const handleSubmit1 = async (e) => {
+    e.preventDefault();
+
+    if (!apiKey) {
+      setError1("Please enter your API key.");
+      return;
+    }
+
+    if (question.length > MAX_QUESTION_LENGTH) {
+      setError1(
+        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`,
+      );
+      return;
+    }
+
+    setIsLoading1(true);
+    setError1(null);
+
+    try {
+      const apiRequestUrl = `https://jp-gw.azure-api.net/gemini-pro/gemini-pro-vision:generateContent?key=${apiKey}`;
+      const requestHeader = {
+        "Content-Type": "application/json",
+        "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050", // Replace with your subscription key
+      };
+      const safetySettings = [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_NONE",
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_NONE",
+        },
+      ];
+      const generationConfig = {
+        stopSequences: [],
+        temperature: 0.5,
+        topP: 0.8, // Adjusted topP value for better balance
+        topK: 10,
+      };
+      let apiResponse = await fetch(apiRequestUrl, {
+        method: "POST",
+        headers: requestHeader,
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: question1 }, { inline_data: imageBase64 }],
+            },
+          ],
+          safety_settings: safetySettings,
+          generationConfig: generationConfig,
+        }),
+      });
+
+      if (!apiResponse.ok) {
+        const errorBody = await apiResponse.json().catch(() => null);
+        let errMsg = "";
+        console.log(errorBody.error);
+        if (errorBody && errorBody.error.message) {
+          errMsg = errorBody.error.message;
+        }
+        throw new Error(
+          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
+        );
+      }
+
+      let responseData = await apiResponse.json();
+      setResponse1(responseData.candidates[0].content.parts[0].text);
+    } catch (error) {
+      console.error(error);
+      setError1(`An error occurred. ${error}`);
+    } finally {
+      setIsLoading1(false);
+    }
+  };
+
   return (
     <Container>
       <Row>
@@ -370,60 +512,109 @@ function QnAApp() {
           <ApiKeyInput apiKey={apiKey} setApiKey={setApiKey} />
         </Col>
       </Row>
-      <Row>
-        <Col xs={12}>
-          <Alert variant="primary">
-            <Icon.ShieldExclamation />
-            &nbsp; There is no filter on offending response. Use the tool at
-            your own risk.
-          </Alert>
-        </Col>
-      </Row>
-      <Row>
-        <ConversationHistory history={conversationHistory} />
-      </Row>
-      <Row>
-        <Col xs={12}>
-          <LoadingSpinner isLoading={isLoading} />
-        </Col>
-      </Row>
-      <Row>
-        <Col xs={12}>
-          <NextQuestion nextQuestion={nextQuestion} setQuestion={setQuestion} />
-        </Col>
-      </Row>
-      <Row>
-        <Col xs={10}>
-          <QuestionInput
-            question={question}
-            setQuestion={setQuestion}
-            MAX_QUESTION_LENGTH={MAX_QUESTION_LENGTH}
-          />
-          <ErrorAlert error={error} />
-        </Col>
-        <Col xs={2} className="h-auto align-bottom">
-          <Button onClick={handleSubmit} className="w-100">
-            <Icon.Send />
-          </Button>
-        </Col>
-        <Col xs={2} className="h-auto">
-          <Button onClick={resetConversation} className="w-100">
-            <Icon.ArrowCounterclockwise />
-          </Button>
-        </Col>
-        <Col xs={2} className="h-auto">
-          <DownloadButton
-            storageKey="conversationHistory"
-            fileName="conversationHistory.txt"
-          />
-        </Col>
-        <Col xs={2} className="h-auto">
-          <UploadButton
-            storageKey="conversationHistory"
-            restoreHandler={restoreConversation}
-          />
-        </Col>
-      </Row>
+      <Tabs
+        defaultActiveKey="chatbot"
+        transition={false}
+        id="maintabs"
+        className="mb-3"
+      >
+        <Tab eventKey="chatbot" title="Chatbot">
+          <Row>
+            <Col xs={12}>
+              <Alert variant="primary">
+                <Icon.ShieldExclamation />
+                &nbsp; There is no filter on offending response. Use the tool at
+                your own risk.
+              </Alert>
+            </Col>
+          </Row>
+          <Row>
+            <ConversationHistory history={conversationHistory} />
+          </Row>
+          <Row>
+            <Col xs={12}>
+              <LoadingSpinner isLoading={isLoading} />
+            </Col>
+          </Row>
+          <Row>
+            <Col xs={12}>
+              <NextQuestion
+                nextQuestion={nextQuestion}
+                setQuestion={setQuestion}
+              />
+            </Col>
+          </Row>
+          <Row>
+            <Col xs={10}>
+              <QuestionInput
+                question={question}
+                setQuestion={setQuestion}
+                MAX_QUESTION_LENGTH={MAX_QUESTION_LENGTH}
+              />
+              <ErrorAlert error={error} />
+            </Col>
+            <Col xs={2} className="h-auto align-bottom">
+              <Button onClick={handleSubmit} className="w-100">
+                <Icon.Send />
+              </Button>
+            </Col>
+            <Col xs={2} className="h-auto">
+              <Button onClick={resetConversation} className="w-100">
+                <Icon.ArrowCounterclockwise />
+              </Button>
+            </Col>
+            <Col xs={2} className="h-auto">
+              <DownloadButton
+                storageKey="conversationHistory"
+                fileName="conversationHistory.txt"
+              />
+            </Col>
+            <Col xs={2} className="h-auto">
+              <UploadButton
+                storageKey="conversationHistory"
+                restoreHandler={restoreConversation}
+              />
+            </Col>
+          </Row>
+        </Tab>
+        <Tab eventKey="picture" title="Picture">
+          <PictureUploader onImageUpload={handleImageUpload} />
+          {imagePreview && (
+            <div className="mt-3">
+              <img
+                src={imagePreview}
+                alt="Preview"
+                className="img-thumbnail"
+                style={{ maxWidth: "300px" }}
+              />
+            </div>
+          )}
+          <Row>
+            <Col xs={12}>
+              <LoadingSpinner isLoading={isLoading1} />
+              <div className={"model"}>
+                <p style={{ fontWeight: "bold" }}>Bot: </p>
+                <Markdown remarkPlugins={[remarkGfm]}>{response1}</Markdown>
+              </div>
+            </Col>
+          </Row>
+          <Row>
+            <Col xs={10}>
+              <QuestionInput
+                question={question1}
+                setQuestion={setQuestion1}
+                MAX_QUESTION_LENGTH={MAX_QUESTION_LENGTH}
+              />
+              <ErrorAlert error={error1} />
+            </Col>
+            <Col xs={2} className="h-auto align-bottom">
+              <Button onClick={handleSubmit1} className="w-100">
+                <Icon.Send />
+              </Button>
+            </Col>
+          </Row>
+        </Tab>
+      </Tabs>
     </Container>
   );
 }
