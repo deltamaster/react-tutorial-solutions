@@ -124,6 +124,67 @@ function ErrorAlert({ error }) {
   return error ? <Alert variant="warning">{error}</Alert> : null;
 }
 
+const DownloadButton = ({ storageKey, fileName }) => {
+  const handleDownload = () => {
+    // Retrieve the item from localStorage
+    const data = localStorage.getItem(storageKey);
+    if (data) {
+      // Create a Blob from the data
+      const blob = new Blob([data], { type: "text/plain" });
+      // Create an object URL for the blob
+      const url = URL.createObjectURL(blob);
+      // Create a temporary anchor element and trigger download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName || "data.txt";
+      document.body.appendChild(a); // Append the anchor to the body
+      a.click(); // Trigger a click on the element
+      document.body.removeChild(a); // Remove the anchor from the body
+      URL.revokeObjectURL(url); // Clean up the object URL
+    } else {
+      console.error(`No data found in localStorage for key: ${storageKey}`);
+    }
+  };
+
+  return (
+    <Button variant="light" onClick={handleDownload} className="w-100">
+      <Icon.Download />
+    </Button>
+  );
+};
+
+const UploadButton = ({ storageKey, restoreHandler }) => {
+  const handleFileChosen = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const fileContents = e.target.result;
+        localStorage.setItem(storageKey, fileContents);
+        restoreHandler(fileContents);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  return (
+    <div className="input-group w-100">
+      <div className="custom-file w-100">
+        <input
+          type="file"
+          className="custom-file-input"
+          id="inputGroupFile02"
+          onChange={handleFileChosen}
+          style={{ display: "none" }} // Hide the actual input element
+        />
+        <label className="btn btn-light w-100" htmlFor="inputGroupFile02">
+          <Icon.Upload />
+        </label>
+      </div>
+    </div>
+  );
+};
+
 function QnAApp() {
   const initialPrompt = `You are a professional assistant. You should be helpful, accurate, analytical and well-formatted when answering serious questions. Always include citation when referencing sources. Ask probing question when appropriate.
   You should be creative and relaxed when answering other questions and can be more chatty and conversational.`;
@@ -157,6 +218,11 @@ function QnAApp() {
     setConversationHistory([]);
     setNextQuestion("");
     console.log("Conversation history reset.");
+  };
+
+  const restoreConversation = (text) => {
+    conversationHistoryRef.current = JSON.parse(text);
+    setConversationHistory(conversationHistoryRef.current);
   };
 
   const handleSubmit = async (e) => {
@@ -340,10 +406,22 @@ function QnAApp() {
             <Icon.Send />
           </Button>
         </Col>
-        <Col xs={2} className="h-auto align-bottom">
+        <Col xs={2} className="h-auto">
           <Button onClick={resetConversation} className="w-100">
             <Icon.ArrowCounterclockwise />
           </Button>
+        </Col>
+        <Col xs={2} className="h-auto">
+          <DownloadButton
+            storageKey="conversationHistory"
+            fileName="conversationHistory.txt"
+          />
+        </Col>
+        <Col xs={2} className="h-auto">
+          <UploadButton
+            storageKey="conversationHistory"
+            restoreHandler={restoreConversation}
+          />
         </Col>
       </Row>
     </Container>
