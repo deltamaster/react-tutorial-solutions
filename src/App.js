@@ -390,7 +390,7 @@ function QnAApp() {
         maxOutputTokens: 30,
         temperature: 1,
         topP: 0.8, // Adjusted topP value for better balance
-        topK: 5,
+        topK: 10,
       };
       let apiResponse = await fetch(apiRequestUrl, {
         method: "POST",
@@ -423,7 +423,12 @@ function QnAApp() {
           responseData.candidates[0].content.parts[responsePartIdx];
         if (responsePart["functionCall"]) {
           let functionName = responsePart["functionCall"].name;
-          let retVal = toolbox[functionName]();
+          let retVal = "";
+          try {
+            retVal = toolbox[functionName]();
+          } catch (e) {
+            console.log(e);
+          }
           let functionResponse = {
             functionResponse: {
               name: functionName,
@@ -448,7 +453,6 @@ function QnAApp() {
           headers: requestHeader,
           body: JSON.stringify({
             contents: conversationIncludingPrompt,
-            tools: { function_declarations: [dateTimeFuncDecl] },
             safety_settings: safetySettings,
             generationConfig: generationConfig,
           }),
@@ -564,9 +568,9 @@ function QnAApp() {
       ];
       const generationConfig = {
         stopSequences: [],
-        temperature: 0.8,
+        temperature: 0.5,
         topP: 1, // Adjusted topP value for better balance
-        topK: 5,
+        topK: 10,
       };
 
       let prompt1 = `"Me:" represents the beginning of my question （我的问题）. "You:" represents the beginning of your previous response （你先前的回复）.
