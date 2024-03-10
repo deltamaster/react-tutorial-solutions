@@ -262,6 +262,19 @@ function QnAApp() {
   const [imageBase64, setImageBase64] = useState({ mime_type: "", data: "" });
   const [imagePreview, setImagePreview] = useState(null);
 
+  const dateTimeFuncDecl = {
+    name: "get_current_datetime",
+    description:
+      'Get the string representation of current date and time in ISO 8601 format (e.g., "2024-03-10T12:34:56.789Z").',
+  };
+
+  const toolbox = {
+    get_current_datetime: () => {
+      const now = new Date();
+      return now.toISOString(); // Returns the date in ISO 8601 format (e.g., "2024-03-10T12:34:56.789Z")
+    },
+  };
+
   const handleImageUpload = (base64Image) => {
     // Split the base64 string into parts using a regex pattern
     const matches = base64Image.match(/^data:(.+);base64,(.*)$/);
@@ -384,6 +397,7 @@ function QnAApp() {
         headers: requestHeader,
         body: JSON.stringify({
           contents: conversationIncludingPrompt,
+          tools: { function_declarations: [dateTimeFuncDecl] },
           safety_settings: safetySettings,
           generationConfig: generationConfig,
         }),
@@ -402,6 +416,58 @@ function QnAApp() {
       }
 
       let responseData = await apiResponse.json();
+      let functionResponses = [];
+
+      for (let responsePartIdx in responseData.candidates[0].content.parts) {
+        let responsePart =
+          responseData.candidates[0].content.parts[responsePartIdx];
+        if (responsePart["functionCall"]) {
+          let functionName = responsePart["functionCall"].name;
+          let retVal = toolbox[functionName]();
+          let functionResponse = {
+            functionResponse: {
+              name: functionName,
+              response: {
+                name: functionName,
+                content: retVal,
+              },
+            },
+          };
+          functionResponses.push(functionResponse);
+        }
+      }
+      if (functionResponses.length != 0) {
+        // There is a function response to send
+        conversationIncludingPrompt.push(responseData.candidates[0].content);
+        conversationIncludingPrompt.push({
+          role: "function",
+          parts: functionResponses,
+        });
+        apiResponse = await fetch(apiRequestUrl, {
+          method: "POST",
+          headers: requestHeader,
+          body: JSON.stringify({
+            contents: conversationIncludingPrompt,
+            tools: { function_declarations: [dateTimeFuncDecl] },
+            safety_settings: safetySettings,
+            generationConfig: generationConfig,
+          }),
+        });
+        if (!apiResponse.ok) {
+          const errorBody = await apiResponse.json().catch(() => null);
+          let errMsg = "";
+          console.log(errorBody.error);
+          if (errorBody && errorBody.error.message) {
+            errMsg = errorBody.error.message;
+          }
+          throw new Error(
+            `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
+          );
+        }
+        responseData = await apiResponse.json();
+      }
+
+      // Use the actual response text
       let responseText = responseData.candidates[0].content.parts[0].text;
       responseText = responseText.replace(/：\*\*/g, ":** ");
 
