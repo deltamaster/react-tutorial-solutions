@@ -265,7 +265,7 @@ function QnAApp() {
   const dateTimeFuncDecl = {
     name: "get_current_datetime",
     description:
-      'Get the string representation of current date and time in ISO 8601 format (e.g., "2024-03-10T12:34:56.789Z").',
+      'Get the string representation of current date and time in ISO 8601 format in UTC timezone (e.g., "2024-03-10T12:34:56.789Z").',
   };
 
   const toolbox = {
@@ -324,16 +324,12 @@ function QnAApp() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    setNextQuestion("");
-    if (!apiKey) {
-      setError("Please enter your API key.");
-      return;
-    }
-
-    if (question.length > MAX_QUESTION_LENGTH) {
-      setError(
-        `Question length exceeds maximum of ${MAX_QUESTION_LENGTH} characters.`,
-      );
+    try {
+      if (!apiKey) throw new Error("Please enter your API key.");
+      if (!question) throw new Error("Where's your question?");
+    } catch (error) {
+      console.error(error);
+      setError(`An error occurred. ${error}`);
       return;
     }
 
@@ -359,10 +355,10 @@ function QnAApp() {
           parts: [{ text: initialResponse }],
         },
       );
-      const apiRequestUrl = `https://jp-gw.azure-api.net/gemini-pro/gemini-pro:generateContent?key=${apiKey}`;
+      const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini-pro/gemini-pro:generateContent?key=${apiKey}`;
       const requestHeader = {
         "Content-Type": "application/json",
-        "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050", // Replace with your subscription key
+        "Ocp-Apim-Subscription-Key": "90c8a35a90584342b7216af44aa434bf", // Replace with your subscription key
       };
       const safetySettings = [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -546,10 +542,10 @@ function QnAApp() {
     setError1(null);
 
     try {
-      const apiRequestUrl = `https://jp-gw.azure-api.net/gemini-pro/gemini-pro-vision:generateContent?key=${apiKey}`;
+      const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini-pro/gemini-pro-vision:generateContent?key=${apiKey}`;
       const requestHeader = {
         "Content-Type": "application/json",
-        "Ocp-Apim-Subscription-Key": "2eec3840203f4c518565172ad1c50050", // Replace with your subscription key
+        "Ocp-Apim-Subscription-Key": "90c8a35a90584342b7216af44aa434bf", // Replace with your subscription key
       };
       const safetySettings = [
         { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
