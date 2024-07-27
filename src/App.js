@@ -300,7 +300,7 @@ function QnAApp() {
 
   const [conversationHistory, setConversationHistory] = useLocalStorage(
     "conversationHistory",
-    [],
+    []
   );
   const conversationHistoryRef = useRef(conversationHistory); // Ref to store previous questions
 
@@ -353,9 +353,9 @@ function QnAApp() {
         {
           role: "model",
           parts: [{ text: initialResponse }],
-        },
+        }
       );
-      const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini-pro/gemini-pro:generateContent?key=${apiKey}`;
+      const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini-pro/gemini-1.5-flash:generateContent?key=${apiKey}`;
       const requestHeader = {
         "Content-Type": "application/json",
         "Ocp-Apim-Subscription-Key": "90c8a35a90584342b7216af44aa434bf", // Replace with your subscription key
@@ -407,7 +407,7 @@ function QnAApp() {
           errMsg = errorBody.error.message;
         }
         throw new Error(
-          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
+          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`
         );
       }
 
@@ -461,7 +461,7 @@ function QnAApp() {
             errMsg = errorBody.error.message;
           }
           throw new Error(
-            `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
+            `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`
           );
         }
         responseData = await apiResponse.json();
@@ -542,7 +542,7 @@ function QnAApp() {
     setError1(null);
 
     try {
-      const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini-pro/gemini-pro-vision:generateContent?key=${apiKey}`;
+      const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini-pro/gemini-1.5-flash:generateContent?key=${apiKey}`;
       const requestHeader = {
         "Content-Type": "application/json",
         "Ocp-Apim-Subscription-Key": "90c8a35a90584342b7216af44aa434bf", // Replace with your subscription key
@@ -576,7 +576,7 @@ function QnAApp() {
       conversationTmp.push({ role: "Me", text: question1 });
       setConversation1(conversationTmp);
       let conversationArr = conversationTmp.map(
-        (item) => `${item.role}: ${item.text}`,
+        (item) => `${item.role}: ${item.text}`
       );
       conversationArr.unshift(prompt1);
       conversationArr.push("You: ");
@@ -604,7 +604,7 @@ function QnAApp() {
           errMsg = errorBody.error.message;
         }
         throw new Error(
-          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`,
+          `API request failed with status ${apiResponse.status} and type ${apiResponse.type} (${errMsg})`
         );
       }
 
