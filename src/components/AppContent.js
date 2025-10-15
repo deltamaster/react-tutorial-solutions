@@ -260,27 +260,39 @@ function AppContent() {
         <Tab eventKey="chatbot" title="Chatbot">
           <Row className="mb-3">
             <Col xs={12} className="d-flex justify-content-end gap-2">
-              <Button 
-                variant="secondary" 
-                onClick={resetConversation}
-                style={{ display: conversation.length > 0 ? 'inline-block' : 'none' }}
-              >
-                <Icon.ArrowClockwise size={16} className="mr-2" />
-                Reset Conversation
-              </Button>
-              <Button 
-                variant="secondary" 
-                onClick={downloadConversation}
-                style={{ display: conversation.length > 0 ? 'inline-block' : 'none' }}
-              >
-                <Icon.Download size={16} className="mr-2" />
-                Download History
-              </Button>
               <div className="relative">
-                <Button variant="secondary" as="label" htmlFor="upload-conversation">
-                  <Icon.Upload size={16} className="mr-2" />
-                  Upload History
-                </Button>
+                <Button 
+                  id="reset-conversation"
+                  variant="secondary" 
+                  onClick={resetConversation}
+                  className="toggle-label"
+                  style={{ display: "none" }} // Hide the actual input element
+                ></Button>
+                <label htmlFor="reset-conversation" className="toggle-label toggle-on"
+                  style={{ display: conversation.length > 0 ? 'inline-block' : 'none' }}>
+                  <Icon.ArrowClockwise size={16} className="mr-2" />
+                  <span className="toggle-text">&nbsp;Reset Conversation</span>
+                </label>
+              </div>
+              <div className="relative">
+                <Button 
+                  id="download-conversation"
+                  variant="secondary" 
+                  onClick={downloadConversation}
+                  style={{ display: "none" }} // Hide the actual input element
+                ></Button>
+                <label htmlFor="download-conversation" className="toggle-label toggle-on"
+                  style={{ display: conversation.length > 0 ? 'inline-block' : 'none' }}>
+                  <Icon.Download size={16} className="mr-2" />
+                  <span className="toggle-text">&nbsp;Download History</span>
+                </label>
+              </div>
+
+              <div className="relative">
+                <Button 
+                  variant="secondary" 
+                  style={{ display: "none" }} // Hide the actual input element
+                ></Button>
                 <input
                   id="upload-conversation"
                   type="file"
@@ -288,6 +300,11 @@ function AppContent() {
                   onChange={uploadConversation}
                   style={{ display: "none" }} // Hide the actual input element
                 />
+                <label htmlFor="upload-conversation" className="toggle-label toggle-on"
+                  style={{ display: 'inline-block' }}>
+                  <Icon.Upload size={16} className="mr-2" />
+                  <span className="toggle-text">&nbsp;Upload History</span>
+                </label>
               </div>
             </Col>
           </Row>
