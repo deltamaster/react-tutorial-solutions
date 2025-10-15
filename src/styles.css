@@ -234,6 +234,61 @@ textarea:focus {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* Thinking Toggle Styles */
+.question-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-grow: 1;
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-checkbox {
+  display: none;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  user-select: none;
+}
+
+.toggle-label.toggle-off {
+  background-color: #e9ecef;
+  color: #6c757d;
+  border: 2px solid #dee2e6;
+}
+
+.toggle-label.toggle-off:hover:not(:disabled) {
+  background-color: #dee2e6;
+}
+
+.toggle-label.toggle-on {
+  background-color: #007bff;
+  color: white;
+  border: 2px solid #007bff;
+}
+
+.toggle-label:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toggle-text {
+  font-weight: 500;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .App {
@@ -250,6 +305,10 @@ textarea:focus {
   .btn {
     padding: 8px 16px;
     font-size: 14px;
+  }
+  
+  .toggle-text {
+    display: none;
   }
 }
 

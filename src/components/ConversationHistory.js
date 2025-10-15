@@ -4,18 +4,8 @@ import remarkGfm from 'remark-gfm';
 // Conversation history component
 function ConversationHistory({ history }) {
   return (
-    <div>
+    <div className="conversation-history">
       {history.map((content, index) => {
-        // Extract text from parts
-        let displayText = '';
-        if (content.parts && Array.isArray(content.parts)) {
-          for (let part of content.parts) {
-            if (part.text) {
-              displayText += part.text;
-            }
-          }
-        }
-        
         return (
           <div key={index} className={content.role}>
             {content.role === "user" ? (
@@ -23,9 +13,54 @@ function ConversationHistory({ history }) {
             ) : (
               <p style={{ fontWeight: "bold" }}>Bot: </p>
             )}
-            <Markdown remarkPlugins={[remarkGfm]}>
-              {displayText || (content.parts && content.parts[0] && content.parts[0].text)}
-            </Markdown>
+            
+            {content.parts && Array.isArray(content.parts) && content.parts.map((part, partIndex) => {
+              // Check if this part contains thoughts
+              const isThought = part.thought === true;
+              
+              // For bot responses, display thoughts and regular responses differently
+              if (content.role === "model") {
+                if (isThought) {
+                  return (
+                    <div key={partIndex} className="thought-part">
+                      <div style={{ 
+                        background: "#f8f9fa", 
+                        border: "1px dashed #adb5bd", 
+                        borderRadius: "4px", 
+                        padding: "8px 12px", 
+                        marginBottom: "8px",
+                        fontSize: "0.9em",
+                        fontStyle: "italic"
+                      }}>
+                        <span style={{ color: "#6c757d", fontWeight: "bold" }}>Thought:</span> 
+                        <Markdown remarkPlugins={[remarkGfm]}>
+                          {part.text}
+                        </Markdown>
+                      </div>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div key={partIndex} className="response-part">
+                      <Markdown remarkPlugins={[remarkGfm]}>
+                        {part.text}
+                      </Markdown>
+                    </div>
+                  );
+                }
+              } 
+              // For user messages, just display the text normally
+              else if (part.text) {
+                return (
+                  <div key={partIndex}>
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {part.text}
+                    </Markdown>
+                  </div>
+                );
+              }
+              return null;
+            })}
           </div>
         );
       })}

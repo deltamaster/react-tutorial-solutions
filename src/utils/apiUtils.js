@@ -1,17 +1,33 @@
 // Helper function to extract text from API response data
 export function extractTextFromResponse(responseData) {
-  let text = '';
+  let fullText = '';
+  let responseText = '';
+  let thoughtsText = '';
+  
   if (responseData.candidates && responseData.candidates[0] && 
       responseData.candidates[0].content && 
       responseData.candidates[0].content.parts) {
-    // Iterate through all parts and concatenate text
+    // Iterate through all parts and separate text based on whether it's a thought
     for (let part of responseData.candidates[0].content.parts) {
       if (part.text) {
-        text += part.text;
+        fullText += part.text;
+        
+        if (part.thought === true) {
+          thoughtsText += part.text;
+        } else {
+          responseText += part.text;
+        }
       }
     }
   }
-  return text;
+  
+  // Return an object with different text versions for flexibility
+  return {
+    fullText,        // All text including thoughts
+    responseText,    // Only non-thought text
+    thoughtsText,    // Only thought text
+    hasThoughts: thoughtsText.length > 0
+  };
 }
 
 // Helper function for API requests
