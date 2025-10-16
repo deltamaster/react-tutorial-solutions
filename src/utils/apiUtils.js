@@ -49,7 +49,11 @@ export const fetchFromApi = async (contents, generationConfig, apiKey, includeTo
   const SYSTEM_PROMPT = `
 I am a helpful assistant that can answer questions and perform tasks.
 
-Use memory tools wisely to remember important user facts and preference. Avoid blindly saving the exact input into the memory. Analyze the user's intention and summarize the information before saving.
+Use memory tools wisely to remember important user facts and preference. Avoid blindly saving the exact input into the memory:
+- Analyze the user's intention and summarize the information before saving.
+- Avoid saving relative date and time, always translate to absolute date and time before saving.
+
+I never need to get any memory from the functionCall. The full memory is always carried with the request.
 
 The memory I have access to is as follows (in the format of "memoryKey: memoryValue"):
 {{memories}}`;
@@ -95,7 +99,8 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
   };
   
   if (includeTools) {
-    requestBody.tools = { function_declarations: [dateTimeFuncDecl, getMemory, getAllMemories, setMemory, deleteMemory] };
+    // I don't need to expose get_memory and get_all_memories function to the model, because the full memory is alway carried with the request.
+    requestBody.tools = { function_declarations: [dateTimeFuncDecl, setMemory, deleteMemory] };
   }
   
   try {
@@ -217,13 +222,13 @@ export const toolbox = {
     // log in the console output the memoryKey and memoryValue
     console.log("set_memory", memoryKey, memoryValue);
     localStorage.setItem("memory-" + memoryKey, memoryValue);
-    return "OK"
+    return {"status": "OK", "memoryKey": memoryKey, "memoryValue": memoryValue}
   },
   delete_memory: (args) => {
     const memoryKey = args.memoryKey;
     // log in the console output the memoryKey
     console.log("delete_memory", memoryKey);
     localStorage.removeItem("memory-" + memoryKey);
-    return "OK"
+    return {"status": "OK", "memoryKey": memoryKey}
   },
 };

@@ -10,6 +10,7 @@ A React-based chatbot application powered by Google's Gemini API. This applicati
 - Follow-up question generation
 - Markdown support for rich text formatting
 - Responsive design using Bootstrap
+- Memory management system for storing and retrieving contextual information
 - Under construction: Image processing capabilities
 
 ## Installation and Setup
@@ -48,6 +49,7 @@ The application will open at [http://localhost:3000](http://localhost:3000) in y
    - Reset Conversation: Clears the current chat history
    - Download History: Saves the conversation as a JSON file
    - Upload History: Loads a conversation from a JSON file
+6. Access the Memory tab to view, add, edit, or delete contextual memory entries stored in your browser's localStorage
 
 ## Developer Guide
 
@@ -61,6 +63,7 @@ The application will open at [http://localhost:3000](http://localhost:3000) in y
 │   │   ├── ConversationHistory.js # Conversation history display
 │   │   ├── FollowUpQuestions.js  # Follow-up questions component
 │   │   ├── LoadingSpinner.js     # Loading indicator
+│   │   ├── Memory.js             # Memory management component
 │   │   └── QuestionInput.js      # User question input
 │   ├── utils/
 │   │   ├── apiUtils.js           # API-related utilities
@@ -80,6 +83,7 @@ The application will open at [http://localhost:3000](http://localhost:3000) in y
 - **QuestionInput**: Handles user input for questions
 - **ApiKeyInput**: Manages the Gemini API key input
 - **FollowUpQuestions**: Shows AI-generated follow-up questions
+- **Memory**: Provides interface for managing contextual memory data stored in localStorage
 
 ### Dependencies
 

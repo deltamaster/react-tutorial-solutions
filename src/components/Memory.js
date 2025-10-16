@@ -24,9 +24,47 @@ function Memory() {
     setMemories(loadedMemories);
   };
 
-  // 初始化时加载记忆
+  // 初始化时加载记忆，并监听localStorage变化
   useEffect(() => {
     loadMemories();
+
+    // 监听localStorage变化
+    const handleStorageChange = (e) => {
+      if (e.key && (e.key.startsWith('memory-') || e.key === null)) {
+        loadMemories();
+      }
+    };
+
+    // 在当前标签页中手动触发更新
+    const originalSetItem = localStorage.setItem;
+    const originalRemoveItem = localStorage.removeItem;
+    
+    localStorage.setItem = function(key, value) {
+      const result = originalSetItem.apply(this, arguments);
+      const event = new Event('storage');
+      event.key = key;
+      event.newValue = value;
+      window.dispatchEvent(event);
+      return result;
+    };
+    
+    localStorage.removeItem = function(key) {
+      const result = originalRemoveItem.apply(this, arguments);
+      const event = new Event('storage');
+      event.key = key;
+      window.dispatchEvent(event);
+      return result;
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // 清理函数
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      // 恢复原始方法
+      localStorage.setItem = originalSetItem;
+      localStorage.removeItem = originalRemoveItem;
+    };
   }, []);
 
   // 添加新记忆
@@ -187,7 +225,7 @@ function Memory() {
                       value={newMemoryKey}
                       onChange={(e) => setNewMemoryKey(e.target.value)}
                       placeholder="Enter a key (e.g., 'name', 'preferences')"
-                      maxLength={50}
+                      maxLength={500}
                     />
                   </Form.Group>
                 </Col>
@@ -200,7 +238,7 @@ function Memory() {
                       onChange={(e) => setNewMemoryValue(e.target.value)}
                       placeholder="Enter the memory content"
                       rows={2}
-                      maxLength={500}
+                      maxLength={5000}
                     />
                   </Form.Group>
                 </Col>
@@ -268,7 +306,7 @@ function Memory() {
                                   value={editingValue}
                                   onChange={(e) => setEditingValue(e.target.value)}
                                   rows={2}
-                                  maxLength={500}
+                                  maxLength={5000}
                                 />
                               </Form.Group>
                             </Col>

@@ -5,7 +5,11 @@ import Button from "react-bootstrap/Button";
 // Question input component
 function QuestionInput({ onSubmit, disabled = false, value = '', onChange }) {
   const [localQuestion, setLocalQuestion] = useState(value);
-  const [isThinkingEnabled, setIsThinkingEnabled] = useState(false);
+  // 从localStorage获取设置，如果没有则默认为true
+  const [isThinkingEnabled, setIsThinkingEnabled] = useState(() => {
+    const savedSetting = localStorage.getItem('thinkingEnabled');
+    return savedSetting === null ? true : savedSetting === 'true';
+  });
   const textareaRef = useRef(null);
   // Function to automatically adjust the height of the textarea
   const adjustHeight = () => {
@@ -59,7 +63,10 @@ function QuestionInput({ onSubmit, disabled = false, value = '', onChange }) {
   };
   
   const toggleThinking = () => {
-    setIsThinkingEnabled(!isThinkingEnabled);
+    const newValue = !isThinkingEnabled;
+    setIsThinkingEnabled(newValue);
+    // 保存到localStorage
+    localStorage.setItem('thinkingEnabled', newValue.toString());
   };
   
   return (
