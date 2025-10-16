@@ -44,15 +44,58 @@ export const fetchFromApi = async (contents, generationConfig, apiKey, includeTo
     { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   ];
-  
+  // put a "model" part as system prompt at the beginning of the contents
+  // 提取 localStorage 中的所有记忆并包含在提示中。
+  const SYSTEM_PROMPT = `
+I am a helpful assistant that can answer questions and perform tasks.
+
+Use memory tools wisely to remember important user facts and preference. Avoid blindly saving the exact input into the memory. Analyze the user's intention and summarize the information before saving.
+
+The memory I have access to is as follows (in the format of "memoryKey: memoryValue"):
+{{memories}}`;
+  const memories = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith("memory-")) {
+      memories[key.substring("memory-".length)] = localStorage.getItem(key);
+    }
+  }
+  const memoryText = Object.entries(memories).map(([key, value]) => `Memory ${key}: ${value}`).join('\n');
+  let contentsWithSystemPrompt = [{
+    "role": "model",
+    "parts": [{
+      "text": SYSTEM_PROMPT.replace('{{memories}}', memoryText)
+    }]
+  }, ...contents]
+  // Filter out thought contents before sending the request
+  const filteredContents = [];
+  for (const content of contents) {
+    if (content.parts) {
+      const filteredParts = content.parts.filter(part => !part.thought);
+      if (filteredParts.length > 0) {
+        filteredContents.push({
+          ...content,
+          parts: filteredParts
+        });
+      }
+    } else {
+      filteredContents.push(content);
+    }
+  }
+  contentsWithSystemPrompt = [{
+    "role": "model",
+    "parts": [{
+      "text": SYSTEM_PROMPT.replace('{{memories}}', memoryText)
+    }]
+  }, ...filteredContents];
   const requestBody = {
-    contents,
+    contents: contentsWithSystemPrompt,
     safety_settings: safetySettings,
     generationConfig,
   };
   
   if (includeTools) {
-    requestBody.tools = { function_declarations: [dateTimeFuncDecl] };
+    requestBody.tools = { function_declarations: [dateTimeFuncDecl, getMemory, getAllMemories, setMemory, deleteMemory] };
   }
   
   try {
@@ -87,10 +130,100 @@ export const dateTimeFuncDecl = {
     'Get the string representation of current date and time in ISO 8601 format in UTC timezone (e.g., "2024-03-10T12:34:56.789Z").',
 };
 
+export const getMemory = {
+  name: "get_memory",
+  description: "Get the value of a memory stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryKey: {
+        type: "string",
+        description: "The key of the memory to retrieve.",
+      },
+    },
+    required: ["memoryKey"],
+  },
+}
+
+export const getAllMemories = {
+  name: "get_all_memories",
+  description: "Get all memories stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {},
+    required: [],
+  },
+}
+
+export const setMemory = {
+  name: "set_memory",
+  description: "Set the value of a memory stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryKey: {
+        type: "string",
+        description: "The key of the memory to set. Generate a UUID as the key.",
+      },
+      memoryValue: {
+        type: "string",
+        description: "The fact in string that you summarize and store in the memory.",
+      },
+    },
+    required: ["memoryKey", "memoryValue"],
+  },
+}
+
+export const deleteMemory = {
+  name: "delete_memory",
+  description: "Delete a memory stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryKey: {
+        type: "string",
+        description: "The key of the memory to delete.",
+      },
+    },
+    required: ["memoryKey"],
+  },
+}
+
 // Toolbox implementation for API function calls
 export const toolbox = {
   get_current_datetime: () => {
     const now = new Date();
     return now.toISOString(); // Returns the date in ISO 8601 format (e.g., "2024-03-10T12:34:56.789Z")
+  },
+  get_memory: (args) => {
+    const memoryKey = args.memoryKey;
+    // log in the console output the memoryKey
+    console.log("get_memory", memoryKey);
+    return localStorage.getItem("memory-" + memoryKey);
+  },
+  get_all_memories: () => {
+    const memories = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith("memory-")) {
+        memories[key.substring("memory-".length)] = localStorage.getItem(key);
+      }
+    }
+    return memories;
+  },
+  set_memory: (args) => {
+    const memoryKey = args.memoryKey;
+    const memoryValue = args.memoryValue;
+    // log in the console output the memoryKey and memoryValue
+    console.log("set_memory", memoryKey, memoryValue);
+    localStorage.setItem("memory-" + memoryKey, memoryValue);
+    return "OK"
+  },
+  delete_memory: (args) => {
+    const memoryKey = args.memoryKey;
+    // log in the console output the memoryKey
+    console.log("delete_memory", memoryKey);
+    localStorage.removeItem("memory-" + memoryKey);
+    return "OK"
   },
 };

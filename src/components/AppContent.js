@@ -13,6 +13,7 @@ import ConversationHistory from './ConversationHistory';
 import QuestionInput from './QuestionInput';
 import LoadingSpinner from './LoadingSpinner';
 import FollowUpQuestions from './FollowUpQuestions';
+import Memory from './Memory';
 import { extractTextFromResponse, fetchFromApi, toolbox } from '../utils/apiUtils';
 import { useLocalStorage } from '../utils/storageUtils';
 import ApiKeyInput from './ApiKeyInput';
@@ -20,9 +21,10 @@ import ApiKeyInput from './ApiKeyInput';
 // Main application content component
 function AppContent() {
   const [apiKey, setApiKey] = useLocalStorage("geminiApiKey", "");
-  const [conversation, setConversation] = useLocalStorage("conversation", []);
+  const [conversation, setConversation] = useLocalStorage('conversation', []);
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
+  const [question, setQuestion] = useState('');
   const [nextQuestionLoading, setNextQuestionLoading] = useState(false);
   const [currentTab, setCurrentTab] = useState('chatbot');
 
@@ -59,6 +61,8 @@ function AppContent() {
     }
 
     setLoading(true);
+    setFollowUpQuestions([]);
+
     const newUserMessage = {
       role: "user",
       parts: [{ text: question }],
@@ -68,7 +72,7 @@ function AppContent() {
 
     try {
       // Create conversation including new message
-      const conversationIncludingPrompt = [...conversation, newUserMessage];
+      let currentConversation = [...conversation, newUserMessage];
       
       // Create dynamic generation config with the provided thinkingBudget
       const dynamicGenerationConfig = {
@@ -79,101 +83,91 @@ function AppContent() {
         }
       };
       
-      // Make API request with dynamic generation config
-      const responseData = await fetchFromApi(conversationIncludingPrompt, dynamicGenerationConfig, apiKey, true);
+      // Use a loop to handle multiple function calls
+      let hasFunctionCalls = true;
       
-      // Process response text
-      const responseDataObj = extractTextFromResponse(responseData);
-      const responseText = responseDataObj.responseText;
-      
-      // Check if response data has valid structure
-      if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
-        // Check for function calls in all parts if parts exist
-        let hasFunctionCalls = false;
-        let functionCalls = [];
+      while (hasFunctionCalls) {
+        // Make API request with current conversation state
+        const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, apiKey, true);
         
-        if (responseData.candidates[0].content.parts) {
-          // Iterate through all parts to find function calls
-          for (const part of responseData.candidates[0].content.parts) {
-            if (part.functionCall) {
-              functionCalls.push(part.functionCall);
-              hasFunctionCalls = true;
-            }
-          }
-        }
-        
-        // If there are function calls, execute them
-        if (hasFunctionCalls) {
-          const functionResults = [];
+        // Check if response data has valid structure
+        if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
+          const responseParts = responseData.candidates[0].content.parts || [];
           
-          // Execute each function call
-          for (const functionCall of functionCalls) {
-            const { name, args } = functionCall;
-            if (toolbox[name]) {
-              const result = toolbox[name](args);
-              functionResults.push({ name, result });
-            }
+          // Separate text parts and function call parts
+          const textParts = responseParts.filter(part => part.text);
+          const functionCallParts = responseParts.filter(part => part.functionCall);
+          
+          // Always create a bot response with text parts (if any)
+          if (textParts.length > 0) {
+            const botResponse = {
+              role: "model",
+              parts: textParts,
+            };
+            currentConversation = [...currentConversation, botResponse];
+            setConversation(currentConversation);
           }
           
-          // Call API again with all function results
-          const conversationWithFunctionResult = [
-            ...conversationIncludingPrompt,
-            {
+          // Check if there are function calls to process
+          if (functionCallParts.length > 0) {
+            hasFunctionCalls = true;
+            const functionResults = [];
+            
+            // Execute each function call
+            for (const functionCallPart of functionCallParts) {
+              const { name, args } = functionCallPart.functionCall;
+              if (toolbox[name]) {
+                const result = toolbox[name](args);
+                functionResults.push({ name, result });
+              }
+            }
+            
+            // Add function results to conversation
+            const functionResponseMessage = {
               role: "user",
               parts: functionResults.map(result => ({
                 functionResponse: { name: result.name, response: { result: result.result } }
               })),
-            },
-          ];
-          
-          // Use dynamic generation config for function call response as well
-          const functionCallResponseData = await fetchFromApi(conversationWithFunctionResult, dynamicGenerationConfig, apiKey);
-          
-          // Create bot response with original parts structure (preserving thought flags)
-          const botResponse = {
-            role: "model",
-            parts: functionCallResponseData.candidates[0].content.parts,
-          };
-          
-          setConversation([...conversationIncludingPrompt, botResponse]);
-        } else {
-          const botResponse = {
-            role: "model",
-            parts: responseData.candidates[0].content.parts,
-          };
-          
-          setConversation([...conversationIncludingPrompt, botResponse]);
-          
-          // Generate follow-up questions
-          setNextQuestionLoading(true);
-          try {
-            const nextQuestionResponseData = await fetchFromApi(conversationIncludingPrompt, generationConfigForNextQuestion, apiKey);
-            const nextQuestionResponseObj = extractTextFromResponse(nextQuestionResponseData);
-            const nextQuestionResponseText = nextQuestionResponseObj.responseText;
-            
-            // Parse follow-up questions
-            if (nextQuestionResponseText) {
-              const lines = nextQuestionResponseText.split('\n');
-              const questions = lines
-                .filter(line => line.trim().startsWith('Q: '))
-                .map(line => line.replace('Q: ', '').trim())
-                .slice(0, 3);
-              
-              setFollowUpQuestions(questions);
-            }
-          } catch (error) {
-            console.error('Error generating follow-up questions:', error);
-          } finally {
-            setNextQuestionLoading(false);
+            };
+            currentConversation = [...currentConversation, functionResponseMessage];
+          } else {
+            // No more function calls, exit loop
+            hasFunctionCalls = false;
           }
+        } else {
+          // No valid content, exit loop
+          hasFunctionCalls = false;
         }
-      } else {
-        // No content from the response?  Add a default response
-        const defaultResponse = {
-          role: "model",
-          parts: [{ text: "I'm sorry, I didn't understand that. Could you please rephrase?" }],
+      }
+      
+      // After all function calls are processed, generate follow-up questions
+      setNextQuestionLoading(true);
+      try {
+        let askForFollowUpRequest = {
+          role: "user",
+          parts: [
+            {
+              text: "Predict my follow-up question based on the previous conversation. " +
+                "Come up with up to 3, each in a new line. " +
+                "The answer should only contain the question proposed without anything else."
+            }
+          ],
         };
-        setConversation([...conversationIncludingPrompt, defaultResponse]);
+        const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, apiKey);
+        const nextQuestionResponseObj = extractTextFromResponse(nextQuestionResponseData);
+        const nextQuestionResponseText = nextQuestionResponseObj.responseText;
+        
+        // Parse follow-up questions
+        if (nextQuestionResponseText) {
+          const lines = nextQuestionResponseText.split('\n');
+          const questions = lines.slice(0, 3).filter(q => q.trim());
+          
+          setFollowUpQuestions(questions);
+        }
+      } catch (error) {
+        console.error('Error generating follow-up questions:', error);
+      } finally {
+        setNextQuestionLoading(false);
       }
     } catch (error) {
       console.error(error);
@@ -187,16 +181,14 @@ function AppContent() {
 
   // Handle follow-up question click
   const handleFollowUpClick = (question) => {
-    // For follow-up questions, we'll use the same thinking behavior as the original question
-    // Default to 0 (no thinking) for consistency
-    handleSubmit(question, 0);
-    setFollowUpQuestions([]);
+    setQuestion(question);
   };
 
   // Reset conversation history
   const resetConversation = () => {
     if (window.confirm('Are you sure you want to reset the conversation history?')) {
       setConversation([]);
+      setFollowUpQuestions([]);
     }
   };
 
@@ -223,8 +215,6 @@ function AppContent() {
       try {
         const conversationData = JSON.parse(e.target.result);
         setConversation(conversationData);
-        alert('Conversation history uploaded successfully');
-        // Clear the file input
         event.target.value = '';
       } catch (error) {
         alert('Failed to upload conversation history. Please provide a valid JSON file.');
@@ -315,16 +305,29 @@ function AppContent() {
           </Row>
           <Row>
             <Col>
-              {loading ? (
-                <LoadingSpinner />
-              ) : (
-                <QuestionInput onSubmit={handleSubmit} disabled={loading} />
-              )}
               <FollowUpQuestions 
                 questions={followUpQuestions}
                 onQuestionClick={handleFollowUpClick}
                 isLoading={nextQuestionLoading}
               />
+              {loading ? (
+                <LoadingSpinner />
+              ) : (
+                <QuestionInput 
+                onSubmit={handleSubmit} 
+                disabled={loading} 
+                value={question} 
+                onChange={setQuestion} 
+              />
+              )}
+              
+            </Col>
+          </Row>
+        </Tab>
+        <Tab eventKey="memory" title="Memory">
+          <Row>
+            <Col>
+              <Memory />
             </Col>
           </Row>
         </Tab>

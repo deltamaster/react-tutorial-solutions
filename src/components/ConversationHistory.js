@@ -6,6 +6,12 @@ function ConversationHistory({ history }) {
   return (
     <div className="conversation-history">
       {history.map((content, index) => {
+        // Check if there are elements with the text property in content.parts
+        const hasTextParts = content.parts && Array.isArray(content.parts) && content.parts.some(part => part.text);
+        if (!hasTextParts) {
+          return null;
+        }
+
         return (
           <div key={index} className={content.role}>
             {content.role === "user" ? (
