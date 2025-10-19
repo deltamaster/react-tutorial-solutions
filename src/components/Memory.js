@@ -43,6 +43,7 @@ function Memory() {
     const originalRemoveItem = localStorage.removeItem;
     
     localStorage.setItem = function(key, value) {
+      console.log("customized setItem called with key: ", key);
       const result = originalSetItem.apply(this, arguments);
       
       // 创建更兼容的自定义事件
@@ -53,6 +54,7 @@ function Memory() {
         });
         window.dispatchEvent(event);
       } catch (e) {
+        console.log("error dispatching custom storageChange event: ", e);
         // 方式2：降级方案，使用标准Event
         const event = new Event('storageChange');
         event.key = key;
@@ -65,6 +67,7 @@ function Memory() {
     
     localStorage.removeItem = function(key) {
       const result = originalRemoveItem.apply(this, arguments);
+      console.log("customized removeItem called with key: ", key);
       
       // 创建更兼容的自定义事件
       try {
@@ -73,6 +76,8 @@ function Memory() {
         });
         window.dispatchEvent(event);
       } catch (e) {
+        console.log("error dispatching custom storageChange event: ", e);
+        // 方式2：降级方案，使用标准Event
         const event = new Event('storageChange');
         event.key = key;
         window.dispatchEvent(event);
