@@ -30,6 +30,7 @@ function Memory() {
 
     // 监听localStorage变化
     const handleStorageChange = (e) => {
+      console.log("storageChange event fired", e);
       // 检查key是否以'memory-'开头，或者当key为null时（表示所有存储被清空）
       if ((e.key && e.key.startsWith('memory-')) || e.key === null) {
         loadMemories();
@@ -37,6 +38,7 @@ function Memory() {
     };
 
     // 在当前标签页中手动触发更新 - 使用更兼容移动设备的方式
+    console.log("create custom storageChange event listeners")
     const originalSetItem = localStorage.setItem;
     const originalRemoveItem = localStorage.removeItem;
     
@@ -81,6 +83,7 @@ function Memory() {
 
     // 处理自定义存储变化事件
     const handleCustomStorageChange = (e) => {
+      console.log("custom storageChange event fired", e);
       const key = e.detail ? e.detail.key : e.key;
       if (key && key.startsWith('memory-')) {
         loadMemories();
@@ -93,6 +96,7 @@ function Memory() {
     
     // 清理函数
     return () => {
+      console.log("clean up Memory module")
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('storageChange', handleCustomStorageChange);
       // 恢复原始方法
