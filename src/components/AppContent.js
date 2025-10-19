@@ -23,6 +23,7 @@ function AppContent() {
   const [subscriptionKey, setSubscriptionKey] = useLocalStorage("subscriptionKey", "");
   const [conversation, setConversation] = useLocalStorage('conversation', []);
   const [systemPrompt, setSystemPrompt] = useLocalStorage('systemPrompt', 'You are a helpful assistant.');
+  const [showSystemPrompt, setShowSystemPrompt] = useState(true);
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [question, setQuestion] = useState('');
@@ -305,16 +306,49 @@ function AppContent() {
           <Row className="mb-3">
             <Col>
               <div className="mb-2">
-                <h5>System Prompt</h5>
+                <h5 
+                  style={{ 
+                    cursor: 'pointer', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    transition: 'background-color 0.2s ease',
+                    backgroundColor: '#f5f5f5ff'
+                  }}
+                  onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = '#d4d4d4ff'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5ff'}
+                >
+                  <span style={{ fontWeight: '500' }}>System Prompt Settings</span>
+                  <span style={{ display: 'flex', alignItems: 'center', color: '#6c757d', fontSize: '0.85em' }}>
+                    {showSystemPrompt ? (
+                      <>
+                        <Icon.ChevronUp size={16} className="mr-1" />
+                        <span>Hide</span>
+                      </>
+                    ) : (
+                      <>
+                        <Icon.ChevronDown size={16} className="mr-1" />
+                        <span>Show</span>
+                      </>
+                    )}
+                  </span>
+                </h5>
               </div>
-              <textarea
-                className="form-control"
-                rows="3"
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="Enter system prompt here..."
-              />
-              <small className="form-text text-muted">System prompts help define how the assistant behaves. Example: 'You are a helpful assistant specialized in technology.'</small>
+              {showSystemPrompt && (
+                <>
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    value={systemPrompt}
+                    onChange={(e) => setSystemPrompt(e.target.value)}
+                    placeholder="Enter system prompt here..."
+                  />
+                  <small className="form-text text-muted">System prompts help define how the assistant behaves. Example: 'You are a helpful assistant specialized in technology.'</small>
+                </>
+              )}
             </Col>
           </Row>
           <Row>
