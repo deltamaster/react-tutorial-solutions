@@ -101,7 +101,7 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
   
   if (includeTools) {
     // I don't need to expose get_memory and get_all_memories function to the model, because the full memory is alway carried with the request.
-    requestBody.tools = { function_declarations: [dateTimeFuncDecl, setMemory, deleteMemory] };
+    requestBody.tools = { function_declarations: [dateTimeFuncDecl, createMemory, updateMemory, deleteMemory] };
   }
   
   try {
@@ -161,15 +161,15 @@ export const getAllMemories = {
   },
 }
 
-export const setMemory = {
-  name: "set_memory",
-  description: "Set the value of a memory stored in localStorage.",
+export const updateMemory = {
+  name: "update_memory",
+  description: "Update the value of a memory stored in localStorage.",
   parameters: {
     type: "object",
     properties: {
       memoryKey: {
         type: "string",
-        description: "The key of the memory to set. Generate a UUID as the key.",
+        description: "The key of the memory to set.",
       },
       memoryValue: {
         type: "string",
@@ -177,6 +177,21 @@ export const setMemory = {
       },
     },
     required: ["memoryKey", "memoryValue"],
+  },
+}
+
+export const createMemory = {
+  name: "create_memory",
+  description: "Create a memory stored in localStorage. The key will be generated automatically.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryValue: {
+        type: "string",
+        description: "The fact in string that you summarize and store in the memory.",
+      },
+    },
+    required: ["memoryValue"],
   },
 }
 
@@ -210,15 +225,21 @@ export const toolbox = {
   get_all_memories: () => {
     return memoryService.getAllMemories();
   },
-  set_memory: (args) => {
+  update_memory: (args) => {
     const memoryKey = args.memoryKey;
     const memoryValue = args.memoryValue;
-    // 使用memoryService来设置内存项，保持封装性
+    // Use memoryService to update memory item, maintaining encapsulation
     return memoryService.setMemory(memoryKey, memoryValue);
   },
   delete_memory: (args) => {
     const memoryKey = args.memoryKey;
-    // 使用memoryService来删除内存项，保持封装性
+    // Use memoryService to delete memory item, maintaining encapsulation
     return memoryService.deleteMemory(memoryKey);
   },
+  create_memory: (args) => {
+    const memoryKey = crypto.randomUUID();
+    const memoryValue = args.memoryValue;
+    // Use memoryService to create memory item, maintaining encapsulation
+    return memoryService.setMemory(memoryKey, memoryValue);
+  }
 };

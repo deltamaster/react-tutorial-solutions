@@ -1,35 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Form, Button, ListGroup, Alert } from 'react-bootstrap';
 import { Database, PlusCircle, CheckCircle, List, Trash, Pencil, X, InfoCircle, Save, Inbox } from "react-bootstrap-icons";
+import * as Icon from "react-bootstrap-icons";
 import memoryService from '../utils/memoryService';
 
 function Memory() {
   const [memories, setMemories] = useState({});
-  const [newMemoryKey, setNewMemoryKey] = useState('');
   const [newMemoryValue, setNewMemoryValue] = useState('');
   const [editingKey, setEditingKey] = useState(null);
   const [editingValue, setEditingValue] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // 加载所有记忆
+  // Load all memories
   const loadMemories = () => {
     const loadedMemories = memoryService.getAllMemories();
     setMemories(loadedMemories);
   };
 
-  // 初始化时加载记忆，并监听内存变化
+  // Load memories on initialization and listen for memory changes
   useEffect(() => {
     loadMemories();
 
-    // 订阅内存变化事件
+    // Subscribe to memory change events
     const unsubscribe = memoryService.subscribe((key, action) => {
       console.log(`Memory component received notification: ${action} for key ${key}`);
-      // 当内存变化时重新加载
+      // Reload when memory changes
       loadMemories();
     });
     
-    // 清理函数
+    // Cleanup function
     return () => {
       console.log("Cleaning up Memory module");
       if (unsubscribe) {
@@ -38,40 +38,31 @@ function Memory() {
     };
   }, []);
 
-  // 添加新记忆
+  // Add new memory
   const handleAddMemory = (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
-
-    if (!newMemoryKey.trim()) {
-      setError('Memory key cannot be empty');
-      return;
-    }
 
     if (!newMemoryValue.trim()) {
       setError('Memory value cannot be empty');
       return;
     }
 
-    if (memories[newMemoryKey]) {
-      setError('A memory with this key already exists');
-      return;
-    }
-
     try {
-      memoryService.setMemory(newMemoryKey.trim(), newMemoryValue.trim());
-      setNewMemoryKey('');
+      // Generate random UUID for memory key
+      const memoryKey = crypto.randomUUID();
+      memoryService.setMemory(memoryKey, newMemoryValue.trim());
       setNewMemoryValue('');
       setSuccess('Memory added successfully');
-      // 不需要手动调用loadMemories，因为memoryService会触发事件通知
+      // No need to manually call loadMemories, as memoryService will trigger event notifications
     } catch (err) {
       setError('Failed to add memory');
       console.error(err);
     }
   };
 
-  // 更新记忆
+  // Update memory
   const handleUpdateMemory = (e) => {
     e.preventDefault();
     setError('');
@@ -87,20 +78,20 @@ function Memory() {
       setEditingKey(null);
       setEditingValue('');
       setSuccess('Memory updated successfully');
-      // 不需要手动调用loadMemories，因为memoryService会触发事件通知
+      // No need to manually call loadMemories, as memoryService will trigger event notifications
     } catch (err) {
       setError('Failed to update memory');
       console.error(err);
     }
   };
 
-  // 删除记忆
+  // Delete memory
   const handleDeleteMemory = (key) => {
     if (window.confirm(`Are you sure you want to delete memory: ${key}?`)) {
       try {
           memoryService.deleteMemory(key);
           setSuccess('Memory deleted successfully');
-          // 不需要手动调用loadMemories，因为memoryService会触发事件通知
+          // No need to manually call loadMemories, as memoryService will trigger event notifications
         } catch (err) {
           setError('Failed to delete memory');
           console.error(err);
@@ -108,30 +99,71 @@ function Memory() {
     }
   };
 
-  // 开始编辑记忆
+  // Start editing memory
   const startEditing = (key, value) => {
     setEditingKey(key);
     setEditingValue(value);
   };
 
-  // 取消编辑
+  // Cancel editing
   const cancelEditing = () => {
     setEditingKey(null);
     setEditingValue('');
   };
 
-  // 清除所有记忆
+  // Clear all memories
   const clearAllMemories = () => {
     if (window.confirm('Are you sure you want to delete all memories? This action cannot be undone.')) {
       try {
           memoryService.clearAllMemories();
           setSuccess('All memories deleted successfully');
-          // 不需要手动调用loadMemories，因为memoryService会触发事件通知
+          // No need to manually call loadMemories, as memoryService will trigger event notifications
         } catch (err) {
           setError('Failed to delete all memories');
           console.error(err);
         }
     }
+  };
+
+  // Download memory data
+  const downloadMemory = () => {
+    const dataStr = JSON.stringify(memories, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = 'memory_data.json';
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  // Upload memory data
+  const uploadMemory = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const memoryData = JSON.parse(e.target.result);
+        
+        // Clear existing memories before uploading new ones
+        memoryService.clearAllMemories();
+        
+        // Add each memory from the uploaded file
+        Object.entries(memoryData).forEach(([key, value]) => {
+          memoryService.setMemory(key, value);
+        });
+        
+        setSuccess('Memory data uploaded successfully');
+        event.target.value = '';
+      } catch (error) {
+        setError('Failed to upload memory data. Please provide a valid JSON file.');
+        console.error('Error parsing uploaded file:', error);
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -146,7 +178,7 @@ function Memory() {
         </Col>
       </Row>
 
-      {/* 错误和成功消息 */}
+      {/* Error and success messages */}
       {error && (
         <Row className="mb-3">
           <Col xs={12}>
@@ -169,7 +201,7 @@ function Memory() {
         </Row>
       )}
 
-      {/* 添加新记忆的表单 */}
+      {/* Add new memory form */}
       <Row className="mb-4">
         <Col xs={12}>
           <div className="card p-3">
@@ -179,19 +211,7 @@ function Memory() {
             </h5>
             <Form onSubmit={handleAddMemory} className="mt-2">
               <Row>
-                <Col xs={12} md={4} className="mb-2">
-                  <Form.Group controlId="memoryKey">
-                    <Form.Label>Memory Key</Form.Label>
-                    <Form.Control
-                      type="text"
-                      value={newMemoryKey}
-                      onChange={(e) => setNewMemoryKey(e.target.value)}
-                      placeholder="Enter a key (e.g., 'name', 'preferences')"
-                      maxLength={500}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col xs={12} md={7} className="mb-2">
+                <Col xs={12} md={11} className="mb-2">
                   <Form.Group controlId="memoryValue">
                     <Form.Label>Memory Value</Form.Label>
                     <Form.Control
@@ -202,12 +222,15 @@ function Memory() {
                       rows={2}
                       maxLength={5000}
                     />
+                    <Form.Text className="text-muted">
+                      Memory key will be automatically generated
+                    </Form.Text>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={1} className="mb-2 d-flex align-items-end">
                   <Button type="submit" variant="primary" className="w-100">
-                  <Save size={16} />
-                </Button>
+                    <Save size={16} />
+                  </Button>
                 </Col>
               </Row>
             </Form>
@@ -215,7 +238,7 @@ function Memory() {
         </Col>
       </Row>
 
-      {/* 记忆列表 */}
+      {/* Memory list */}
       <Row>
         <Col xs={12}>
           <div className="card">
@@ -224,17 +247,46 @@ function Memory() {
                 <List size={18} className="mr-2" />
                 Stored Memories ({Object.keys(memories).length})
               </h5>
-              {Object.keys(memories).length > 0 && (
-                <Button 
-                  variant="danger" 
-                  size="sm" 
-                  onClick={clearAllMemories}
-                  className="text-sm"
-                >
-                  <Trash size={16} className="mr-1" />
-                  Clear All
-                </Button>
-              )}
+              <div className="d-flex gap-2">
+                <div className="relative">
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    style={{ display: "none" }} 
+                  />
+                  <input
+                    id="upload-memory"
+                    type="file"
+                    accept=".json"
+                    onChange={uploadMemory}
+                    style={{ display: "none" }}
+                  />
+                  <label htmlFor="upload-memory" className="toggle-label toggle-on">
+                    <Icon.Upload size={16} className="mr-1" />
+                    Upload
+                  </label>
+                </div>
+                {Object.keys(memories).length > 0 && (
+                  <>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      onClick={downloadMemory}
+                    >
+                      <Icon.Download size={16} className="mr-1" />
+                      Download
+                    </Button>
+                    <Button 
+                      variant="danger" 
+                      size="sm" 
+                      onClick={clearAllMemories}
+                    >
+                      <Trash size={16} className="mr-1" />
+                      Clear All
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
             <div className="card-body">
               {Object.keys(memories).length === 0 ? (

@@ -1,13 +1,13 @@
-// Memory Service - 封装所有内存相关的操作，提供统一的API
+// Memory Service - Encapsulates all memory-related operations with a unified API
 
-// 存储前缀
+// Storage prefix
 const MEMORY_PREFIX = 'memory-';
 
-// 事件总线 - 用于通知内存变化
+// Event bus - Used to notify about memory changes
 const eventBus = {
   subscribers: [],
   
-  // 订阅内存变化事件
+  // Subscribe to memory change events
   subscribe(callback) {
     if (typeof callback === 'function') {
       this.subscribers.push(callback);
@@ -17,7 +17,7 @@ const eventBus = {
     }
   },
   
-  // 发布内存变化事件
+  // Publish memory change events
   publish(key, action) {
     console.log(`Memory service publishing: ${action} for key ${key}`);
     this.subscribers.forEach(subscriber => {
@@ -26,9 +26,9 @@ const eventBus = {
   }
 };
 
-// 内存服务API
+// Memory service API
 const memoryService = {
-  // 获取所有内存项
+  // Get all memory items
   getAllMemories() {
     const memories = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -41,13 +41,13 @@ const memoryService = {
     return memories;
   },
   
-  // 获取单个内存项
+  // Get a single memory item
   getMemory(key) {
     const memoryKey = MEMORY_PREFIX + key;
     return localStorage.getItem(memoryKey);
   },
   
-  // 设置内存项
+  // Set a memory item
   setMemory(key, value) {
     console.log('set_memory', key, value);
     const memoryKey = MEMORY_PREFIX + key;
@@ -56,7 +56,7 @@ const memoryService = {
     return { status: 'OK', memoryKey: key, memoryValue: value };
   },
   
-  // 删除内存项
+  // Delete a memory item
   deleteMemory(key) {
     console.log('delete_memory', key);
     const memoryKey = MEMORY_PREFIX + key;
@@ -65,7 +65,7 @@ const memoryService = {
     return { status: 'OK', memoryKey: key };
   },
   
-  // 清除所有内存项
+  // Clear all memory items
   clearAllMemories() {
     const keysToDelete = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -79,13 +79,13 @@ const memoryService = {
     return { status: 'OK' };
   },
   
-  // 检查内存项是否存在
+  // Check if a memory item exists
   hasMemory(key) {
     const memoryKey = MEMORY_PREFIX + key;
     return localStorage.getItem(memoryKey) !== null;
   },
   
-  // 订阅内存变化事件
+  // Subscribe to memory change events
   subscribe(callback) {
     return eventBus.subscribe(callback);
   }
