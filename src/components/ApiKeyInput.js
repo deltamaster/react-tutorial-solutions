@@ -1,21 +1,24 @@
-// API key input component
-function ApiKeyInput({ apiKey, setApiKey }) {
-  const handleSaveApiKey = () => {
-    localStorage.setItem("geminiApiKey", apiKey);
+import React from 'react';
+
+function ApiKeyInput({ subscriptionKey, setSubscriptionKey }) {
+  const handleSaveSubscriptionKey = () => {
+    localStorage.setItem('subscriptionKey', subscriptionKey);
   };
 
   return (
     <div className="api-key-container">
-      <label htmlFor="api-key">Enter API Key</label>
-      <input
-        id="api-key"
-        type="password"
-        value={apiKey}
-        onChange={(e) => setApiKey(e.target.value)}
-        placeholder="Enter API Key"
-        onBlur={handleSaveApiKey} // Store API key on blur (optional)
-        className="api-key-input"
-      />
+      <div>
+        <label htmlFor="subscription-key" className="d-block mb-1">Subscription Key</label>
+        <input
+          id="subscription-key"
+          type="password"
+          value={subscriptionKey}
+          onChange={(e) => setSubscriptionKey(e.target.value)}
+          placeholder="Enter your subscription key"
+          onBlur={handleSaveSubscriptionKey}
+          className="api-key-input w-100"
+        />
+      </div>
     </div>
   );
 }

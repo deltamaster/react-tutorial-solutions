@@ -31,12 +31,11 @@ export function extractTextFromResponse(responseData) {
 }
 
 // Helper function for API requests
-export const fetchFromApi = async (contents, generationConfig, apiKey, includeTools = false) => {
+export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '') => {
   const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/gemini-2.5-flash:generateContent`;
   const requestHeader = {
     "Content-Type": "application/json",
-    "Ocp-Apim-Subscription-Key": "2efec23ae3d249c9991e068ca726581c",
-    "x-goog-api-key": apiKey
+    "Ocp-Apim-Subscription-Key": subscriptionKey
   };
   const safetySettings = [
     { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },

@@ -20,7 +20,7 @@ import ApiKeyInput from './ApiKeyInput';
 
 // Main application content component
 function AppContent() {
-  const [apiKey, setApiKey] = useLocalStorage("geminiApiKey", "");
+  const [subscriptionKey, setSubscriptionKey] = useLocalStorage("subscriptionKey", "");
   const [conversation, setConversation] = useLocalStorage('conversation', []);
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
@@ -55,8 +55,8 @@ function AppContent() {
 
   // Handle chatbot question submission
   const handleSubmit = async (question, thinkingBudget = 0) => {
-    if (!apiKey) {
-      alert("Please input API key");
+    if (!subscriptionKey) {
+      alert("Please input Subscription key");
       return;
     }
 
@@ -88,7 +88,7 @@ function AppContent() {
       
       while (hasFunctionCalls) {
         // Make API request with current conversation state
-        const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, apiKey, true);
+        const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey);
         
         // Check if response data has valid structure
         if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
@@ -153,7 +153,7 @@ function AppContent() {
             }
           ],
         };
-        const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, apiKey);
+        const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, false, subscriptionKey);
         const nextQuestionResponseObj = extractTextFromResponse(nextQuestionResponseData);
         const nextQuestionResponseText = nextQuestionResponseObj.responseText;
         
@@ -228,7 +228,10 @@ function AppContent() {
     <Container className="App">
       <Row>
         <Col xs={12} className="mb-3 mt-3">
-          <ApiKeyInput apiKey={apiKey} setApiKey={setApiKey} />
+          <ApiKeyInput 
+            subscriptionKey={subscriptionKey} 
+            setSubscriptionKey={setSubscriptionKey} 
+          />
         </Col>
       </Row>
 
