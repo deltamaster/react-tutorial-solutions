@@ -22,6 +22,7 @@ import ApiKeyInput from './ApiKeyInput';
 function AppContent() {
   const [subscriptionKey, setSubscriptionKey] = useLocalStorage("subscriptionKey", "");
   const [conversation, setConversation] = useLocalStorage('conversation', []);
+  const [systemPrompt, setSystemPrompt] = useLocalStorage('systemPrompt', 'You are a helpful assistant.');
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [question, setQuestion] = useState('');
@@ -71,7 +72,7 @@ function AppContent() {
     setConversation((prev) => [...prev, newUserMessage]);
 
     try {
-      // Create conversation including new message
+      // Use system prompt as parameter, not as part of conversation
       let currentConversation = [...conversation, newUserMessage];
       
       // Create dynamic generation config with the provided thinkingBudget
@@ -88,7 +89,7 @@ function AppContent() {
       
       while (hasFunctionCalls) {
         // Make API request with current conversation state
-        const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey);
+        const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey, systemPrompt);
         
         // Check if response data has valid structure
         if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
@@ -153,7 +154,7 @@ function AppContent() {
             }
           ],
         };
-        const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, false, subscriptionKey);
+        const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, false, subscriptionKey, systemPrompt);
         const nextQuestionResponseObj = extractTextFromResponse(nextQuestionResponseData);
         const nextQuestionResponseText = nextQuestionResponseObj.responseText;
         
@@ -299,6 +300,21 @@ function AppContent() {
                   <span className="toggle-text">&nbsp;Upload History</span>
                 </label>
               </div>
+            </Col>
+          </Row>
+          <Row className="mb-3">
+            <Col>
+              <div className="mb-2">
+                <h5>System Prompt</h5>
+              </div>
+              <textarea
+                className="form-control"
+                rows="3"
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Enter system prompt here..."
+              />
+              <small className="form-text text-muted">System prompts help define how the assistant behaves. Example: 'You are a helpful assistant specialized in technology.'</small>
             </Col>
           </Row>
           <Row>

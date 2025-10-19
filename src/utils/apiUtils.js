@@ -33,7 +33,7 @@ export function extractTextFromResponse(responseData) {
 }
 
 // Helper function for API requests
-export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '') => {
+export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '', userDefinedSystemPrompt = '') => {
   const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/gemini-2.5-flash:generateContent`;
   const requestHeader = {
     "Content-Type": "application/json",
@@ -46,7 +46,7 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   ];
   // put a "model" part as system prompt at the beginning of the contents
-  // 提取 localStorage 中的所有记忆并包含在提示中。
+  // Extract all memories from localStorage and include them in the prompt.
   const SYSTEM_PROMPT = `
 I am a helpful assistant that can answer questions and perform tasks.
 
@@ -91,6 +91,11 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
     "role": "model",
     "parts": [{
       "text": SYSTEM_PROMPT.replace('{{memories}}', memoryText)
+    }]
+  }, {
+    "role": "user",
+    "parts": [{
+      "text": userDefinedSystemPrompt
     }]
   }, ...filteredContents];
   const requestBody = {
