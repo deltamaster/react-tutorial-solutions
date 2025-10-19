@@ -30,37 +30,71 @@ function Memory() {
 
     // 监听localStorage变化
     const handleStorageChange = (e) => {
-      if (e.key && (e.key.startsWith('memory-') || e.key === null)) {
+      // 检查key是否以'memory-'开头，或者当key为null时（表示所有存储被清空）
+      if ((e.key && e.key.startsWith('memory-')) || e.key === null) {
         loadMemories();
       }
     };
 
-    // 在当前标签页中手动触发更新
+    // 在当前标签页中手动触发更新 - 使用更兼容移动设备的方式
     const originalSetItem = localStorage.setItem;
     const originalRemoveItem = localStorage.removeItem;
     
     localStorage.setItem = function(key, value) {
       const result = originalSetItem.apply(this, arguments);
-      const event = new Event('storage');
-      event.key = key;
-      event.newValue = value;
-      window.dispatchEvent(event);
+      
+      // 创建更兼容的自定义事件
+      try {
+        // 方式1：使用CustomEvent（更现代的方式）
+        const event = new CustomEvent('storageChange', {
+          detail: { key, newValue: value }
+        });
+        window.dispatchEvent(event);
+      } catch (e) {
+        // 方式2：降级方案，使用标准Event
+        const event = new Event('storageChange');
+        event.key = key;
+        event.newValue = value;
+        window.dispatchEvent(event);
+      }
+      
       return result;
     };
     
     localStorage.removeItem = function(key) {
       const result = originalRemoveItem.apply(this, arguments);
-      const event = new Event('storage');
-      event.key = key;
-      window.dispatchEvent(event);
+      
+      // 创建更兼容的自定义事件
+      try {
+        const event = new CustomEvent('storageChange', {
+          detail: { key }
+        });
+        window.dispatchEvent(event);
+      } catch (e) {
+        const event = new Event('storageChange');
+        event.key = key;
+        window.dispatchEvent(event);
+      }
+      
       return result;
     };
 
+    // 处理自定义存储变化事件
+    const handleCustomStorageChange = (e) => {
+      const key = e.detail ? e.detail.key : e.key;
+      if (key && key.startsWith('memory-')) {
+        loadMemories();
+      }
+    };
+
+    // 添加两个事件监听器：标准的storage事件和自定义的storageChange事件
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('storageChange', handleCustomStorageChange);
     
     // 清理函数
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('storageChange', handleCustomStorageChange);
       // 恢复原始方法
       localStorage.setItem = originalSetItem;
       localStorage.removeItem = originalRemoveItem;
