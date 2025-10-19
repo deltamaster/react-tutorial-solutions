@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Form, Button, ListGroup, Alert } from 'react-bootstrap';
 import { Database, PlusCircle, CheckCircle, List, Trash, Pencil, X, InfoCircle, Save, Inbox } from "react-bootstrap-icons";
+import memoryService from '../utils/memoryService';
 
 function Memory() {
   const [memories, setMemories] = useState({});
@@ -13,100 +14,27 @@ function Memory() {
 
   // 加载所有记忆
   const loadMemories = () => {
-    const loadedMemories = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith('memory-')) {
-        const actualKey = key.substring('memory-'.length);
-        loadedMemories[actualKey] = localStorage.getItem(key);
-      }
-    }
+    const loadedMemories = memoryService.getAllMemories();
     setMemories(loadedMemories);
   };
 
-  // 初始化时加载记忆，并监听localStorage变化
+  // 初始化时加载记忆，并监听内存变化
   useEffect(() => {
     loadMemories();
 
-    // 监听localStorage变化
-    const handleStorageChange = (e) => {
-      console.log("storageChange event fired", e);
-      // 检查key是否以'memory-'开头，或者当key为null时（表示所有存储被清空）
-      if ((e.key && e.key.startsWith('memory-')) || e.key === null) {
-        loadMemories();
-      }
-    };
-
-    // 在当前标签页中手动触发更新 - 使用更兼容移动设备的方式
-    console.log("create custom storageChange event listeners")
-    const originalSetItem = localStorage.setItem;
-    const originalRemoveItem = localStorage.removeItem;
-    
-    localStorage.setItem = function(key, value) {
-      console.log("customized setItem called with key: ", key);
-      const result = originalSetItem.apply(this, arguments);
-      
-      // 创建更兼容的自定义事件
-      try {
-        // 方式1：使用CustomEvent（更现代的方式）
-        const event = new CustomEvent('storageChange', {
-          detail: { key, newValue: value }
-        });
-        window.dispatchEvent(event);
-      } catch (e) {
-        console.log("error dispatching custom storageChange event: ", e);
-        // 方式2：降级方案，使用标准Event
-        const event = new Event('storageChange');
-        event.key = key;
-        event.newValue = value;
-        window.dispatchEvent(event);
-      }
-      
-      return result;
-    };
-    
-    localStorage.removeItem = function(key) {
-      const result = originalRemoveItem.apply(this, arguments);
-      console.log("customized removeItem called with key: ", key);
-      
-      // 创建更兼容的自定义事件
-      try {
-        const event = new CustomEvent('storageChange', {
-          detail: { key }
-        });
-        window.dispatchEvent(event);
-      } catch (e) {
-        console.log("error dispatching custom storageChange event: ", e);
-        // 方式2：降级方案，使用标准Event
-        const event = new Event('storageChange');
-        event.key = key;
-        window.dispatchEvent(event);
-      }
-      
-      return result;
-    };
-
-    // 处理自定义存储变化事件
-    const handleCustomStorageChange = (e) => {
-      console.log("custom storageChange event fired", e);
-      const key = e.detail ? e.detail.key : e.key;
-      if (key && key.startsWith('memory-')) {
-        loadMemories();
-      }
-    };
-
-    // 添加两个事件监听器：标准的storage事件和自定义的storageChange事件
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('storageChange', handleCustomStorageChange);
+    // 订阅内存变化事件
+    const unsubscribe = memoryService.subscribe((key, action) => {
+      console.log(`Memory component received notification: ${action} for key ${key}`);
+      // 当内存变化时重新加载
+      loadMemories();
+    });
     
     // 清理函数
     return () => {
-      console.log("clean up Memory module")
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('storageChange', handleCustomStorageChange);
-      // 恢复原始方法
-      localStorage.setItem = originalSetItem;
-      localStorage.removeItem = originalRemoveItem;
+      console.log("Cleaning up Memory module");
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 
@@ -132,11 +60,11 @@ function Memory() {
     }
 
     try {
-      localStorage.setItem(`memory-${newMemoryKey.trim()}`, newMemoryValue.trim());
+      memoryService.setMemory(newMemoryKey.trim(), newMemoryValue.trim());
       setNewMemoryKey('');
       setNewMemoryValue('');
       setSuccess('Memory added successfully');
-      loadMemories(); // 重新加载记忆列表
+      // 不需要手动调用loadMemories，因为memoryService会触发事件通知
     } catch (err) {
       setError('Failed to add memory');
       console.error(err);
@@ -155,11 +83,11 @@ function Memory() {
     }
 
     try {
-      localStorage.setItem(`memory-${editingKey}`, editingValue.trim());
+      memoryService.setMemory(editingKey, editingValue.trim());
       setEditingKey(null);
       setEditingValue('');
       setSuccess('Memory updated successfully');
-      loadMemories(); // 重新加载记忆列表
+      // 不需要手动调用loadMemories，因为memoryService会触发事件通知
     } catch (err) {
       setError('Failed to update memory');
       console.error(err);
@@ -170,13 +98,13 @@ function Memory() {
   const handleDeleteMemory = (key) => {
     if (window.confirm(`Are you sure you want to delete memory: ${key}?`)) {
       try {
-        localStorage.removeItem(`memory-${key}`);
-        setSuccess('Memory deleted successfully');
-        loadMemories(); // 重新加载记忆列表
-      } catch (err) {
-        setError('Failed to delete memory');
-        console.error(err);
-      }
+          memoryService.deleteMemory(key);
+          setSuccess('Memory deleted successfully');
+          // 不需要手动调用loadMemories，因为memoryService会触发事件通知
+        } catch (err) {
+          setError('Failed to delete memory');
+          console.error(err);
+        }
     }
   };
 
@@ -196,22 +124,13 @@ function Memory() {
   const clearAllMemories = () => {
     if (window.confirm('Are you sure you want to delete all memories? This action cannot be undone.')) {
       try {
-        // 删除所有以'memory-'开头的localStorage项
-        const keysToDelete = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key.startsWith('memory-')) {
-            keysToDelete.push(key);
-          }
+          memoryService.clearAllMemories();
+          setSuccess('All memories deleted successfully');
+          // 不需要手动调用loadMemories，因为memoryService会触发事件通知
+        } catch (err) {
+          setError('Failed to delete all memories');
+          console.error(err);
         }
-        
-        keysToDelete.forEach(key => localStorage.removeItem(key));
-        setSuccess('All memories deleted successfully');
-        loadMemories(); // 重新加载记忆列表
-      } catch (err) {
-        setError('Failed to delete all memories');
-        console.error(err);
-      }
     }
   };
 

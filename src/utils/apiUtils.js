@@ -1,3 +1,5 @@
+import memoryService from './memoryService';
+
 // Helper function to extract text from API response data
 export function extractTextFromResponse(responseData) {
   let fullText = '';
@@ -203,31 +205,20 @@ export const toolbox = {
     const memoryKey = args.memoryKey;
     // log in the console output the memoryKey
     console.log("get_memory", memoryKey);
-    return localStorage.getItem("memory-" + memoryKey);
+    return memoryService.getMemory(memoryKey);
   },
   get_all_memories: () => {
-    const memories = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith("memory-")) {
-        memories[key.substring("memory-".length)] = localStorage.getItem(key);
-      }
-    }
-    return memories;
+    return memoryService.getAllMemories();
   },
   set_memory: (args) => {
     const memoryKey = args.memoryKey;
     const memoryValue = args.memoryValue;
-    // log in the console output the memoryKey and memoryValue
-    console.log("set_memory", memoryKey, memoryValue);
-    localStorage.setItem("memory-" + memoryKey, memoryValue);
-    return {"status": "OK", "memoryKey": memoryKey, "memoryValue": memoryValue}
+    // 使用memoryService来设置内存项，保持封装性
+    return memoryService.setMemory(memoryKey, memoryValue);
   },
   delete_memory: (args) => {
     const memoryKey = args.memoryKey;
-    // log in the console output the memoryKey
-    console.log("delete_memory", memoryKey);
-    localStorage.removeItem("memory-" + memoryKey);
-    return {"status": "OK", "memoryKey": memoryKey}
+    // 使用memoryService来删除内存项，保持封装性
+    return memoryService.deleteMemory(memoryKey);
   },
 };
