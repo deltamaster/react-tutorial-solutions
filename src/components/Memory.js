@@ -250,10 +250,11 @@ function Memory() {
               <div className="d-flex gap-2">
                 <div className="relative">
                   <Button 
+                    id="upload-memory-btn"
                     variant="secondary" 
-                    size="sm" 
+                    onClick={() => document.getElementById('upload-memory').click()}
                     style={{ display: "none" }} 
-                  />
+                  ></Button>
                   <input
                     id="upload-memory"
                     type="file"
@@ -261,29 +262,34 @@ function Memory() {
                     onChange={uploadMemory}
                     style={{ display: "none" }}
                   />
-                  <label htmlFor="upload-memory" className="toggle-label toggle-on">
-                    <Icon.Upload size={16} className="mr-1" />
-                    Upload
+                  <label htmlFor="upload-memory-btn" className="toggle-label toggle-on">
+                    <Icon.Upload size={16} className="mr-2" />
+                    <span className="toggle-text">Upload</span>
                   </label>
                 </div>
                 {Object.keys(memories).length > 0 && (
                   <>
                     <Button 
+                      id="download-memory-btn"
                       variant="secondary" 
-                      size="sm" 
                       onClick={downloadMemory}
-                    >
-                      <Icon.Download size={16} className="mr-1" />
-                      Download
-                    </Button>
+                      style={{ display: "none" }}
+                    ></Button>
+                    <label htmlFor="download-memory-btn" className="toggle-label toggle-on">
+                      <Icon.Download size={16} className="mr-2" />
+                      <span className="toggle-text">Download</span>
+                    </label>
+                    
                     <Button 
-                      variant="danger" 
-                      size="sm" 
+                      id="clear-memory-btn"
+                      variant="secondary" 
                       onClick={clearAllMemories}
-                    >
-                      <Trash size={16} className="mr-1" />
-                      Clear All
-                    </Button>
+                      style={{ display: "none" }}
+                    ></Button>
+                    <label htmlFor="clear-memory-btn" className="toggle-label toggle-on">
+                      <Trash size={16} className="mr-2" />
+                      <span className="toggle-text">Clear All</span>
+                    </label>
                   </>
                 )}
               </div>

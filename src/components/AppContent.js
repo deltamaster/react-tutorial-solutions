@@ -29,6 +29,9 @@ function AppContent() {
   const [question, setQuestion] = useState('');
   const [nextQuestionLoading, setNextQuestionLoading] = useState(false);
   const [currentTab, setCurrentTab] = useState('chatbot');
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editingPartIndex, setEditingPartIndex] = useState(null);
+  const [editingText, setEditingText] = useState('');
 
   // Generation configurations
   const generationConfig = {
@@ -226,6 +229,50 @@ function AppContent() {
     reader.readAsText(file);
   };
 
+  // Delete a conversation message
+  const deleteConversationMessage = (index) => {
+    if (window.confirm('Are you sure you want to delete this message?')) {
+      setConversation((prev) => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  // Start editing a conversation part
+  const startEditing = (index, partIndex, text) => {
+    setEditingIndex(index);
+    setEditingPartIndex(partIndex);
+    setEditingText(text);
+  };
+
+  // Save edited conversation part
+  const saveEditing = () => {
+    if (editingIndex !== null && editingPartIndex !== null) {
+      setConversation((prev) => 
+        prev.map((message, index) => {
+          if (index === editingIndex) {
+            return {
+              ...message,
+              parts: message.parts.map((part, partIndex) => {
+                if (partIndex === editingPartIndex) {
+                  return { ...part, text: editingText };
+                }
+                return part;
+              })
+            };
+          }
+          return message;
+        })
+      );
+      cancelEditing();
+    }
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingIndex(null);
+    setEditingPartIndex(null);
+    setEditingText('');
+  };
+
   return (
     <Container className="App">
       <Row>
@@ -353,7 +400,17 @@ function AppContent() {
           </Row>
           <Row>
             <Col>
-              <ConversationHistory history={conversation} />
+              <ConversationHistory 
+                history={conversation} 
+                onDelete={deleteConversationMessage}
+                onEdit={startEditing}
+                editingIndex={editingIndex}
+                editingPartIndex={editingPartIndex}
+                editingText={editingText}
+                onEditingTextChange={setEditingText}
+                onSave={saveEditing}
+                onCancel={cancelEditing}
+              />
             </Col>
           </Row>
           <Row>
