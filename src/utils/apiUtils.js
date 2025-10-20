@@ -138,7 +138,7 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
 export const dateTimeFuncDecl = {
   name: "get_current_datetime",
   description:
-    'Get the string representation of current date and time in ISO 8601 format in UTC timezone (e.g., "2024-03-10T12:34:56.789Z").',
+    'Get the current date and time, including ISO 8601 format string in UTC timezone, user local timezone name, and user local timezone offset (e.g., { dateTime: "2024-03-10T12:34:56.789Z", timezone: "Asia/Shanghai", timezoneOffset: -480 }). Apply the offset when calculating user local time. The offset is in minutes.',
 };
 
 export const getMemory = {
@@ -219,7 +219,13 @@ export const deleteMemory = {
 export const toolbox = {
   get_current_datetime: () => {
     const now = new Date();
-    return now.toISOString(); // Returns the date in ISO 8601 format (e.g., "2024-03-10T12:34:56.789Z")
+    const dateTimeFormat = Intl.DateTimeFormat().resolvedOptions();
+    const timezoneOffset = now.getTimezoneOffset();
+    return {
+      dateTime: now.toISOString(), 
+      timezone: dateTimeFormat.timeZone, 
+      timezoneOffset: timezoneOffset
+    }; // Returns the date in ISO 8601 format (e.g., "2024-03-10T12:34:56.789Z")
   },
   get_memory: (args) => {
     const memoryKey = args.memoryKey;
