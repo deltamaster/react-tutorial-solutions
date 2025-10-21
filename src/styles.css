@@ -17,10 +17,10 @@ body {
 
 /* Main App Container */
 .App {
-  max-width: 1200px;
   margin: 0 auto;
   padding: 0;
   min-height: 100vh;
+  max-width: none; /* Remove max-width restriction to allow full width */
 }
 
 /* API Key Input */
@@ -139,11 +139,6 @@ textarea:focus {
 .follow-up-button:hover {
   background-color: #e9ecef;
   border-color: #adb5bd;
-}
-
-/* Image Upload */
-.image-upload-container {
-  margin-bottom: 20px;
 }
 
 .image-preview {
@@ -383,6 +378,7 @@ textarea:focus {
   align-items: flex-end;
   margin-bottom: 20px;
   gap: 10px;
+  width: 100%; /* Ensure form takes full width */
 }
 
 .question-input {
@@ -395,6 +391,7 @@ textarea:focus {
   min-height: 60px;
   max-height: 120px;
   font-family: inherit;
+  width: 100%; /* Ensure input takes full width */
 }
 
 .question-input:focus {

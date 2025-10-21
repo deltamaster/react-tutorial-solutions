@@ -32,6 +32,20 @@ export function extractTextFromResponse(responseData) {
   };
 }
 
+// Helper function to convert image file to base64
+const convertImageToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      // Remove the data:image/xxx;base64, prefix to get just the base64 data
+      const base64String = reader.result.split(',')[1];
+      resolve(base64String);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 // Helper function for API requests
 export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '', userDefinedSystemPrompt = '') => {
   const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/gemini-2.5-flash:generateContent`;
@@ -72,15 +86,42 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
       "text": SYSTEM_PROMPT.replace('{{memories}}', memoryText)
     }]
   }, ...contents]
-  // Filter out thought contents before sending the request
+  // Filter out thought contents before sending the request and process any image files
   const filteredContents = [];
   for (const content of contents) {
     if (content.parts) {
-      const filteredParts = content.parts.filter(part => !part.thought);
-      if (filteredParts.length > 0) {
+      // Process each part to handle image files and filter out thoughts
+      const processedParts = [];
+      for (const part of content.parts) {
+        // Skip thought parts
+        if (part.thought) continue;
+        
+        // Process image files if any
+        if (part.inline_data && part.inline_data.file) {
+          try {
+            // Convert image to base64
+            const base64Data = await convertImageToBase64(part.inline_data.file);
+            // Create new part with base64 data instead of file object
+            processedParts.push({
+              inline_data: {
+                mime_type: part.inline_data.mime_type,
+                data: base64Data
+              }
+            });
+          } catch (error) {
+            console.error('Error converting image to base64:', error);
+            throw new Error('Failed to process image file');
+          }
+        } else {
+          // Just add the part as is if it's not a thought or an image file
+          processedParts.push(part);
+        }
+      }
+      
+      if (processedParts.length > 0) {
         filteredContents.push({
           ...content,
-          parts: filteredParts
+          parts: processedParts
         });
       }
     } else {

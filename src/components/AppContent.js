@@ -58,8 +58,22 @@ function AppContent() {
     }
   };
 
+  // Helper function to convert image file to base64
+  const convertImageToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        // Remove the data:image/xxx;base64, prefix to get just the base64 data
+        const base64String = reader.result.split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Handle chatbot question submission
-  const handleSubmit = async (question, thinkingBudget = 0) => {
+  const handleSubmit = async (contentParts, thinkingBudget = 0) => {
     if (!subscriptionKey) {
       alert("Please input Subscription key");
       return;
@@ -68,9 +82,35 @@ function AppContent() {
     setLoading(true);
     setFollowUpQuestions([]);
 
+    // Process content parts to convert image files to base64 for storing in conversation history
+    const processedContentParts = [];
+    for (const part of contentParts) {
+      if (part.inline_data && part.inline_data.file) {
+        try {
+          // Convert image to base64 for storing in conversation history
+          const base64Data = await convertImageToBase64(part.inline_data.file);
+          processedContentParts.push({
+            inline_data: {
+              mime_type: part.inline_data.mime_type,
+              data: base64Data
+            }
+          });
+        } catch (error) {
+          console.error('Error converting image to base64:', error);
+          alert('Failed to process image file');
+          setLoading(false);
+          return;
+        }
+      } else {
+        // Keep text parts as is
+        processedContentParts.push(part);
+      }
+    }
+
+    // Create a new user message with the processed content parts
     const newUserMessage = {
       role: "user",
-      parts: [{ text: question }],
+      parts: processedContentParts,
     };
 
     setConversation((prev) => [...prev, newUserMessage]);
@@ -186,6 +226,8 @@ function AppContent() {
 
   // Handle follow-up question click
   const handleFollowUpClick = (question) => {
+    // For follow-up questions, we just set the question text directly
+    // since follow-up questions don't include images
     setQuestion(question);
   };
 

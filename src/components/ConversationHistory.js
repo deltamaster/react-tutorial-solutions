@@ -17,9 +17,10 @@ function ConversationHistory({
   return (
     <div className="conversation-history">
       {history.map((content, index) => {
-        // Check if there are elements with the text property in content.parts
-        const hasTextParts = content.parts && Array.isArray(content.parts) && content.parts.some(part => part.text);
-        if (!hasTextParts) {
+        // Check if there are elements with text property or image data in content.parts
+        const hasValidParts = content.parts && Array.isArray(content.parts) && 
+          content.parts.some(part => part.text || (part.inline_data && part.inline_data.data && part.inline_data.mime_type));
+        if (!hasValidParts) {
           return null;
         }
 
@@ -78,6 +79,7 @@ function ConversationHistory({
               
               // For bot responses, display thoughts and regular responses differently
               if (content.role === "model") {
+                
                 if (isThought) {
                   return (
                     <div key={partIndex} className="thought-part">
@@ -272,7 +274,26 @@ function ConversationHistory({
                   );
                 }
               } 
-              // For user messages, just display the text normally
+              // Check if the part contains image data
+              else if (part.inline_data && part.inline_data.data && part.inline_data.mime_type) {
+                // Create data URL for the image
+                const imageSrc = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
+                return (
+                  <div key={partIndex} style={{ margin: '10px 0', textAlign: 'center' }}>
+                    <img 
+                      src={imageSrc} 
+                      alt="User uploaded image" 
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '400px',
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      }} 
+                    />
+                  </div>
+                );
+              }
+              // For user messages with text, display normally
               else if (part.text) {
                 return (
                   <div key={partIndex} style={{ position: 'relative' }}>
