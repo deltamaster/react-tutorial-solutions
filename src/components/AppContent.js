@@ -483,13 +483,6 @@ function AppContent() {
             </Col>
           </Row>
         </Tab>
-        <Tab eventKey="picture" title="Picture">
-          <Row>
-            <Col>
-              <p> Under construction </p>
-            </Col>
-          </Row>
-        </Tab>
       </Tabs>
     </Container>
   );
