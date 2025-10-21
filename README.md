@@ -11,7 +11,8 @@ A React-based chatbot application powered by Google's Gemini API. This applicati
 - Markdown support for rich text formatting
 - Responsive design using Bootstrap
 - Memory management system for storing and retrieving contextual information
-- Under construction: Image processing capabilities
+- Image upload capabilities for visual conversations
+- Responsive UI design with adaptive button layouts
 
 ## Installation and Setup
 
@@ -67,6 +68,7 @@ The application will open at [http://localhost:3000](http://localhost:3000) in y
 │   │   └── QuestionInput.js      # User question input
 │   ├── utils/
 │   │   ├── apiUtils.js           # API-related utilities
+│   │   ├── memoryService.js      # Memory management utilities
 │   │   └── storageUtils.js       # Local storage utilities
 │   ├── App.js                    # Root application component
 │   ├── index.js                  # Application entry point
@@ -80,7 +82,7 @@ The application will open at [http://localhost:3000](http://localhost:3000) in y
 
 - **AppContent**: Main component that manages the chatbot state and functionality
 - **ConversationHistory**: Displays the chat history between user and AI
-- **QuestionInput**: Handles user input for questions
+- **QuestionInput**: Handles user input for questions and image uploads with responsive button design
 - **ApiKeyInput**: Manages the Gemini API key input
 - **FollowUpQuestions**: Shows AI-generated follow-up questions
 - **Memory**: Provides interface for managing contextual memory data stored in localStorage
@@ -108,7 +110,7 @@ This will create an optimized build in the `build` directory that can be deploye
 
 - This application requires a valid Gemini API key to function
 - There is no content filtering, use at your own risk
-- The "Picture" tab is currently under development
+- Image upload supports PNG, JPEG, WEBP, HEIC, and HEIF formats with a 20MB size limit
 
 ## Contributing
 
