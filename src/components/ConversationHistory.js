@@ -1,6 +1,8 @@
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import * as Icon from 'react-bootstrap-icons';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Conversation history component
 function ConversationHistory({ 
@@ -14,6 +16,66 @@ function ConversationHistory({
   onSave, 
   onCancel 
 }) {
+  // 渲染 grounding 数据的组件
+  const renderGroundingData = (content) => {
+    if (!content.groundingChunks || content.groundingChunks.length === 0) {
+      return null;
+    }
+
+    return (
+      <div style={{
+        marginTop: '12px',
+        padding: '12px',
+        backgroundColor: '#f8f9fa',
+        border: '1px solid #e9ecef',
+        borderRadius: '6px',
+        fontSize: '0.9em'
+      }}>
+        <div style={{ fontWeight: 'bold', color: '#495057', marginBottom: '8px' }}>
+          Sources:
+        </div>
+        <div style={{ marginLeft: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {content.groundingChunks.map((chunk, idx) => (
+            <div key={idx}>
+              {chunk.web?.uri ? (
+                <a 
+                  href={chunk.web.uri} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  style={{
+                    color: '#0d6efd',
+                    textDecoration: 'none',
+                    padding: '4px 8px',
+                    border: '1px solid #0d6efd',
+                    borderRadius: '4px',
+                    backgroundColor: 'white',
+                    display: 'inline-block',
+                    transition: 'all 0.2s ease',
+                    fontSize: '0.85em'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = '#0d6efd';
+                    e.target.style.color = 'white';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = 'white';
+                    e.target.style.color = '#0d6efd';
+                  }}
+                >
+                  {(idx + 1)}: {chunk.web?.title}
+                </a>
+              ) : (
+                <span style={{ color: '#6c757d', fontSize: '0.85em' }}>
+                  {(idx + 1)}: {chunk.web?.title}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="conversation-history">
       {history.map((content, index) => {
@@ -77,8 +139,73 @@ function ConversationHistory({
               // Check if this part is being edited
               const isEditing = editingIndex === index && editingPartIndex === partIndex;
               
-              // For bot responses, display thoughts and regular responses differently
+              // For bot responses, display thoughts, code, execution results and regular responses differently
               if (content.role === "model") {
+                
+                // Handle executable code
+                if (part.executableCode) {
+                  return (
+                    <div key={partIndex} className="code-part" style={{ marginTop: '8px' }}>
+                      <div style={{
+                        backgroundColor: '#f8f9fa',
+                        border: '1px solid #e9ecef',
+                        borderRadius: '6px',
+                        padding: '12px',
+                        marginBottom: '8px'
+                      }}>
+                        <div style={{ fontWeight: 'bold', color: '#495057', marginBottom: '8px', display: 'flex', alignItems: 'center' }}>
+                          <Icon.Code size={16} className="mr-2" />
+                          Code ({part.executableCode.language})
+                        </div>
+                        <SyntaxHighlighter 
+                          language={part.executableCode.language.toLowerCase() || 'javascript'}
+                          style={vscDarkPlus}
+                          customStyle={{
+                            borderRadius: '4px',
+                            margin: 0,
+                            fontSize: '0.9em',
+                            padding: '12px'
+                          }}
+                        >
+                          {part.executableCode.code}
+                        </SyntaxHighlighter>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Handle code execution results
+                if (part.codeExecutionResult) {
+                  return (
+                    <div key={partIndex} className="execution-result-part" style={{ marginTop: '8px' }}>
+                      <div style={{
+                        backgroundColor: '#f8f9fa',
+                        border: '1px solid #e9ecef',
+                        borderRadius: '6px',
+                        padding: '12px',
+                        marginBottom: '8px'
+                      }}>
+                        <div style={{ fontWeight: 'bold', color: '#495057', marginBottom: '8px', display: 'flex', alignItems: 'center' }}>
+                          <Icon.Terminal size={16} className="mr-2" />
+                          Execution Result ({part.codeExecutionResult.outcome === 'OUTCOME_OK' ? 'Success' : 'Error'})
+                        </div>
+                        <pre style={{
+                          backgroundColor: part.codeExecutionResult.outcome === 'OUTCOME_OK' ? '#f8fff8' : '#fff8f8',
+                          color: '#495057',
+                          padding: '12px',
+                          borderRadius: '4px',
+                          overflowX: 'auto',
+                          fontFamily: 'monospace',
+                          fontSize: '0.9em',
+                          border: `1px solid ${part.codeExecutionResult.outcome === 'OUTCOME_OK' ? '#d4edda' : '#f5c6cb'}`,
+                          margin: 0
+                        }}>
+                          {part.codeExecutionResult.output}
+                        </pre>
+                      </div>
+                    </div>
+                  );
+                }
                 
                 if (isThought) {
                   return (
@@ -412,6 +539,8 @@ function ConversationHistory({
               }
               return null;
             })}
+            {/* 渲染 grounding 数据（如果存在） */}
+            {content.role === 'model' && renderGroundingData(content)}
           </div>
         );
       })}

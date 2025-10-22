@@ -1,0 +1,19 @@
+{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "what is the sum of the first 50 prime numbers? and then search for the fun facts about the result"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "tools": [
+        {
+            "google_search": {},
+            "url_context": {},
+            "code_execution": {}
+        }
+    ]
+}

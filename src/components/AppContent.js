@@ -130,24 +130,29 @@ function AppContent() {
       
       // Use a loop to handle multiple function calls
       let hasFunctionCalls = true;
+      let currentRole = "general";
       
       while (hasFunctionCalls) {
         // Make API request with current conversation state
-        const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey, systemPrompt);
+        const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey, systemPrompt, currentRole);
         
         // Check if response data has valid structure
         if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
           const responseParts = responseData.candidates[0].content.parts || [];
           
           // Separate text parts and function call parts
-          const textParts = responseParts.filter(part => part.text);
+          const textParts = responseParts.filter(part => part.text || part.executableCode || part.codeExecutionResult);
           const functionCallParts = responseParts.filter(part => part.functionCall);
           
           // Always create a bot response with text parts (if any)
           if (textParts.length > 0) {
+            // 创建 bot 响应，包含 groundingChunks 和 groundingSupports（如果存在）
             const botResponse = {
               role: "model",
               parts: textParts,
+              // 添加 grounding 数据到响应中，但这些数据不会被传递到下次请求
+              groundingChunks: responseData.candidates[0]?.groundingMetadata?.groundingChunks || [],
+              groundingSupports: responseData.candidates[0]?.groundingMetadata?.groundingSupports || []
             };
             currentConversation = [...currentConversation, botResponse];
             setConversation(currentConversation);
@@ -161,12 +166,26 @@ function AppContent() {
             // Execute each function call
             for (const functionCallPart of functionCallParts) {
               const { name, args } = functionCallPart.functionCall;
+              if (name === 'switch_role') {
+                // Handle role switch
+                if (args.role === 'searcher') {
+                  // For searcher role, include google_search tool
+                  currentRole = args.role;
+                } else {
+                  console.log('Invalid role specified in switch_role function call');
+                  currentRole = "general";
+                }
+                continue;
+              }
               if (toolbox[name]) {
                 const result = toolbox[name](args);
                 functionResults.push({ name, result });
               }
             }
-            
+            // continue if the role is not general
+            if (currentRole !== "general") {
+              continue;
+            }
             // Add function results to conversation
             const functionResponseMessage = {
               role: "user",
@@ -178,6 +197,7 @@ function AppContent() {
           } else {
             // No more function calls, exit loop
             hasFunctionCalls = false;
+            currentRole = "general";
           }
         } else {
           // No valid content, exit loop

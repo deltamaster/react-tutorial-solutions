@@ -46,8 +46,42 @@ const convertFileToBase64 = (file) => {
   });
 };
 
+// Role configuration for different bot personalities
+const ROLE_CONFIGS = {
+  general: {
+    systemPrompt: `
+I am a helpful assistant that can answer questions and perform tasks.
+
+I am now in "general" role.
+
+If the user requests any search or information retrieval, provides a specific URL, or asking about recent events, please switch to "searcher" role.
+
+If the user requests any coding or programming tasks, please also switch to "searcher" role.
+
+Use memory tools wisely to remember important user facts and preference. Avoid blindly saving the exact input into the memory:
+- Analyze the user's intention and summarize the information before saving.
+- Avoid saving relative date and time, always translate to absolute date and time before saving.
+
+I never need to get any memory from the functionCall. The full memory is always carried with the request.
+
+The memory I have access to is as follows (in the format of "memoryKey: memoryValue"):
+{{memories}}`
+  }, 
+  searcher: {
+    systemPrompt: `
+I am a helpful assistant that can answer questions and search for information.
+
+I am also capable of executing Python code. When given code in other programming languages, translate it to Python and execute it.
+
+I am now in "searcher" role. I can see existing memory, but cannot update any of them.
+
+The memory I have access to is as follows (in the format of "memoryKey: memoryValue"):
+{{memories}}`
+  },
+};
+
 // Helper function for API requests
-export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '', userDefinedSystemPrompt = '') => {
+export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '', userDefinedSystemPrompt = '', role='general') => {
   const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/gemini-2.5-flash:generateContent`;
   const requestHeader = {
     "Content-Type": "application/json",
@@ -59,19 +93,8 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
     { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   ];
-  // put a "model" part as system prompt at the beginning of the contents
+  
   // Extract all memories from localStorage and include them in the prompt.
-  const SYSTEM_PROMPT = `
-I am a helpful assistant that can answer questions and perform tasks.
-
-Use memory tools wisely to remember important user facts and preference. Avoid blindly saving the exact input into the memory:
-- Analyze the user's intention and summarize the information before saving.
-- Avoid saving relative date and time, always translate to absolute date and time before saving.
-
-I never need to get any memory from the functionCall. The full memory is always carried with the request.
-
-The memory I have access to is as follows (in the format of "memoryKey: memoryValue"):
-{{memories}}`;
   const memories = {};
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -80,10 +103,20 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
     }
   }
   const memoryText = Object.entries(memories).map(([key, value]) => `Memory ${key}: ${value}`).join('\n');
+  
+  // Get the system prompt for the specified role, defaulting to 'general'
+  const roleConfig = ROLE_CONFIGS[role] || ROLE_CONFIGS.general;
+  const systemPrompt = roleConfig.systemPrompt.replace('{{memories}}', memoryText);
+  // filter contents first: for each content in contents, keep only "role" and "parts"
+  contents = contents.map(content => ({
+    role: content.role,
+    parts: content.parts
+  }));
+
   let contentsWithSystemPrompt = [{
     "role": "model",
     "parts": [{
-      "text": SYSTEM_PROMPT.replace('{{memories}}', memoryText)
+      "text": systemPrompt
     }]
   }, ...contents]
   // Filter out thought contents before sending the request and process any image files
@@ -95,7 +128,7 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
       for (const part of content.parts) {
         // Skip thought parts
         if (part.thought) continue;
-        
+
         // Process files if any (works for both images and PDFs)
         if (part.inline_data && part.inline_data.file) {
           try {
@@ -131,7 +164,7 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
   contentsWithSystemPrompt = [{
     "role": "model",
     "parts": [{
-      "text": SYSTEM_PROMPT.replace('{{memories}}', memoryText)
+      "text": systemPrompt.replace('{{memories}}', memoryText)
     }]
   }, {
     "role": "user",
@@ -146,8 +179,18 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
   };
   
   if (includeTools) {
-    // I don't need to expose get_memory and get_all_memories function to the model, because the full memory is alway carried with the request.
-    requestBody.tools = { function_declarations: [dateTimeFuncDecl, createMemory, updateMemory, deleteMemory] };
+    // For searcher role, include google_search, url_context, and code_execution tools instead of function declarations
+    if (role === 'searcher') {
+      requestBody.tools = {
+        google_search: {},
+        url_context: {},
+        code_execution: {}
+      };
+    } else {
+      // For general role, include regular function declarations
+      // I don't need to expose get_memory and get_all_memories function to the model, because the full memory is alway carried with the request.
+      requestBody.tools = { function_declarations: [dateTimeFuncDecl, createMemory, updateMemory, deleteMemory, switch_role] };
+    }
   }
   
   try {
@@ -253,6 +296,22 @@ export const deleteMemory = {
       },
     },
     required: ["memoryKey"],
+  },
+}
+
+export const switch_role = {
+  // This is a special function that does not invoke any actual function.
+  name: "switch_role",
+  description: "Switch the role of the model. Only \"general\" or \"searcher\" are allowed.",
+  parameters: {
+    type: "object",
+    properties: {
+      role: {
+        type: "string",
+        description: "The role to switch to. Only \"general\" or \"searcher\" are allowed.",
+      },
+    },
+    required: ["role"],
   },
 }
 
