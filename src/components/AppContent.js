@@ -141,7 +141,7 @@ function AppContent() {
           const responseParts = responseData.candidates[0].content.parts || [];
           
           // Separate text parts and function call parts
-          const textParts = responseParts.filter(part => part.text || part.executableCode || part.codeExecutionResult);
+          const textParts = responseParts.filter(part => part.text || part.executableCode || part.codeExecutionResult || (part.inlineData && part.inlineData.data && part.inlineData.mimeType));
           const functionCallParts = responseParts.filter(part => part.functionCall);
           
           // Always create a bot response with text parts (if any)
