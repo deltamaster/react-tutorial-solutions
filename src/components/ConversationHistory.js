@@ -276,22 +276,47 @@ function ConversationHistory({
               } 
               // Check if the part contains image data
               else if (part.inline_data && part.inline_data.data && part.inline_data.mime_type) {
-                // Create data URL for the image
-                const imageSrc = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
-                return (
-                  <div key={partIndex} style={{ margin: '10px 0', textAlign: 'center' }}>
-                    <img 
-                      src={imageSrc} 
-                      alt="User uploaded image" 
-                      style={{
-                        maxWidth: '100%',
-                        maxHeight: '400px',
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                      }} 
-                    />
-                  </div>
-                );
+                // If it's a PDF, show a placeholder instead of the actual content
+                if (part.inline_data.mime_type === 'application/pdf') {
+                  return (
+                    <div key={partIndex} style={{ margin: '10px 0' }}>
+                      <div 
+                        style={{
+                          padding: '16px',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          backgroundColor: '#f8f9fa',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Icon.FileEarmarkPdf size={32} color="#dc3545" style={{ marginRight: '12px' }} />
+                        <div>
+                          <div style={{ fontWeight: '500', marginBottom: '4px' }}>PDF Document Uploaded</div>
+                          <div style={{ fontSize: '12px', color: '#666' }}>A PDF file has been uploaded here.</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                // For images, create data URL and display
+                else {
+                  const imageSrc = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
+                  return (
+                    <div key={partIndex} style={{ margin: '10px 0', textAlign: 'center' }}>
+                      <img 
+                        src={imageSrc} 
+                        alt="User uploaded image" 
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '400px',
+                          borderRadius: '4px',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                        }} 
+                      />
+                    </div>
+                  );
+                }
               }
               // For user messages with text, display normally
               else if (part.text) {

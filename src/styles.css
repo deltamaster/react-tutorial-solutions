@@ -248,15 +248,19 @@ textarea:focus {
 }
 
 .toggle-label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.3s ease;
   font-size: 14px;
+  font-weight: 500;
   user-select: none;
+  margin: 0;
+  min-height: 36px;
+  justify-content: center;
 }
 
 .toggle-label.toggle-off {

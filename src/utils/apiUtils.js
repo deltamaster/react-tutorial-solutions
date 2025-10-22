@@ -32,12 +32,12 @@ export function extractTextFromResponse(responseData) {
   };
 }
 
-// Helper function to convert image file to base64
-const convertImageToBase64 = (file) => {
+// Helper function to convert file to base64 (works for both images and PDFs)
+const convertFileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      // Remove the data:image/xxx;base64, prefix to get just the base64 data
+      // Remove the data:xxx/xxx;base64, prefix to get just the base64 data
       const base64String = reader.result.split(',')[1];
       resolve(base64String);
     };
@@ -96,11 +96,11 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
         // Skip thought parts
         if (part.thought) continue;
         
-        // Process image files if any
+        // Process files if any (works for both images and PDFs)
         if (part.inline_data && part.inline_data.file) {
           try {
-            // Convert image to base64
-            const base64Data = await convertImageToBase64(part.inline_data.file);
+            // Convert file to base64
+            const base64Data = await convertFileToBase64(part.inline_data.file);
             // Create new part with base64 data instead of file object
             processedParts.push({
               inline_data: {
@@ -109,8 +109,8 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
               }
             });
           } catch (error) {
-            console.error('Error converting image to base64:', error);
-            throw new Error('Failed to process image file');
+            console.error('Error converting file to base64:', error);
+            throw new Error('Failed to process file');
           }
         } else {
           // Just add the part as is if it's not a thought or an image file

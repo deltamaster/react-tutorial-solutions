@@ -15,9 +15,11 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
   });
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [selectedPdf, setSelectedPdf] = useState(null);
   const [uploadError, setUploadError] = useState("");
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
   // Function to automatically adjust the height of the textarea
   const adjustHeight = () => {
     if (textareaRef.current) {
@@ -96,6 +98,38 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     }
   };
 
+  const handlePdfUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Reset error state
+    setUploadError("");
+
+    // Validate file type
+    if (file.type !== "application/pdf") {
+      setUploadError("Unsupported file format. Please upload PDF files only.");
+      return;
+    }
+
+    // Validate file size (20MB)
+    const maxSize = 20 * 1024 * 1024; // 20MB in bytes
+    if (file.size > maxSize) {
+      setUploadError("File size exceeds 20MB limit.");
+      return;
+    }
+
+    // Set selected PDF
+    setSelectedPdf(file);
+  };
+
+  const removeSelectedPdf = () => {
+    setSelectedPdf(null);
+    setUploadError("");
+    if (pdfInputRef.current) {
+      pdfInputRef.current.value = "";
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if ((localQuestion.trim() || selectedImage) && !disabled) {
@@ -118,6 +152,19 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
         });
       }
 
+      // Add PDF part if there is a PDF
+      if (selectedPdf) {
+        // We'll handle the base64 conversion in the parent component or API utils
+        contentParts.push({
+          inline_data: {
+            mime_type: "application/pdf",
+            // We'll convert the PDF to base64 in the parent or API utils
+            // For now, we'll just pass the file object
+            file: selectedPdf,
+          },
+        });
+      }
+
       // Add text part if there is text
       if (localQuestion.trim()) {
         contentParts.push({ text: localQuestion.trim() });
@@ -128,6 +175,7 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
       // Clear local state
       setLocalQuestion("");
       removeSelectedImage();
+      removeSelectedPdf();
 
       // Notify parent if onChange is provided
       if (onChange) {
@@ -208,6 +256,55 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
               </div>
             )}
 
+            {/* PDF preview */}
+            {selectedPdf && (
+              <div
+                className="pdf-preview-container"
+                style={{
+                  marginBottom: "10px",
+                  padding: "10px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  position: "relative",
+                  maxWidth: "300px",
+                  backgroundColor: "#f8f9fa",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <Icon.FileEarmarkPdf size={32} color="#dc3545" />
+                  <div style={{ marginLeft: "10px", overflow: "hidden" }}>
+                    <div style={{ fontWeight: "500", marginBottom: "2px" }}>
+                      PDF Document
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#666", wordBreak: "break-all" }}>
+                      {selectedPdf.name}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={removeSelectedPdf}
+                  style={{
+                    position: "absolute",
+                    top: "5px",
+                    right: "5px",
+                    background: "#f8d7da",
+                    color: "#dc3545",
+                    border: "1px solid #f5c6cb",
+                    borderRadius: "50%",
+                    width: "24px",
+                    height: "24px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Icon.X size={12} />
+                </button>
+              </div>
+            )}
+
             {/* Upload error message */}
             {uploadError && (
               <div
@@ -260,21 +357,37 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
                 htmlFor="thinking-toggle"
                 className={`toggle-label ${isThinkingEnabled ? "toggle-on" : "toggle-off"}`}
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  padding: "8px 12px",
-                  borderRadius: "20px",
                   cursor: disabled ? "not-allowed" : "pointer",
-                  fontSize: "14px",
-                  fontWeight: "500",
                   border: "1px solid #dee2e6",
-                  margin: 0,
-                  minHeight: "36px",
                 }}
               >
                 <Icon.Lightbulb size={16} className="mr-1" />
                 <span className="toggle-text">Thinking</span>
               </label>
+            </div>
+
+            {/* PDF Upload Button */}
+            <div className="pdf-upload-container">
+              <input
+                type="file"
+                ref={pdfInputRef}
+                accept="application/pdf"
+                onChange={handlePdfUpload}
+                style={{ display: "none" }}
+                disabled={disabled}
+              />
+              <button
+                type="button"
+                onClick={() => !disabled && pdfInputRef.current.click()}
+                disabled={disabled}
+                className="toggle-label toggle-on"
+                style={{
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+              >
+                <Icon.FileEarmarkPdf size={16} className="mr-1" />
+                <span className="d-none d-md-inline">PDF</span>
+              </button>
             </div>
 
             {/* Image Upload Button */}
@@ -293,19 +406,7 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
                 disabled={disabled}
                 className="toggle-label toggle-on"
                 style={{
-                  background: "#007bff",
-                  border: "1px solid #007bff",
-                  color: "white",
                   cursor: disabled ? "not-allowed" : "pointer",
-                  padding: "8px 12px",
-                  borderRadius: "20px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  margin: 0,
-                  minHeight: "36px",
                 }}
               >
                 <Icon.Image size={16} className="mr-1" />
