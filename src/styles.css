@@ -46,8 +46,6 @@ input[type="password"]:focus {
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 20px;
-  max-height: 500px;
-  overflow-y: auto;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -393,7 +391,6 @@ textarea:focus {
   font-size: 16px;
   resize: vertical;
   min-height: 60px;
-  max-height: 120px;
   font-family: inherit;
   width: 100%; /* Ensure input takes full width */
 }
@@ -425,4 +422,254 @@ textarea:focus {
   background-color: #ccc;
   border-color: #ccc;
   cursor: not-allowed;
+}
+
+/* Conversation History Components */
+.conversation-container {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+/* Delete Button */
+.delete-button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background-color: #f8d7da;
+  color: #dc3545;
+  border: 1px solid #f5c6cb;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.delete-button:hover {
+  background-color: #dc3545;
+  color: white;
+  border-color: #c82333;
+}
+
+/* Edit Button */
+.edit-button {
+  background-color: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #bbdefb;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  transition: all 0.2s ease;
+}
+
+.edit-button:hover {
+  background-color: #bbdefb;
+}
+
+.edit-button-left {
+  float: left;
+  margin-right: 8px;
+}
+
+.edit-button-right {
+  float: right;
+  margin-left: 8px;
+}
+
+/* Save and Cancel Buttons */
+.save-button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cancel-button {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* Textarea Styles */
+.edit-textarea {
+  width: 100%;
+  min-height: 80px;
+  max-width: 100%;
+  min-width: 100%;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 0.9em;
+  font-family: inherit;
+}
+
+.edit-textarea-italic {
+  font-style: italic;
+}
+
+/* Button Group */
+.button-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Code Block Styles */
+.code-block {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.code-block-title {
+  font-weight: bold;
+  color: #495057;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+}
+
+/* Execution Results */
+.execution-result {
+  background-color: #f8fff8;
+  color: #495057;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: monospace;
+  font-size: 0.9em;
+  border: 1px solid #d4edda;
+  margin: 0;
+}
+
+.execution-error {
+  background-color: #fff8f8;
+  color: #495057;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: monospace;
+  font-size: 0.9em;
+  border: 1px solid #f5c6cb;
+  margin: 0;
+}
+
+/* Thought Block */
+.thought-block {
+  background: #f8f9fa;
+  border: 1px dashed #adb5bd;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.thought-label {
+  color: #6c757d;
+  font-weight: bold;
+}
+
+/* Image Styles */
+.image-container {
+  margin: 10px 0;
+  text-align: center;
+}
+
+.conversation-image {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* PDF Placeholder */
+.pdf-placeholder {
+  padding: 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  display: flex;
+  align-items: center;
+}
+
+.pdf-title {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.pdf-description {
+  font-size: 12px;
+  color: #666;
+}
+
+/* Grounding Data */
+.grounding-container {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  font-size: 0.9em;
+}
+
+.grounding-title {
+  font-weight: bold;
+  color: #495057;
+  margin-bottom: 8px;
+}
+
+.grounding-links {
+  margin-left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.grounding-link {
+  color: #0d6efd;
+  text-decoration: none;
+  padding: 4px 8px;
+  border: 1px solid #0d6efd;
+  border-radius: 4px;
+  background-color: white;
+  display: inline-block;
+  transition: all 0.2s ease;
+  font-size: 0.85em;
+}
+
+.grounding-link:hover {
+  background-color: #0d6efd;
+  color: white;
+}
+
+/* Content Parts */
+.response-part {
+  position: relative;
+}
+
+.markdown-content {
+  margin-top: 8px;
 }

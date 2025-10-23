@@ -1,8 +1,272 @@
+import React, { useEffect } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import * as Icon from "react-bootstrap-icons";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import mermaid from "mermaid";
+
+// Initialize mermaid configuration
+mermaid.initialize({
+  startOnLoad: false,
+  theme: "default",
+  securityLevel: "loose" // Allow more features
+});
+
+
+// Reusable function to render a single mermaid diagram
+const renderMermaidDiagram = async (element) => {
+  try {
+    const graphCode = element.getAttribute('data-mermaid-content') || element.textContent.trim();
+    const uniqueId = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const {svg} = await mermaid.render(uniqueId, graphCode);
+    element.innerHTML = svg;
+  } catch (err) {
+    console.error('Error rendering individual mermaid diagram:', err);
+    element.innerHTML = `<div style="color: red; padding: 10px; background-color: #fee; border-radius: 4px;">Error rendering mermaid diagram: ${err.message}</div>`;
+  }
+};
+
+// Reusable component: Mermaid diagram component
+const MermaidDiagram = ({ content }) => {
+  return (
+    <div className="mermaid" data-mermaid-content={content}>
+      {content}
+    </div>
+  );
+};
+
+// Reusable component: Code block component
+const CodeBlock = ({ language, code }) => {
+  return (
+    <SyntaxHighlighter 
+      language={language} 
+      style={vscDarkPlus}
+      className="code-syntax-highlighter"
+    >
+      {code}
+    </SyntaxHighlighter>
+  );
+};
+
+// Reusable component: Edit button
+const EditButton = ({ onClick, position = 'right' }) => {
+  return (
+    <button
+      onClick={onClick}
+      className={`edit-button ${position === 'left' ? 'edit-button-left' : 'edit-button-right'}`}
+      title="Edit"
+    >
+      <Icon.Pencil size={14} />
+    </button>
+  );
+};
+
+// Reusable component: Edit form
+const EditForm = ({ value, onChange, onSave, onCancel, isItalic = false }) => {
+  return (
+    <div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`edit-textarea ${isItalic ? 'edit-textarea-italic' : ''}`}
+        placeholder="Edit your content here..."
+      />
+      <div className="button-group">
+        <button onClick={onSave} className="save-button">
+          Save
+        </button>
+        <button onClick={onCancel} className="cancel-button">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Reusable component: Grounding data component
+const GroundingData = ({ groundingChunks }) => {
+  if (!groundingChunks || groundingChunks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="grounding-container">
+      <div className="grounding-title">Sources:</div>
+      <div className="grounding-links">
+        {groundingChunks.map((chunk, idx) => (
+          <div key={idx}>
+            {chunk.web?.uri ? (
+              <a
+                href={chunk.web.uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grounding-link"
+              >
+                {idx + 1}: {chunk.web?.title}
+              </a>
+            ) : (
+              <span className="grounding-link-disabled">
+                {idx + 1}: {chunk.web?.title}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Reusable component: Code execution result component
+const CodeExecutionResult = ({ result }) => {
+  const isSuccess = result.outcome === "OUTCOME_OK";
+  
+  return (
+    <div className="code-block">
+      <div className="code-block-title">
+        <Icon.Terminal size={16} className="mr-2" />
+        Execution Result ({isSuccess ? "Success" : "Error"})
+      </div>
+      <pre className={isSuccess ? 'execution-result' : 'execution-error'}>
+        {result.output}
+      </pre>
+    </div>
+  );
+};
+
+// Reusable component: Inline image component
+const InlineImage = ({ dataUrl, alt = "Generated image" }) => {
+  return (
+    <div className="image-container">
+      <img
+        src={dataUrl}
+        alt={alt}
+        className="conversation-image"
+      />
+    </div>
+  );
+};
+
+// Reusable component: PDF placeholder component
+const PdfPlaceholder = () => {
+  return (
+    <div className="pdf-placeholder">
+      <Icon.FileEarmarkPdf
+        size={32}
+        color="#dc3545"
+      />
+      <div>
+        <div className="pdf-title">PDF Document Uploaded</div>
+        <div className="pdf-description">
+          A PDF file has been uploaded here.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Reusable component: Text part component
+const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, onCancel, onEdit, isThought = false, position = 'right' }) => {
+  if (isEditing) {
+    return (
+      <EditForm
+        value={editingText}
+        onChange={onEditingTextChange}
+        onSave={onSave}
+        onCancel={onCancel}
+        isItalic={isThought}
+      />
+    );
+  }
+  
+  return (
+    <>
+      <EditButton
+        onClick={onEdit}
+        position={position}
+      />
+      <div className="markdown-content">
+        {renderTextContent(text)}
+      </div>
+    </>
+  );
+};
+
+// Unified function for rendering text content - supports mixed content
+const renderTextContent = (text) => {
+  if (!text) return null;
+  
+  // Process mixed content: Split text by code blocks and render separately
+  // Use regular expressions to match all code blocks (including mermaid and regular code blocks)
+  const parts = [];
+  const codeBlockRegex = /```(mermaid|\w+)[\s\S]*?```/g;
+  let lastIndex = 0;
+  let match;
+  
+  // Find all code blocks and split text
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    // Add regular text before code block (if any)
+    if (match.index > lastIndex) {
+      const markdownText = text.slice(lastIndex, match.index).trim();
+      if (markdownText) {
+        parts.push(
+          <Markdown key={`md-${parts.length}`} remarkPlugins={[remarkGfm]}>
+            {markdownText}
+          </Markdown>
+        );
+      }
+    }
+    
+    // Process code block
+    const fullCodeBlock = match[0];
+    const language = match[1];
+    
+    if (language === 'mermaid') {
+      // Extract mermaid content
+      const mermaidMatch = fullCodeBlock.match(/```mermaid([\s\S]*?)```/);
+      if (mermaidMatch && mermaidMatch[1]) {
+        parts.push(
+          <div key={`mermaid-${parts.length}`} className="mermaid" data-mermaid-content={mermaidMatch[1].trim()}>
+            {mermaidMatch[1].trim()}
+          </div>
+        );
+      }
+    } else {
+      // Extract regular code block content
+      const codeMatch = fullCodeBlock.match(/```\w+([\s\S]*?)```/);
+      if (codeMatch && codeMatch[1]) {
+        parts.push(
+          <SyntaxHighlighter key={`code-${parts.length}`} language={language} style={vscDarkPlus}>
+            {codeMatch[1].trim()}
+          </SyntaxHighlighter>
+        );
+      }
+    }
+    
+    lastIndex = match.index + match[0].length;
+  }
+  
+  // Add regular text after the last code block (if any)
+  if (lastIndex < text.length) {
+    const markdownText = text.slice(lastIndex).trim();
+    if (markdownText) {
+      parts.push(
+        <Markdown key={`md-${parts.length}`} remarkPlugins={[remarkGfm]}>
+          {markdownText}
+        </Markdown>
+      );
+    }
+  }
+  
+  // If no code blocks are found, use default Markdown rendering
+  if (parts.length === 0) {
+    return <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>;
+  }
+  
+  // Return combination of all parts
+  return <div className="mixed-content">{parts}</div>;
+};
 
 // Conversation history component
 function ConversationHistory({
@@ -16,76 +280,46 @@ function ConversationHistory({
   onSave,
   onCancel,
 }) {
-  // 渲染 grounding 数据的组件
-  const renderGroundingData = (content) => {
-    if (!content.groundingChunks || content.groundingChunks.length === 0) {
-      return null;
+  // Render mermaid diagrams when the component updates
+  useEffect(() => {
+    // Debug log
+    console.log('useEffect for mermaid rendering triggered');
+    
+    // Initialize mermaid
+    if (mermaid && document) {
+      console.log('Mermaid library available, starting rendering process');
+      let timer;
+      
+      // Use setTimeout to delay rendering to ensure DOM is fully loaded
+      timer = setTimeout(() => {
+        try {
+          // Select all mermaid elements
+          const allMermaidElements = document.querySelectorAll('.mermaid');
+          console.log('Found total mermaid elements:', allMermaidElements.length);
+          
+          // Set data-mermaid-content attribute for elements that don't have it
+          allMermaidElements.forEach((element) => {
+            if (!element.hasAttribute('data-mermaid-content')) {
+              const graphCode = element.textContent.trim();
+              element.setAttribute('data-mermaid-content', graphCode);
+            }
+          });
+          
+          // Render all mermaid elements uniformly
+          allMermaidElements.forEach((element) => {
+            renderMermaidDiagram(element);
+          });
+        } catch (error) {
+          console.error('Error in mermaid rendering process:', error);
+        }
+      }, 200); // Slightly increased delay to ensure DOM is fully updated
+      
+      // Clean up timer
+      return () => {
+        if (timer) clearTimeout(timer);
+      };
     }
-
-    return (
-      <div
-        style={{
-          marginTop: "12px",
-          padding: "12px",
-          backgroundColor: "#f8f9fa",
-          border: "1px solid #e9ecef",
-          borderRadius: "6px",
-          fontSize: "0.9em",
-        }}
-      >
-        <div
-          style={{ fontWeight: "bold", color: "#495057", marginBottom: "8px" }}
-        >
-          Sources:
-        </div>
-        <div
-          style={{
-            marginLeft: "16px",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "8px",
-          }}
-        >
-          {content.groundingChunks.map((chunk, idx) => (
-            <div key={idx}>
-              {chunk.web?.uri ? (
-                <a
-                  href={chunk.web.uri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: "#0d6efd",
-                    textDecoration: "none",
-                    padding: "4px 8px",
-                    border: "1px solid #0d6efd",
-                    borderRadius: "4px",
-                    backgroundColor: "white",
-                    display: "inline-block",
-                    transition: "all 0.2s ease",
-                    fontSize: "0.85em",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "#0d6efd";
-                    e.target.style.color = "white";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "white";
-                    e.target.style.color = "#0d6efd";
-                  }}
-                >
-                  {idx + 1}: {chunk.web?.title}
-                </a>
-              ) : (
-                <span style={{ color: "#6c757d", fontSize: "0.85em" }}>
-                  {idx + 1}: {chunk.web?.title}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  }, [history, editingIndex, editingPartIndex]); // Keep original dependencies;
 
   return (
     <div className="conversation-history">
@@ -113,51 +347,21 @@ function ConversationHistory({
         return (
           <div
             key={index}
-            className={content.role}
-            style={{ position: "relative", marginBottom: "16px" }}
+            className={`${content.role} conversation-container`}
           >
             {/* Delete button - light red, becomes darker on hover */}
             <button
               onClick={() => onDelete(index)}
-              style={{
-                position: "absolute",
-                top: "-6px",
-                right: "-6px",
-                backgroundColor: "#f8d7da",
-                color: "#dc3545",
-                border: "1px solid #f5c6cb",
-                borderRadius: "50%",
-                width: "24px",
-                height: "24px",
-                fontSize: "14px",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 10,
-                transition: "all 0.2s ease",
-                padding: 0,
-                boxSizing: "border-box",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "#dc3545";
-                e.currentTarget.style.color = "white";
-                e.currentTarget.style.borderColor = "#c82333";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "#f8d7da";
-                e.currentTarget.style.color = "#dc3545";
-                e.currentTarget.style.borderColor = "#f5c6cb";
-              }}
+              className="delete-button"
               title="Delete message"
             >
               <Icon.X size={14} />
             </button>
 
             {content.role === "user" ? (
-              <p style={{ fontWeight: "bold" }}>You: </p>
+              <p className="message-header">You: </p>
             ) : (
-              <p style={{ fontWeight: "bold" }}>Bot: </p>
+              <p className="message-header">Bot: </p>
             )}
 
             {content.parts &&
@@ -178,44 +382,16 @@ function ConversationHistory({
                       <div
                         key={partIndex}
                         className="code-part"
-                        style={{ marginTop: "8px" }}
                       >
-                        <div
-                          style={{
-                            backgroundColor: "#f8f9fa",
-                            border: "1px solid #e9ecef",
-                            borderRadius: "6px",
-                            padding: "12px",
-                            marginBottom: "8px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              color: "#495057",
-                              marginBottom: "8px",
-                              display: "flex",
-                              alignItems: "center",
-                            }}
-                          >
+                        <div className="code-block">
+                          <div className="code-block-title">
                             <Icon.Code size={16} className="mr-2" />
                             Code ({part.executableCode.language})
                           </div>
-                          <SyntaxHighlighter
-                            language={
-                              part.executableCode.language.toLowerCase() ||
-                              "javascript"
-                            }
-                            style={vscDarkPlus}
-                            customStyle={{
-                              borderRadius: "4px",
-                              margin: 0,
-                              fontSize: "0.9em",
-                              padding: "12px",
-                            }}
-                          >
-                            {part.executableCode.code}
-                          </SyntaxHighlighter>
+                          <CodeBlock
+                            language={part.executableCode.language.toLowerCase() || "javascript"}
+                            code={part.executableCode.code}
+                          />
                         </div>
                       </div>
                     );
@@ -227,58 +403,8 @@ function ConversationHistory({
                       <div
                         key={partIndex}
                         className="execution-result-part"
-                        style={{ marginTop: "8px" }}
                       >
-                        <div
-                          style={{
-                            backgroundColor: "#f8f9fa",
-                            border: "1px solid #e9ecef",
-                            borderRadius: "6px",
-                            padding: "12px",
-                            marginBottom: "8px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              color: "#495057",
-                              marginBottom: "8px",
-                              display: "flex",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Icon.Terminal size={16} className="mr-2" />
-                            Execution Result (
-                            {part.codeExecutionResult.outcome === "OUTCOME_OK"
-                              ? "Success"
-                              : "Error"}
-                            )
-                          </div>
-                          <pre
-                            style={{
-                              backgroundColor:
-                                part.codeExecutionResult.outcome ===
-                                "OUTCOME_OK"
-                                  ? "#f8fff8"
-                                  : "#fff8f8",
-                              color: "#495057",
-                              padding: "12px",
-                              borderRadius: "4px",
-                              overflowX: "auto",
-                              fontFamily: "monospace",
-                              fontSize: "0.9em",
-                              border: `1px solid ${
-                                part.codeExecutionResult.outcome ===
-                                "OUTCOME_OK"
-                                  ? "#d4edda"
-                                  : "#f5c6cb"
-                              }`,
-                              margin: 0,
-                            }}
-                          >
-                            {part.codeExecutionResult.output}
-                          </pre>
-                        </div>
+                        <CodeExecutionResult result={part.codeExecutionResult} />
                       </div>
                     );
                   }
@@ -294,38 +420,16 @@ function ConversationHistory({
                     return (
                       <div
                         key={partIndex}
-                        style={{ margin: "10px 0", textAlign: "center" }}
+                        className="image-container-wrapper"
                       >
-                        <div
-                          style={{
-                            backgroundColor: "#f8f9fa",
-                            border: "1px solid #e9ecef",
-                            borderRadius: "6px",
-                            padding: "12px",
-                            marginBottom: "8px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontWeight: "bold",
-                              color: "#495057",
-                              marginBottom: "8px",
-                              display: "flex",
-                              alignItems: "center",
-                            }}
-                          >
+                        <div className="code-block">
+                          <div className="code-block-title">
                             <Icon.Image size={16} className="mr-2" />
                             Generated Image
                           </div>
-                          <img
-                            src={imageSrc}
+                          <InlineImage 
+                            dataUrl={imageSrc}
                             alt="Model generated image"
-                            style={{
-                              maxWidth: "100%",
-                              maxHeight: "400px",
-                              borderRadius: "4px",
-                              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                            }}
                           />
                         </div>
                       </div>
@@ -336,118 +440,19 @@ function ConversationHistory({
                   if (isThought) {
                     return (
                       <div key={partIndex} className="thought-part">
-                        <div
-                          style={{
-                            background: "#f8f9fa",
-                            border: "1px dashed #adb5bd",
-                            borderRadius: "4px",
-                            padding: "8px 12px",
-                            marginBottom: "8px",
-                            fontSize: "0.9em",
-                            fontStyle: "italic",
-                          }}
-                        >
-                          <span
-                            style={{ color: "#6c757d", fontWeight: "bold" }}
-                          >
-                            Thought:
-                          </span>
-                          {isEditing ? (
-                            <div>
-                              <textarea
-                                value={editingText}
-                                onChange={(e) =>
-                                  onEditingTextChange(e.target.value)
-                                }
-                                style={{
-                                  width: "100%",
-                                  minHeight: "80px",
-                                  maxWidth: "100%",
-                                  minWidth: "100%",
-                                  border: "1px solid #007bff",
-                                  borderRadius: "4px",
-                                  padding: "8px",
-                                  fontSize: "0.9em",
-                                  fontStyle: "italic",
-                                  fontFamily: "inherit",
-                                }}
-                                placeholder="Edit your content here..."
-                              />
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: "8px",
-                                  marginTop: "8px",
-                                }}
-                              >
-                                <button
-                                  onClick={onSave}
-                                  style={{
-                                    backgroundColor: "#28a745",
-                                    color: "white",
-                                    border: "none",
-                                    borderRadius: "4px",
-                                    padding: "4px 8px",
-                                    cursor: "pointer",
-                                    fontSize: "12px",
-                                  }}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  onClick={onCancel}
-                                  style={{
-                                    backgroundColor: "#6c757d",
-                                    color: "white",
-                                    border: "none",
-                                    borderRadius: "4px",
-                                    padding: "4px 8px",
-                                    cursor: "pointer",
-                                    fontSize: "12px",
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() =>
-                                  onEdit(index, partIndex, part.text)
-                                }
-                                style={{
-                                  float: "right",
-                                  backgroundColor: "#e3f2fd",
-                                  color: "#1976d2",
-                                  border: "1px solid #bbdefb",
-                                  borderRadius: "4px",
-                                  cursor: "pointer",
-                                  marginLeft: "8px",
-                                  fontSize: "12px",
-                                  padding: "4px 8px",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  minWidth: "28px",
-                                  height: "28px",
-                                  transition: "all 0.2s ease",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.backgroundColor = "#bbdefb";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.backgroundColor = "#e3f2fd";
-                                }}
-                                title="Edit"
-                              >
-                                <Icon.Pencil size={14} />
-                              </button>
-                              <Markdown remarkPlugins={[remarkGfm]}>
-                                {part.text}
-                              </Markdown>
-                            </>
-                          )}
+                        <div className="thought-block">
+                          <span className="thought-label">Thought:</span>
+                          <TextPart
+                            text={part.text}
+                            isEditing={isEditing}
+                            editingText={editingText}
+                            onEditingTextChange={onEditingTextChange}
+                            onSave={onSave}
+                            onCancel={onCancel}
+                            onEdit={() => onEdit(index, partIndex, part.text)}
+                            isThought={true}
+                            position="right"
+                          />
                         </div>
                       </div>
                     );
@@ -456,105 +461,18 @@ function ConversationHistory({
                       <div
                         key={partIndex}
                         className="response-part"
-                        style={{ position: "relative" }}
                       >
-                        {isEditing ? (
-                          <div>
-                            <textarea
-                              value={editingText}
-                              onChange={(e) =>
-                                onEditingTextChange(e.target.value)
-                              }
-                              style={{
-                                width: "100%",
-                                minHeight: "80px",
-                                maxWidth: "100%",
-                                minWidth: "100%",
-                                border: "1px solid #007bff",
-                                borderRadius: "4px",
-                                padding: "8px",
-                                fontSize: "0.9em",
-                                fontFamily: "inherit",
-                              }}
-                              placeholder="Edit your content here..."
-                            />
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: "8px",
-                                marginTop: "8px",
-                              }}
-                            >
-                              <button
-                                onClick={onSave}
-                                style={{
-                                  backgroundColor: "#28a745",
-                                  color: "white",
-                                  border: "none",
-                                  borderRadius: "4px",
-                                  padding: "4px 8px",
-                                  cursor: "pointer",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                Save
-                              </button>
-                              <button
-                                onClick={onCancel}
-                                style={{
-                                  backgroundColor: "#6c757d",
-                                  color: "white",
-                                  border: "none",
-                                  borderRadius: "4px",
-                                  padding: "4px 8px",
-                                  cursor: "pointer",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() =>
-                                onEdit(index, partIndex, part.text)
-                              }
-                              style={{
-                                float: "right",
-                                backgroundColor: "#e3f2fd",
-                                color: "#1976d2",
-                                border: "1px solid #bbdefb",
-                                borderRadius: "4px",
-                                cursor: "pointer",
-                                marginLeft: "8px",
-                                fontSize: "12px",
-                                padding: "4px 8px",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                minWidth: "28px",
-                                height: "28px",
-                                transition: "all 0.2s ease",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor =
-                                  "#bbdefb";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor =
-                                  "#e3f2fd";
-                              }}
-                              title="Edit"
-                            >
-                              <Icon.Pencil size={14} />
-                            </button>
-                            <Markdown remarkPlugins={[remarkGfm]}>
-                              {part.text}
-                            </Markdown>
-                          </>
-                        )}
+                        <TextPart
+                          text={part.text}
+                          isEditing={isEditing}
+                          editingText={editingText}
+                          onEditingTextChange={onEditingTextChange}
+                          onSave={onSave}
+                          onCancel={onCancel}
+                          onEdit={() => onEdit(index, partIndex, part.text)}
+                          isThought={false}
+                          position="right"
+                        />
                       </div>
                     );
                   }
@@ -566,33 +484,8 @@ function ConversationHistory({
                   // If it's a PDF, show a placeholder instead of the actual content
                   if (part.inline_data.mime_type === "application/pdf") {
                     return (
-                      <div key={partIndex} style={{ margin: "10px 0" }}>
-                        <div
-                          style={{
-                            padding: "16px",
-                            border: "1px solid #ddd",
-                            borderRadius: "4px",
-                            backgroundColor: "#f8f9fa",
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                        >
-                          <Icon.FileEarmarkPdf
-                            size={32}
-                            color="#dc3545"
-                            style={{ marginRight: "12px" }}
-                          />
-                          <div>
-                            <div
-                              style={{ fontWeight: "500", marginBottom: "4px" }}
-                            >
-                              PDF Document Uploaded
-                            </div>
-                            <div style={{ fontSize: "12px", color: "#666" }}>
-                              A PDF file has been uploaded here.
-                            </div>
-                          </div>
-                        </div>
+                      <div key={partIndex} className="pdf-container">
+                        <PdfPlaceholder />
                       </div>
                     );
                   }
@@ -600,128 +493,36 @@ function ConversationHistory({
                   else {
                     const imageSrc = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
                     return (
-                      <div
+                      <InlineImage
                         key={partIndex}
-                        style={{ margin: "10px 0", textAlign: "center" }}
-                      >
-                        <img
-                          src={imageSrc}
-                          alt="User uploaded image"
-                          style={{
-                            maxWidth: "100%",
-                            maxHeight: "400px",
-                            borderRadius: "4px",
-                            boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                          }}
-                        />
-                      </div>
+                        dataUrl={imageSrc}
+                        alt="User uploaded image"
+                      />
                     );
                   }
                 }
                 // For user messages with text, display normally
                 else if (part.text) {
                   return (
-                    <div key={partIndex} style={{ position: "relative" }}>
-                      {isEditing ? (
-                        <div>
-                          <textarea
-                            value={editingText}
-                            onChange={(e) =>
-                              onEditingTextChange(e.target.value)
-                            }
-                            style={{
-                              width: "100%",
-                              minHeight: "80px",
-                              maxWidth: "100%",
-                              minWidth: "100%",
-                              border: "1px solid #007bff",
-                              borderRadius: "4px",
-                              padding: "8px",
-                              fontSize: "0.9em",
-                              fontFamily: "inherit",
-                            }}
-                            placeholder="Edit your content here..."
-                          />
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: "8px",
-                              marginTop: "8px",
-                            }}
-                          >
-                            <button
-                              onClick={onSave}
-                              style={{
-                                backgroundColor: "#28a745",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "4px 8px",
-                                cursor: "pointer",
-                                fontSize: "12px",
-                              }}
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={onCancel}
-                              style={{
-                                backgroundColor: "#6c757d",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "4px 8px",
-                                cursor: "pointer",
-                                fontSize: "12px",
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => onEdit(index, partIndex, part.text)}
-                            style={{
-                              float: "left",
-                              backgroundColor: "#e3f2fd",
-                              color: "#1976d2",
-                              border: "1px solid #bbdefb",
-                              borderRadius: "4px",
-                              cursor: "pointer",
-                              marginRight: "8px",
-                              fontSize: "12px",
-                              padding: "4px 8px",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              minWidth: "28px",
-                              height: "28px",
-                              transition: "all 0.2s ease",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.target.style.backgroundColor = "#bbdefb";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.target.style.backgroundColor = "#e3f2fd";
-                            }}
-                            title="Edit"
-                          >
-                            <Icon.Pencil size={14} />
-                          </button>
-                          <Markdown remarkPlugins={[remarkGfm]}>
-                            {part.text}
-                          </Markdown>
-                        </>
-                      )}
+                    <div key={partIndex} className="response-part">
+                      <TextPart
+                        text={part.text}
+                        isEditing={isEditing}
+                        editingText={editingText}
+                        onEditingTextChange={onEditingTextChange}
+                        onSave={onSave}
+                        onCancel={onCancel}
+                        onEdit={() => onEdit(index, partIndex, part.text)}
+                        isThought={false}
+                        position="left"
+                      />
                     </div>
                   );
                 }
                 return null;
               })}
-            {/* 渲染 grounding 数据（如果存在） */}
-            {content.role === "model" && renderGroundingData(content)}
+            {/* Render grounding data (if exists) */}
+            {content.role === "model" && <GroundingData groundingChunks={content.groundingChunks} />}
           </div>
         );
       })}
