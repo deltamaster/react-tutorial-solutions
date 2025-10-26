@@ -11,11 +11,17 @@ function Memory() {
   const [editingValue, setEditingValue] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // Load all memories
-  const loadMemories = () => {
-    const loadedMemories = memoryService.getAllMemories();
-    setMemories(loadedMemories);
+  const loadMemories = async () => {
+    try {
+      const loadedMemories = await memoryService.getAllMemories();
+      setMemories(loadedMemories);
+    } catch (err) {
+      console.error('Error loading memories:', err);
+      setError('Failed to load memories');
+    }
   };
 
   // Load memories on initialization and listen for memory changes
@@ -39,42 +45,48 @@ function Memory() {
   }, []);
 
   // Add new memory
-  const handleAddMemory = (e) => {
+  const handleAddMemory = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setLoading(true);
 
     if (!newMemoryValue.trim()) {
       setError('Memory value cannot be empty');
+      setLoading(false);
       return;
     }
 
     try {
       // Generate random UUID for memory key
       const memoryKey = crypto.randomUUID();
-      memoryService.setMemory(memoryKey, newMemoryValue.trim());
+      await memoryService.setMemory(memoryKey, newMemoryValue.trim());
       setNewMemoryValue('');
       setSuccess('Memory added successfully');
       // No need to manually call loadMemories, as memoryService will trigger event notifications
     } catch (err) {
       setError('Failed to add memory');
       console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Update memory
-  const handleUpdateMemory = (e) => {
+  const handleUpdateMemory = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setLoading(true);
 
     if (!editingValue.trim()) {
       setError('Memory value cannot be empty');
+      setLoading(false);
       return;
     }
 
     try {
-      memoryService.setMemory(editingKey, editingValue.trim());
+      await memoryService.setMemory(editingKey, editingValue.trim());
       setEditingKey(null);
       setEditingValue('');
       setSuccess('Memory updated successfully');
@@ -82,14 +94,16 @@ function Memory() {
     } catch (err) {
       setError('Failed to update memory');
       console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Delete memory
-  const handleDeleteMemory = (key) => {
+  const handleDeleteMemory = async (key) => {
     if (window.confirm(`Are you sure you want to delete memory: ${key}?`)) {
       try {
-          memoryService.deleteMemory(key);
+          await memoryService.deleteMemory(key);
           setSuccess('Memory deleted successfully');
           // No need to manually call loadMemories, as memoryService will trigger event notifications
         } catch (err) {
@@ -112,10 +126,10 @@ function Memory() {
   };
 
   // Clear all memories
-  const clearAllMemories = () => {
+  const clearAllMemories = async () => {
     if (window.confirm('Are you sure you want to delete all memories? This action cannot be undone.')) {
       try {
-          memoryService.clearAllMemories();
+          await memoryService.clearAllMemories();
           setSuccess('All memories deleted successfully');
           // No need to manually call loadMemories, as memoryService will trigger event notifications
         } catch (err) {
@@ -139,31 +153,39 @@ function Memory() {
   };
 
   // Upload memory data
-  const uploadMemory = (event) => {
+  const uploadMemory = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const memoryData = JSON.parse(e.target.result);
-        
-        // Clear existing memories before uploading new ones
-        memoryService.clearAllMemories();
-        
-        // Add each memory from the uploaded file
-        Object.entries(memoryData).forEach(([key, value]) => {
-          memoryService.setMemory(key, value);
-        });
-        
-        setSuccess('Memory data uploaded successfully');
-        event.target.value = '';
-      } catch (error) {
-        setError('Failed to upload memory data. Please provide a valid JSON file.');
-        console.error('Error parsing uploaded file:', error);
+    try {
+      setLoading(true);
+      // Create a Promise to handle the FileReader async operation
+      const fileContent = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+      });
+      
+      // Parse the JSON data
+      const memoryData = JSON.parse(fileContent);
+      
+      // Clear existing memories before uploading new ones
+      await memoryService.clearAllMemories();
+      
+      // Add each memory from the uploaded file
+      for (const [key, value] of Object.entries(memoryData)) {
+        await memoryService.setMemory(key, value);
       }
-    };
-    reader.readAsText(file);
+      
+      setSuccess('Memory data uploaded successfully');
+      event.target.value = '';
+    } catch (error) {
+      setError('Failed to upload memory data. Please provide a valid JSON file.');
+      console.error('Error uploading memory data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

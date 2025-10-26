@@ -106,15 +106,16 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   ];
   
-  // Extract all memories from localStorage and include them in the prompt.
-  const memories = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key.startsWith("memory-")) {
-      memories[key.substring("memory-".length)] = localStorage.getItem(key);
-    }
+  // Extract all memories from storage service and include them in the prompt.
+  let memoryText = '';
+  try {
+    const memories = await memoryService.getAllMemories();
+    memoryText = Object.entries(memories).map(([key, value]) => `Memory ${key}: ${value}`).join('\n');
+  } catch (error) {
+    console.error('Error fetching memories:', error);
+    // Default to empty memory text if there's an error
+    memoryText = '';
   }
-  const memoryText = Object.entries(memories).map(([key, value]) => `Memory ${key}: ${value}`).join('\n');
   
   // Get the system prompt for the specified role, defaulting to 'general'
   const roleConfig = ROLE_CONFIGS[role] || ROLE_CONFIGS.general;
@@ -221,19 +222,38 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
     });
     
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => null);
+      // Try to get error details, but don't fail if response isn't JSON
       let errMsg = "";
-      if (errorBody && errorBody.error.message) {
-        errMsg = errorBody.error.message;
+      try {
+        const errorBody = await response.text();
+        if (errorBody) {
+          try {
+            // Attempt to parse as JSON
+            const parsedError = JSON.parse(errorBody);
+            errMsg = parsedError.error?.message || errorBody;
+          } catch (e) {
+            // If not JSON, use the text directly
+            errMsg = errorBody;
+          }
+        }
+      } catch (e) {
+        // If we can't even get text, use default error
+        errMsg = "Unknown error occurred";
       }
       throw new Error(
         `API request failed with status ${response.status} and type ${response.type} (${errMsg})`
       );
     }
     
-    return await response.json();
+    // Check if response is empty before parsing JSON
+    const responseText = await response.text();
+    if (!responseText.trim()) {
+      return { success: true, data: null }; // Return a default object for empty responses
+    }
+    
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error(error);
+    console.error("API request error:", error);
     throw error;
   }
 };
