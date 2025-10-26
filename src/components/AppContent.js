@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from 'react';
 import AvatarSettings from './AvatarSettings';
 import Button from "react-bootstrap/Button";
 import Alert from "react-bootstrap/Alert";
@@ -22,12 +22,76 @@ import ApiKeyInput from './ApiKeyInput';
 // Main application content component
 function AppContent() {
   const [subscriptionKey, setSubscriptionKey] = useLocalStorage("subscriptionKey", "");
+
+  // 从Chrome storage获取API密钥
+  useEffect(() => {
+    // 检查是否在Chrome扩展环境中
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.sync.get(['apiKey'], (result) => {
+        if (result.apiKey) {
+          setSubscriptionKey(result.apiKey);
+        }
+      });
+    }
+  }, []);
+
+  // 当subscriptionKey变化时，同时更新到Chrome storage
+  useEffect(() => {
+    if (subscriptionKey && typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.sync.set({ apiKey: subscriptionKey });
+    }
+  }, [subscriptionKey]);
   const [conversation, setConversation] = useLocalStorage('conversation', []);
   const [systemPrompt, setSystemPrompt] = useLocalStorage('systemPrompt', 'You are a helpful assistant.');
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [question, setQuestion] = useState('');
+
+  // 从Chrome storage API获取内容并填充到问题输入框
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const contentStored = urlParams.get('content') === 'stored';
+    
+    if (contentStored && typeof chrome !== 'undefined' && chrome.storage) {
+      // 从Chrome storage获取内容
+      chrome.storage.local.get(['pageContent', 'contentTimestamp'], (result) => {
+        if (result.pageContent && result.contentTimestamp) {
+          // 检查内容是否是最近5分钟内存储的，避免使用过期内容
+          const now = Date.now();
+          const fiveMinutes = 5 * 60 * 1000;
+          
+          if (now - result.contentTimestamp < fiveMinutes) {
+            // 使用存储的内容
+            setQuestion(result.pageContent.content);
+            
+            // 内容使用后清理存储，避免下次打开时重复使用
+            chrome.storage.local.remove(['pageContent', 'contentTimestamp']);
+          } else {
+            console.log('Stored content is too old, ignoring');
+          }
+        }
+      });
+    } else {
+      // 兼容处理：如果不是从右键菜单打开，或者不支持chrome.storage
+      // 仍然尝试从URL参数获取内容（用于测试或其他情况）
+      const markdownContent = urlParams.get('markdown');
+      const htmlContent = urlParams.get('html');
+      
+      // 优先使用markdown内容，如果没有则使用html内容
+      let content = markdownContent || htmlContent;
+      
+      if (content) {
+        try {
+          // 解码URL编码的内容
+          const decodedContent = decodeURIComponent(content);
+          setQuestion(decodedContent);
+        } catch (error) {
+          console.error('Error decoding content from URL:', error);
+        }
+      }
+    }
+  }, []);
   const [nextQuestionLoading, setNextQuestionLoading] = useState(false);
   const [currentTab, setCurrentTab] = useState('chatbot');
   const [editingIndex, setEditingIndex] = useState(null);

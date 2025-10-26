@@ -4,13 +4,16 @@
   "version": "1.0",
   "description": "A Q&A assistant with conversation history and role switching",
   "action": {
-    "default_popup": "popup.html",
+    "default_title": "QnA Assistant",
     "default_icon": {
       "16": "favicon-16x16.png",
       "32": "favicon-32x32.png",
       "48": "favicon-32x32.png",
       "128": "favicon-32x32.png"
     }
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "icons": {
     "16": "favicon-16x16.png",
@@ -19,7 +22,10 @@
     "128": "favicon-32x32.png"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "contextMenus",
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://jp-gw2.azure-api.net/*"
