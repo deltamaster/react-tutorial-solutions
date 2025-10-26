@@ -412,8 +412,13 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
               </div>
             ) : (
               <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', marginBottom: '8px'}}>
-                <img src="/avator-adrien.jpg" alt="Adrien" className="avatar" style={{width: '48px', height: '48px', borderRadius: '25%', marginRight: '8px'}} />
-                <p style={{margin: '0', fontWeight: '500'}}>Adrien: </p>
+                <img 
+                  src={content.name === 'Belinda' ? '/avatar-belinda.jpg' : '/avator-adrien.jpg'} 
+                  alt={content.name || 'Assistant'} 
+                  className="avatar" 
+                  style={{width: '48px', height: '48px', borderRadius: '25%', marginRight: '8px'}} 
+                />
+                <p style={{margin: '0', fontWeight: '500'}}>{content.name || 'Adrien'}: </p>
               </div>
             )}
 

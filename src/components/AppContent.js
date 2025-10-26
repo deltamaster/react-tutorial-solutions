@@ -131,9 +131,10 @@ function AppContent() {
       
       // Use a loop to handle multiple function calls
       let hasFunctionCalls = true;
+      let shouldSwitchRole = false;
       let currentRole = "general";
       
-      while (hasFunctionCalls) {
+      while (hasFunctionCalls || shouldSwitchRole) {
         // Make API request with current conversation state
         const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey, systemPrompt, currentRole);
         
@@ -148,8 +149,10 @@ function AppContent() {
           // Always create a bot response with text parts (if any)
           if (textParts.length > 0) {
             // 创建 bot 响应，包含 groundingChunks 和 groundingSupports（如果存在）
+            // 添加name字段以区分不同角色，但保持role为'model'以确保API兼容性
             const botResponse = {
               role: "model",
+              name: currentRole === 'searcher' ? 'Belinda' : 'Adrien',
               parts: textParts,
               // 添加 grounding 数据到响应中，但这些数据不会被传递到下次请求
               groundingChunks: responseData.candidates[0]?.groundingMetadata?.groundingChunks || [],
@@ -167,17 +170,6 @@ function AppContent() {
             // Execute each function call
             for (const functionCallPart of functionCallParts) {
               const { name, args } = functionCallPart.functionCall;
-              if (name === 'switch_role') {
-                // Handle role switch
-                if (args.role === 'searcher') {
-                  // For searcher role, include google_search tool
-                  currentRole = args.role;
-                } else {
-                  console.log('Invalid role specified in switch_role function call');
-                  currentRole = "general";
-                }
-                continue;
-              }
               if (toolbox[name]) {
                 const result = toolbox[name](args);
                 functionResults.push({ name, result });
@@ -200,6 +192,23 @@ function AppContent() {
             hasFunctionCalls = false;
             currentRole = "general";
           }
+
+          // 遍历所有文本部分，查找@userName格式的标记
+          textParts.forEach(part => {
+            if (part.text) {
+              // 检查是否包含@Belinda或@Adrien标记
+              if (part.text.includes('@Belinda')) {
+                currentRole = 'searcher'; // Belinda对应searcher角色
+                shouldSwitchRole = true;
+              } else if (part.text.includes('@Adrien')) {
+                currentRole = 'general'; // Adrien对应general角色
+                shouldSwitchRole = true;
+              }
+              else {
+                shouldSwitchRole = false;
+              }
+            }
+          });
         } else {
           // No valid content, exit loop
           hasFunctionCalls = false;

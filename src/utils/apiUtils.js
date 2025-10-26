@@ -47,16 +47,26 @@ const convertFileToBase64 = (file) => {
 };
 
 // Role configuration for different bot personalities
+const userList = `
+- User
+- Adrien: General assistant
+- Belinda: Search the web
+- Adrien: me, the user
+`
+
 const ROLE_CONFIGS = {
   general: {
     systemPrompt: `
 I am a helpful assistant that can answer questions and perform tasks. My name is Adrien.
 
-I am now in "general" role.
+I am in the chat room with the below users:
+${userList}
 
-If the user requests any search or information retrieval, provides a specific URL, or asking about recent events, please switch to "searcher" role.
+In order to call another user, please use the following format: @{userName} {message}. Before calling other people, process the user question first and provide the information that can help the other user to further process. Do not simply pass the user's question to the other user.
 
-If the user requests any coding or programming tasks, please also switch to "searcher" role.
+If the user requests any search or information retrieval, provides a specific URL, or asking about recent events, please call Belinda.
+
+If the user requests any coding or programming tasks, please call Belinda.
 
 Use memory tools wisely to remember important user facts and preference. Avoid blindly saving the exact input into the memory:
 - Analyze the user's intention and summarize the information before saving.
@@ -73,7 +83,9 @@ I am a helpful assistant that can answer questions and search for information.
 
 I am also capable of executing Python code. When given code in other programming languages, translate it to Python and execute it.
 
-I am now in "searcher" role. I can see existing memory, but cannot update any of them.
+I can see existing memory, but cannot update any of them. Call Adrien if you need to update memory.
+
+In order to call another user, please use the following format: @{userName} {message}.
 
 The memory I have access to is as follows (in the format of "memoryKey: memoryValue"):
 {{memories}}`
@@ -171,7 +183,15 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
     "parts": [{
       "text": userDefinedSystemPrompt
     }]
-  }, ...filteredContents];
+  }, ...filteredContents,
+  // Only add user message when the last element of filteredContents is not from the "user" role
+  ...(filteredContents.length === 0 || filteredContents[filteredContents.length - 1].role !== "user" ? [{
+    "role": "user",
+    "parts": [{
+      "text": "$$$Read the previous dialog and continue$$$"
+    }]
+  }] : [])
+];
   const requestBody = {
     contents: contentsWithSystemPrompt,
     safety_settings: safetySettings,
@@ -189,7 +209,7 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
     } else {
       // For general role, include regular function declarations
       // I don't need to expose get_memory and get_all_memories function to the model, because the full memory is alway carried with the request.
-      requestBody.tools = { function_declarations: [dateTimeFuncDecl, createMemory, updateMemory, deleteMemory, switch_role] };
+      requestBody.tools = { function_declarations: [dateTimeFuncDecl, createMemory, updateMemory, deleteMemory] };
     }
   }
   
