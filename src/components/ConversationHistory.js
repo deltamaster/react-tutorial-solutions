@@ -168,6 +168,9 @@ const PdfPlaceholder = () => {
 
 // Reusable component: Text part component
 const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, onCancel, onEdit, isThought = false, position = 'right' }) => {
+  // State to track if thought is expanded
+  const [isExpanded, setIsExpanded] = useState(false);
+  
   if (isEditing) {
     return (
       <EditForm
@@ -180,6 +183,42 @@ const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, o
     );
   }
   
+  // For thoughts, implement expandable behavior
+  if (isThought) {
+    // Split text to get the first line
+    const firstLine = text.split('\n')[0];
+    const hasMoreContent = text.includes('\n');
+    
+    const toggleExpand = () => {
+      setIsExpanded(!isExpanded);
+    };
+    
+    return (
+      <>
+        <EditButton
+          onClick={onEdit}
+          position={position}
+        />
+        <div 
+          className="markdown-content thought-content"
+          onClick={hasMoreContent ? toggleExpand : undefined}
+          style={{ cursor: hasMoreContent ? 'pointer' : 'default' }}
+        >
+          {!isExpanded && hasMoreContent ? (
+            <>
+              <div className="thought-first-line">{renderTextContent(firstLine)}</div>
+              <div className="thought-fade-effect"></div>
+              <div className="thought-expand-hint">Click to expand...</div>
+            </>
+          ) : (
+            renderTextContent(text)
+          )}
+        </div>
+      </>
+    );
+  }
+  
+  // Regular text part rendering
   return (
     <>
       <EditButton
@@ -383,6 +422,8 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
               content.parts.map((part, partIndex) => {
                 // Check if this part contains thoughts
                 const isThought = part.thought === true;
+                
+                              // Thoughts are now handled with expandable UI instead of being hidden completely
 
                 // Check if this part is being edited
                 const isEditing =

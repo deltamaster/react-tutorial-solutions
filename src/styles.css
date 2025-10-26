@@ -49,6 +49,34 @@ input[type="password"]:focus {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+/* Thought expansion styles */
+.thought-content {
+  position: relative;
+}
+
+.thought-first-line {
+  margin-bottom: 10px;
+}
+
+.thought-fade-effect {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, #f8f9fa);
+  pointer-events: none;
+}
+
+.thought-expand-hint {
+  font-style: italic;
+  color: #6c757d;
+  font-size: 0.9em;
+  margin-top: 5px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .user,
 .Me {
   display: block;
