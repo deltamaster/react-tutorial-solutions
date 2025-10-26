@@ -50,7 +50,7 @@ const convertFileToBase64 = (file) => {
 const ROLE_CONFIGS = {
   general: {
     systemPrompt: `
-I am a helpful assistant that can answer questions and perform tasks.
+I am a helpful assistant that can answer questions and perform tasks. My name is Adrien.
 
 I am now in "general" role.
 

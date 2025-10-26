@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import * as Icon from "react-bootstrap-icons";
@@ -269,19 +269,28 @@ const renderTextContent = (text) => {
 };
 
 // Conversation history component
-function ConversationHistory({
-  history,
-  onDelete,
-  onEdit,
-  editingIndex,
-  editingPartIndex,
-  editingText,
-  onEditingTextChange,
-  onSave,
-  onCancel,
-}) {
-  // Render mermaid diagrams when the component updates
-  useEffect(() => {
+function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingPartIndex, editingText, onEditingTextChange, onSave, onCancel }) {
+    // Add state to track avatar changes
+    const [userAvatar, setUserAvatar] = useState(localStorage.getItem('userAvatar') || 'male');
+    
+    // Update avatar state when localStorage changes or avatarChange event is triggered
+    useEffect(() => {
+      const handleAvatarChange = () => {
+        setUserAvatar(localStorage.getItem('userAvatar') || 'male');
+      };
+      
+      // Listen for both custom avatarChange event and storage events
+      window.addEventListener('avatarChange', handleAvatarChange);
+      window.addEventListener('storage', handleAvatarChange);
+      
+      return () => {
+        window.removeEventListener('avatarChange', handleAvatarChange);
+        window.removeEventListener('storage', handleAvatarChange);
+      };
+    }, []);
+    
+    // Render mermaid diagrams when the component updates
+    useEffect(() => {
     // Debug log
     console.log('useEffect for mermaid rendering triggered');
     
@@ -359,9 +368,14 @@ function ConversationHistory({
             </button>
 
             {content.role === "user" ? (
-              <p className="message-header">You: </p>
+              <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', marginBottom: '8px'}}>
+                <img src={userAvatar === 'female' ? '/avatar-user-female.jpg' : '/avatar-user-male.jpg'} alt="You" className="avatar" style={{width: '48px', height: '48px', borderRadius: '25%', marginRight: '8px'}} />
+              </div>
             ) : (
-              <p className="message-header">Bot: </p>
+              <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', marginBottom: '8px'}}>
+                <img src="/avator-adrien.jpg" alt="Adrien" className="avatar" style={{width: '48px', height: '48px', borderRadius: '25%', marginRight: '8px'}} />
+                <p style={{margin: '0', fontWeight: '500'}}>Adrien: </p>
+              </div>
             )}
 
             {content.parts &&

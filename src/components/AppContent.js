@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AvatarSettings from './AvatarSettings';
 import Button from "react-bootstrap/Button";
 import Alert from "react-bootstrap/Alert";
 import Container from "react-bootstrap/Container";
@@ -23,7 +24,7 @@ function AppContent() {
   const [subscriptionKey, setSubscriptionKey] = useLocalStorage("subscriptionKey", "");
   const [conversation, setConversation] = useLocalStorage('conversation', []);
   const [systemPrompt, setSystemPrompt] = useLocalStorage('systemPrompt', 'You are a helpful assistant.');
-  const [showSystemPrompt, setShowSystemPrompt] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [question, setQuestion] = useState('');
@@ -426,13 +427,13 @@ function AppContent() {
                     transition: 'background-color 0.2s ease',
                     backgroundColor: '#f5f5f5ff'
                   }}
-                  onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+                  onClick={() => setShowSettings(!showSettings)}
                   onMouseEnter={(e) => e.target.style.backgroundColor = '#d4d4d4ff'}
                   onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5ff'}
                 >
-                  <span style={{ fontWeight: '500' }}>System Prompt Settings</span>
-                  <span style={{ display: 'flex', alignItems: 'center', color: '#6c757d', fontSize: '0.85em' }}>
-                    {showSystemPrompt ? (
+                  <span style={{ fontWeight: '500' }}>Settings</span>
+                  <span style={{ display: 'flex', alignItems: 'center', color: 'transparent', fontSize: '0.85em' }}>
+                    {showSettings ? (
                       <>
                         <Icon.ChevronUp size={16} className="mr-1" />
                         <span>Hide</span>
@@ -446,17 +447,24 @@ function AppContent() {
                   </span>
                 </h5>
               </div>
-              {showSystemPrompt && (
-                <>
-                  <textarea
-                    className="form-control"
-                    rows="3"
-                    value={systemPrompt}
-                    onChange={(e) => setSystemPrompt(e.target.value)}
-                    placeholder="Enter system prompt here..."
-                  />
-                  <small className="form-text text-muted">System prompts help define how the assistant behaves. Example: 'You are a helpful assistant specialized in technology.'</small>
-                </>
+              {showSettings && (
+                <div style={{ padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+                  <div style={{ marginBottom: '20px' }}>
+                    <h6 style={{ fontWeight: '500', marginBottom: '10px' }}>Avatar Selection</h6>
+                    <AvatarSettings />
+                  </div>
+                  <div>
+                    <h6 style={{ fontWeight: '500', marginBottom: '10px' }}>System Prompt</h6>
+                    <textarea
+                      className="form-control"
+                      rows="3"
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
+                      placeholder="Enter system prompt here..."
+                    />
+                    <small className="form-text text-muted">System prompts help define how the assistant behaves. Example: 'You are a helpful assistant specialized in technology.'</small>
+                  </div>
+                </div>
               )}
             </Col>
           </Row>
