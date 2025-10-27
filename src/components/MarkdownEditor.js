@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Row, Col, Card, Button, Form, Alert } from 'react-bootstrap';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -9,34 +9,73 @@ const MarkdownEditor = () => {
   const [markdown, setMarkdown] = useState('');
   const [lastUpdate, setLastUpdate] = useState(null);
   
-  // Load document content and last update timestamp on component mount
+  // Ref for the editor container to observe visibility
+  const editorRef = useRef(null);
+  const hasLoadedOnce = useRef(false);
+  
+  // Load document content function
+  const loadDocument = () => {
+    if (hasLoadedOnce.current) return; // Only load once when first visible
+    
+    console.log("Loading document content as editor becomes visible");
+    const content = coEditService.getDocumentContent();
+    const timestamp = coEditService.getLastUpdateTimestamp();
+    setMarkdown(content);
+    setLastUpdate(timestamp);
+    
+    // Set height after loading content
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+    
+    hasLoadedOnce.current = true;
+  };
+  
+  // Set up visibility observer to load document when editor becomes visible
   useEffect(() => {
-    const loadDocument = () => {
+    // Subscribe to document change events
+    const unsubscribe = coEditService.subscribe((action) => {
+      console.log(`MarkdownEditor received notification: ${action}`);
+      // Always reload when document content changes, regardless of visibility
       const content = coEditService.getDocumentContent();
       const timestamp = coEditService.getLastUpdateTimestamp();
       setMarkdown(content);
       setLastUpdate(timestamp);
-    };
-    
-    loadDocument();
-    
-    // Subscribe to document change events
-    const unsubscribe = coEditService.subscribe((action) => {
-      console.log(`MarkdownEditor received notification: ${action}`);
-      // Reload when document content changes
-      loadDocument();
     });
+    
+    // Set up Intersection Observer to detect when editor becomes visible
+    let observer = null;
+    if (editorRef.current) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (entry.isIntersecting) {
+            loadDocument();
+            // Once loaded, we can disconnect the observer if we only want to load once
+            // observer.disconnect();
+          }
+        },
+        {
+          rootMargin: '0px',
+          threshold: 0.1 // Trigger when 10% of the element is visible
+        }
+      );
+      
+      observer.observe(editorRef.current);
+    }
     
     // Cleanup function
     return () => {
-      console.log("Cleaning up MarkdownEditor subscription");
+      console.log("Cleaning up MarkdownEditor observer and subscription");
+      if (observer) {
+        observer.disconnect();
+      }
       if (unsubscribe) {
         unsubscribe();
       }
     };
   }, []);
-  
-  const [showSuccess, setShowSuccess] = useState(false);
   
   // Update document content whenever markdown changes
   useEffect(() => {
@@ -45,16 +84,10 @@ const MarkdownEditor = () => {
       const result = coEditService.setDocumentContent(markdown);
       if (result.success) {
         setLastUpdate(result.lastUpdated);
-        
-        // Show success message
-        setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 2000);
       }
     }
   }, [markdown]);
-  
 
-  
   // Clear the document
   const clearDocument = () => {
     if (window.confirm('Are you sure you want to clear the document?')) {
@@ -78,15 +111,12 @@ const MarkdownEditor = () => {
   // Initialize textarea height when component mounts or markdown changes
   React.useEffect(() => {
     if (textareaRef.current) {
-      // Reset height first
-      textareaRef.current.style.height = 'auto';
-      // Set height based on content
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
     }
   }, [markdown]);
   
   return (
-    <div className="markdown-editor">
+    <div className="markdown-editor" ref={editorRef}>
       <Row className="mb-3 justify-content-between align-items-center">
         <Col xs={12} md={6} className="mb-2 mb-md-0">
           <h5 className="mb-0">Co-Edit Markdown Document</h5>
