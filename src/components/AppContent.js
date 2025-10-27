@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Button from "react-bootstrap/Button";
 import Alert from "react-bootstrap/Alert";
 import Container from "react-bootstrap/Container";
@@ -101,6 +101,10 @@ function AppContent() {
   
   // State for controlling visibility of top settings
   const [showTopSettings, setShowTopSettings] = useState(false);
+  
+  // State for floating tabs visibility
+  const [showFloatingTabs, setShowFloatingTabs] = useState(false);
+  const tabsRef = useRef(null);
 
   // Generation configurations
   const generationConfig = {
@@ -455,6 +459,23 @@ function AppContent() {
     setEditingPartIndex(null);
     setEditingText('');
   };
+  
+  // Handle scroll to show/hide floating tabs
+  useEffect(() => {
+    const handleScroll = () => {
+      if (tabsRef.current) {
+        const tabsRect = tabsRef.current.getBoundingClientRect();
+        // Show floating tabs when tabs are not fully visible at the top
+        setShowFloatingTabs(tabsRect.top < 0);
+      }
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    // Initial check with timeout to ensure DOM is fully rendered
+    setTimeout(handleScroll, 100);
+    
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
     <Container className="App">
@@ -514,12 +535,13 @@ function AppContent() {
         </Col>
       </Row>
       
-      <Tabs 
-        activeKey={currentTab} 
-        onSelect={(tab) => setCurrentTab(tab)}
-        className="mb-3"
-        style={{ borderBottom: '1px solid #e9ecef' }}
-      >
+      <div ref={tabsRef}>
+        <Tabs 
+          activeKey={currentTab} 
+          onSelect={(tab) => setCurrentTab(tab)}
+          className="mb-3"
+          style={{ borderBottom: '1px solid #e9ecef' }}
+        >
         <Tab eventKey="chatbot" title="Chatbot">
           <Row className="mb-3">
             <Col xs={12} className="d-flex justify-content-end gap-2">
@@ -644,7 +666,47 @@ function AppContent() {
             </Col>
           </Row>
         </Tab>
-      </Tabs>
+        </Tabs>
+      </div>
+      
+      {/* Floating tabs buttons - appear when original tabs are scrolled out of view */}
+      {showFloatingTabs && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          padding: '10px 20px',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '10px'
+        }}>
+          <Button 
+            variant={currentTab === 'chatbot' ? 'primary' : 'outline-primary'}
+            size="sm"
+            onClick={() => setCurrentTab('chatbot')}
+          >
+            Chatbot
+          </Button>
+          <Button 
+            variant={currentTab === 'markdown' ? 'primary' : 'outline-primary'}
+            size="sm"
+            onClick={() => setCurrentTab('markdown')}
+          >
+            Co-Edit
+          </Button>
+          <Button 
+            variant={currentTab === 'memory' ? 'primary' : 'outline-primary'}
+            size="sm"
+            onClick={() => setCurrentTab('memory')}
+          >
+            Memory
+          </Button>
+        </div>
+      )}
     </Container>
   );
 }
