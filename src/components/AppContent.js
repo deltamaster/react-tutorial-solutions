@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import AvatarSettings from './AvatarSettings';
 import Button from "react-bootstrap/Button";
 import Alert from "react-bootstrap/Alert";
 import Container from "react-bootstrap/Container";
@@ -17,7 +16,7 @@ import FollowUpQuestions from './FollowUpQuestions';
 import Memory from './Memory';
 import { extractTextFromResponse, fetchFromApi, toolbox, ApiError } from '../utils/apiUtils';
 import { useLocalStorage } from '../utils/storageUtils';
-import ApiKeyInput from './ApiKeyInput';
+import Settings from './Settings';
 
 // Main application content component
 function AppContent() {
@@ -98,6 +97,9 @@ function AppContent() {
   const [editingPartIndex, setEditingPartIndex] = useState(null);
   const [editingText, setEditingText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  
+  // State for controlling visibility of top settings
+  const [showTopSettings, setShowTopSettings] = useState(false);
 
   // Generation configurations
   const generationConfig = {
@@ -453,10 +455,48 @@ function AppContent() {
     <Container className="App">
       <Row>
         <Col xs={12} className="mb-3 mt-3">
-          <ApiKeyInput 
-            subscriptionKey={subscriptionKey} 
-            setSubscriptionKey={setSubscriptionKey} 
-          />
+          {/* Settings toggle button */}
+          <div 
+            onClick={() => setShowTopSettings(!showTopSettings)}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 16px',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '8px',
+              border: '1px solid #e9ecef',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#e9ecef'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#f8f9fa'}
+          >
+            <h5 className="mb-0" style={{ fontWeight: '500' }}>Global Settings</h5>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              {showTopSettings ? (
+                <>
+                  <span className="mr-1" style={{ fontSize: '0.9em' }}>Hide</span>
+                  <Icon.ChevronUp size={16} />
+                </>
+              ) : (
+                <>
+                  <span className="mr-1" style={{ fontSize: '0.9em' }}>Show</span>
+                  <Icon.ChevronDown size={16} />
+                </>
+              )}
+            </div>
+          </div>
+          
+          {/* Settings section - conditionally rendered */}
+          {showTopSettings && (
+            <Settings 
+              subscriptionKey={subscriptionKey} 
+              setSubscriptionKey={setSubscriptionKey} 
+              systemPrompt={systemPrompt} 
+              setSystemPrompt={setSystemPrompt} 
+            />
+          )}
         </Col>
       </Row>
 
@@ -528,57 +568,8 @@ function AppContent() {
           </Row>
           <Row className="mb-3">
             <Col>
-              <div className="mb-2">
-                <h5 
-                  style={{ 
-                    cursor: 'pointer', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    transition: 'background-color 0.2s ease',
-                    backgroundColor: '#f5f5f5ff'
-                  }}
-                  onClick={() => setShowSettings(!showSettings)}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = '#d4d4d4ff'}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5ff'}
-                >
-                  <span style={{ fontWeight: '500' }}>Settings</span>
-                  <span style={{ display: 'flex', alignItems: 'center', color: 'transparent', fontSize: '0.85em' }}>
-                    {showSettings ? (
-                      <>
-                        <Icon.ChevronUp size={16} className="mr-1" />
-                        <span>Hide</span>
-                      </>
-                    ) : (
-                      <>
-                        <Icon.ChevronDown size={16} className="mr-1" />
-                        <span>Show</span>
-                      </>
-                    )}
-                  </span>
-                </h5>
-              </div>
-              {showSettings && (
-                <div style={{ padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
-                  <div style={{ marginBottom: '20px' }}>
-                    <h6 style={{ fontWeight: '500', marginBottom: '10px' }}>Avatar Selection</h6>
-                    <AvatarSettings />
-                  </div>
-                  <div>
-                    <h6 style={{ fontWeight: '500', marginBottom: '10px' }}>System Prompt</h6>
-                    <textarea
-                      className="form-control"
-                      rows="3"
-                      value={systemPrompt}
-                      onChange={(e) => setSystemPrompt(e.target.value)}
-                      placeholder="Enter system prompt here..."
-                    />
-                    <small className="form-text text-muted">System prompts help define how the assistant behaves. Example: 'You are a helpful assistant specialized in technology.'</small>
-                  </div>
-                </div>
-              )}
+
+
             </Col>
           </Row>
           <Row>

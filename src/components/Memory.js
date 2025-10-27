@@ -233,7 +233,7 @@ function Memory() {
             </h5>
             <Form onSubmit={handleAddMemory} className="mt-2">
               <Row>
-                <Col xs={12} md={11} className="mb-2">
+                <Col xs={12} md={10} className="mb-2">
                   <Form.Group controlId="memoryValue">
                     <Form.Label>Memory Value</Form.Label>
                     <Form.Control
@@ -249,7 +249,7 @@ function Memory() {
                     </Form.Text>
                   </Form.Group>
                 </Col>
-                <Col xs={12} md={1} className="mb-2 d-flex align-items-end">
+                <Col xs={12} md={2} className="mb-2 d-flex align-items-end">
                   <Button type="submit" variant="primary" className="w-100">
                     <Save size={16} />
                   </Button>
@@ -372,7 +372,7 @@ function Memory() {
                           <Col xs={12} md={7}>
                             <div className="text-muted">{value}</div>
                           </Col>
-                          <Col xs={12} md={2} className="d-flex gap-2">
+                          <Col xs={6} md={1} className="d-flex gap-2">
                             <Button 
                               variant="info" 
                               size="sm" 
@@ -380,8 +380,10 @@ function Memory() {
                               className="flex-grow-1"
                             >
                               <Pencil size={16} />
-                              Edit
+                              <br />Edit
                             </Button>
+                          </Col>
+                          <Col xs={6} md={1} className="d-flex gap-2">
                             <Button 
                               variant="danger" 
                               size="sm" 
@@ -389,7 +391,7 @@ function Memory() {
                               className="flex-grow-1"
                             >
                               <Trash size={16} />
-                              Delete
+                              <br />Delete
                             </Button>
                           </Col>
                         </Row>
