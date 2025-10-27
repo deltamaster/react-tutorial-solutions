@@ -486,6 +486,35 @@ textarea:focus {
   border-color: #c82333;
 }
 
+/* Close Button - Perfect Circle */
+.close-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background-color: #f8d7da;
+  color: #dc3545;
+  border: 2px solid #dc3545;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-sizing: border-box;
+  margin-left: auto;
+}
+
+.close-button:hover {
+  background-color: #dc3545;
+  color: white;
+  border-color: #c82333;
+}
+
 /* Edit Button */
 .edit-button {
   background-color: #e3f2fd;

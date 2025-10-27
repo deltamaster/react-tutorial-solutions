@@ -15,7 +15,7 @@ import QuestionInput from './QuestionInput';
 import LoadingSpinner from './LoadingSpinner';
 import FollowUpQuestions from './FollowUpQuestions';
 import Memory from './Memory';
-import { extractTextFromResponse, fetchFromApi, toolbox } from '../utils/apiUtils';
+import { extractTextFromResponse, fetchFromApi, toolbox, ApiError } from '../utils/apiUtils';
 import { useLocalStorage } from '../utils/storageUtils';
 import ApiKeyInput from './ApiKeyInput';
 
@@ -97,6 +97,7 @@ function AppContent() {
   const [editingIndex, setEditingIndex] = useState(null);
   const [editingPartIndex, setEditingPartIndex] = useState(null);
   const [editingText, setEditingText] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Generation configurations
   const generationConfig = {
@@ -309,8 +310,47 @@ function AppContent() {
         setNextQuestionLoading(false);
       }
     } catch (error) {
-      console.error(error);
-      alert('Failed to send message. Please try again.');
+      console.error('API Error:', error);
+      
+      // Handle ApiError with structured information
+      if (error instanceof ApiError) {
+        const { statusCode, errorType, message, details } = error;
+        
+        // Create a more user-friendly error message based on error type
+        let userMessage = '';
+        
+        switch (errorType) {
+          case 'validation_error':
+            userMessage = `Invalid input: ${message}`;
+            break;
+          case 'file_processing_error':
+            userMessage = `File processing error: ${message} (MIME type: ${details.mimeType || 'unknown'})`;
+            break;
+          case 'api_response_error':
+            userMessage = `Service error: ${message}`;
+            if (statusCode === 401 || statusCode === 403) {
+              userMessage += ' - Please check your API key';
+            }
+            break;
+          case 'network_error':
+            userMessage = `Network error: ${message || 'Please check your internet connection'}`;
+            break;
+          default:
+            userMessage = message;
+        }
+        
+        // Include status code if available
+        if (statusCode && statusCode !== 'Unknown') {
+          userMessage += ` (Status: ${statusCode})`;
+        }
+        
+        setErrorMessage(userMessage);
+      } else {
+        // Handle generic errors
+        const statusCode = error.statusCode || error.status || 'Unknown';
+        const errorMsg = error.message || 'Failed to send message';
+        setErrorMessage(`${errorMsg} (Status: ${statusCode})`);
+      }
     } finally {
       setLoading(false);
     }
@@ -563,6 +603,23 @@ function AppContent() {
                 onQuestionClick={handleFollowUpClick}
                 isLoading={nextQuestionLoading}
               />
+              
+              {/* 错误消息显示，带关闭按钮 */}
+              {errorMessage && (
+                <div className="mb-3 alert alert-danger alert-dismissible fade show" role="alert">
+                  {errorMessage}
+                  <button 
+                    type="button" 
+                    className="close-button" 
+                    data-dismiss="alert" 
+                    aria-label="Close"
+                    onClick={() => setErrorMessage('')}
+                  >
+                    <Icon.X size={14} />
+                  </button>
+                </div>
+              )}
+              
               {loading ? (
                 <LoadingSpinner />
               ) : (
