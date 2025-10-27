@@ -14,7 +14,8 @@ import QuestionInput from './QuestionInput';
 import LoadingSpinner from './LoadingSpinner';
 import FollowUpQuestions from './FollowUpQuestions';
 import Memory from './Memory';
-import { extractTextFromResponse, fetchFromApi, toolbox, ApiError } from '../utils/apiUtils';
+import MarkdownEditor from './MarkdownEditor';
+import { extractTextFromResponse, fetchFromApi, toolbox, ApiError, roleDefinition } from '../utils/apiUtils';
 import { useLocalStorage } from '../utils/storageUtils';
 import Settings from './Settings';
 
@@ -219,7 +220,7 @@ function AppContent() {
             // 添加name字段以区分不同角色，但保持role为'model'以确保API兼容性
             const botResponse = {
               role: "model",
-              name: currentRole === 'searcher' ? 'Belinda' : 'Adrien',
+              name: roleDefinition[currentRole]?.name || 'Adrien',
               parts: textParts,
               // 添加 grounding 数据到响应中，但这些数据不会被传递到下次请求
               groundingChunks: responseData.candidates[0]?.groundingMetadata?.groundingChunks || [],
@@ -243,7 +244,8 @@ function AppContent() {
               }
             }
             // continue if the role is not general
-            if (currentRole !== "general") {
+            if (currentRole === "searcher") {
+              // Only searcher does not have the ability to make functionCall
               continue;
             }
             // Add function results to conversation
@@ -262,17 +264,20 @@ function AppContent() {
 
           // 遍历所有文本部分，查找@userName格式的标记
           textParts.forEach(part => {
+            let prevRole = currentRole;
             if (part.text) {
               // 检查是否包含@Belinda或@Adrien标记
               if (part.text.includes('@Belinda')) {
                 currentRole = 'searcher'; // Belinda对应searcher角色
-                shouldSwitchRole = true;
               } else if (part.text.includes('@Adrien')) {
                 currentRole = 'general'; // Adrien对应general角色
-                shouldSwitchRole = true;
-              }
-              else {
+              } else if (part.text.includes('@Charlie')) {
+                currentRole = 'editor'; // Charlie对应editor角色
+              } else {
                 shouldSwitchRole = false;
+              }
+              if (prevRole !== currentRole) {
+                shouldSwitchRole = true;
               }
             }
           });
@@ -622,6 +627,13 @@ function AppContent() {
               />
               )}
               
+            </Col>
+          </Row>
+        </Tab>
+        <Tab eventKey="markdown" title="Co-Edit">
+          <Row>
+            <Col>
+              <MarkdownEditor />
             </Col>
           </Row>
         </Tab>

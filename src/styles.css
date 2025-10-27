@@ -730,3 +730,115 @@ textarea:focus {
 .markdown-content {
   margin-top: 8px;
 }
+
+/* Markdown Editor and Preview Styles */
+.markdown-editor textarea {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.markdown-preview {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+}
+
+.markdown-preview h1, 
+.markdown-preview h2, 
+.markdown-preview h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-preview h1 {
+  font-size: 2em;
+  border-bottom: 2px solid #eaecef;
+  padding-bottom: 0.3em;
+}
+
+.markdown-preview h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid #eaecef;
+  padding-bottom: 0.3em;
+}
+
+.markdown-preview h3 {
+  font-size: 1.25em;
+}
+
+.markdown-preview p {
+  margin-bottom: 1em;
+}
+
+.markdown-preview strong {
+  font-weight: 600;
+}
+
+.markdown-preview em {
+  font-style: italic;
+}
+
+.markdown-preview code {
+  background-color: #f6f8fa;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 85%;
+}
+
+.markdown-preview pre {
+  background-color: #f6f8fa;
+  padding: 16px;
+  border-radius: 6px;
+  overflow: auto;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 85%;
+  line-height: 1.45;
+  margin-bottom: 1em;
+}
+
+.markdown-preview pre code {
+  background-color: transparent;
+  padding: 0;
+  font-size: 100%;
+}
+
+.markdown-preview a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.markdown-preview a:hover {
+  text-decoration: underline;
+}
+
+.markdown-preview ul {
+  padding-left: 2em;
+  margin-bottom: 1em;
+}
+
+.markdown-preview li {
+  margin-bottom: 0.5em;
+}
+
+/* Responsive styles for Markdown editor */
+@media (max-width: 991px) {
+  .markdown-editor .row > div {
+    margin-bottom: 1.5rem;
+  }
+}
+
+/* Mobile optimization */
+@media (max-width: 576px) {
+  .markdown-editor textarea,
+  .markdown-preview {
+    min-height: 300px !important;
+  }
+  
+  .markdown-editor .btn {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+  }
+}
