@@ -111,7 +111,6 @@ function AppContent() {
     temperature: 1,
     topP: 0.95,
     topK: 64,
-    maxOutputTokens: 8192,
     responseMimeType: "text/plain",
     thinkingConfig: {
       includeThoughts: true,
@@ -213,6 +212,13 @@ function AppContent() {
         
         // Check if response data has valid structure
         if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
+          let finishReason = responseData.candidates[0].finishReason;
+          let finishMessage = responseData.candidates[0].finishMessage;
+          console.log('Finish reason:', finishReason);
+          if (finishReason !== 'STOP') {
+            // Throw exception showing finishReason and finishMessage
+            throw new Error(`API request finished with reason: ${finishReason}. Message: ${finishMessage}`);
+          }
           const responseParts = responseData.candidates[0].content.parts || [];
           
           // Separate text parts and function call parts
@@ -274,13 +280,13 @@ function AppContent() {
               // 检查是否包含@Belinda或@Adrien标记
               if (part.text.includes('@Belinda')) {
                 currentRole = 'searcher';
-                console.log('Belinda mentioned, switch role to ${currentRole}');
+                console.log(`Belinda mentioned, switch role to ${currentRole}`);
               } else if (part.text.includes('@Adrien')) {
                 currentRole = 'general';
-                console.log('Adrien mentioned, switch role to ${currentRole}');
+                console.log(`Adrien mentioned, switch role to ${currentRole}`);
               } else if (part.text.includes('@Charlie')) {
                 currentRole = 'editor';
-                console.log('Charlie mentioned, switch role to ${currentRole}');
+                console.log(`Charlie mentioned, switch role to ${currentRole}`);
               } else {
                 shouldSwitchRole = false;
               }
