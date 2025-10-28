@@ -463,11 +463,11 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
     // Render mermaid diagrams when the component updates
     useEffect(() => {
     // Debug log
-    console.log('useEffect for mermaid rendering triggered');
+    console.debug('useEffect for mermaid rendering triggered');
     
     // Initialize mermaid
     if (mermaid && document) {
-      console.log('Mermaid library available, starting rendering process');
+      console.debug('Mermaid library available, starting rendering process');
       let timer;
       
       // Use setTimeout to delay rendering to ensure DOM is fully loaded
@@ -475,7 +475,7 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
         try {
           // Select all mermaid elements
           const allMermaidElements = document.querySelectorAll('.mermaid');
-          console.log('Found total mermaid elements:', allMermaidElements.length);
+          console.debug('Found total mermaid elements:', allMermaidElements.length);
           
           // Set data-mermaid-content attribute for elements that don't have it
           allMermaidElements.forEach((element) => {

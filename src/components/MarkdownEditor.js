@@ -42,6 +42,7 @@ const MarkdownEditor = () => {
       const timestamp = coEditService.getLastUpdateTimestamp();
       setMarkdown(content);
       setLastUpdate(timestamp);
+      hasLoadedOnce.current = false;
     });
     
     // Set up Intersection Observer to detect when editor becomes visible

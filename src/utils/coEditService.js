@@ -54,6 +54,12 @@ export const getDocumentContent = () => {
  * @returns {object} Result object with success status and content
  */
 export const setDocumentContent = (content) => {
+  if (content === undefined || content === null) {
+    return {
+      success: false,
+      error: 'Content is undefined or null'
+    }
+  }
   try {
     localStorage.setItem(CO_EDIT_STORAGE_KEY, content);
     // Update the timestamp when content changes

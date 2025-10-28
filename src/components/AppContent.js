@@ -208,6 +208,7 @@ function AppContent() {
       
       while (hasFunctionCalls || shouldSwitchRole) {
         // Make API request with current conversation state
+        console.log('Current role:', currentRole);
         const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey, systemPrompt, currentRole);
         
         // Check if response data has valid structure
@@ -272,11 +273,14 @@ function AppContent() {
             if (part.text) {
               // 检查是否包含@Belinda或@Adrien标记
               if (part.text.includes('@Belinda')) {
-                currentRole = 'searcher'; // Belinda对应searcher角色
+                currentRole = 'searcher';
+                console.log('Belinda mentioned, switch role to ${currentRole}');
               } else if (part.text.includes('@Adrien')) {
-                currentRole = 'general'; // Adrien对应general角色
+                currentRole = 'general';
+                console.log('Adrien mentioned, switch role to ${currentRole}');
               } else if (part.text.includes('@Charlie')) {
-                currentRole = 'editor'; // Charlie对应editor角色
+                currentRole = 'editor';
+                console.log('Charlie mentioned, switch role to ${currentRole}');
               } else {
                 shouldSwitchRole = false;
               }
