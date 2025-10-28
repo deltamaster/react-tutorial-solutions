@@ -355,6 +355,15 @@ const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, o
   );
 };
 
+// Function to replace @mentions with [@mention]() format
+const replaceMentions = (text) => {
+  if (!text) return text;
+  
+  // Regular expression to match valid @mentions (case insensitive)
+  // This matches @adrien, @belinda, @charlie with word boundaries
+  return text.replace(/@(adrien|belinda|charlie)\b/gi, '[@$1](##)');
+};
+
 // Unified function for rendering text content - supports mixed content
 const renderTextContent = (text) => {
   if (!text) return null;
@@ -370,17 +379,19 @@ const renderTextContent = (text) => {
   while ((match = codeBlockRegex.exec(text)) !== null) {
     // Add regular text before code block (if any)
     if (match.index > lastIndex) {
-      const markdownText = text.slice(lastIndex, match.index).trim();
-      if (markdownText) {
+      const nonCodeText = text.slice(lastIndex, match.index).trim();
+      if (nonCodeText) {
+        // Replace @mentions in non-code text
+        const textWithReplacedMentions = replaceMentions(nonCodeText);
         parts.push(
           <Markdown key={`md-${parts.length}`} remarkPlugins={[remarkGfm]}>
-            {markdownText}
+            {textWithReplacedMentions}
           </Markdown>
         );
       }
     }
     
-    // Process code block
+    // Process code block (keep unchanged - don't replace mentions inside code blocks)
     const fullCodeBlock = match[0];
     const language = match[1];
     
@@ -420,19 +431,22 @@ const renderTextContent = (text) => {
   
   // Add regular text after the last code block (if any)
   if (lastIndex < text.length) {
-    const markdownText = text.slice(lastIndex).trim();
-    if (markdownText) {
+    const nonCodeText = text.slice(lastIndex).trim();
+    if (nonCodeText) {
+      // Replace @mentions in non-code text
+      const textWithReplacedMentions = replaceMentions(nonCodeText);
       parts.push(
         <Markdown key={`md-${parts.length}`} remarkPlugins={[remarkGfm]}>
-          {markdownText}
+          {textWithReplacedMentions}
         </Markdown>
       );
     }
   }
   
-  // If no code blocks are found, use default Markdown rendering
+  // If no code blocks are found, just replace mentions in the text
   if (parts.length === 0) {
-    return <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>;
+    const textWithReplacedMentions = replaceMentions(text);
+    return <Markdown remarkPlugins={[remarkGfm]}>{textWithReplacedMentions}</Markdown>;
   }
   
   // Return combination of all parts

@@ -205,6 +205,27 @@ function AppContent() {
       let shouldSwitchRole = false;
       let currentRole = "general";
       
+      // Check if user message contains an @mention to switch role
+      // First, check if any text part contains an @mention
+      for (const part of processedContentParts) {
+        if (part.text) {
+          const text = part.text.toLowerCase();
+          
+          // Check for @mentions of each role
+          // Keep the @mention in the original text as requested
+          if (text.includes('@belinda')) {
+            currentRole = 'searcher';
+            console.log(`Belinda mentioned in user message, switching to ${currentRole}`);
+          } else if (text.includes('@adrien')) {
+            currentRole = 'general';
+            console.log(`Adrien mentioned in user message, switching to ${currentRole}`);
+          } else if (text.includes('@charlie')) {
+            currentRole = 'editor';
+            console.log(`Charlie mentioned in user message, switching to ${currentRole}`);
+          }
+        }
+      }
+      
       while (hasFunctionCalls || shouldSwitchRole) {
         // Make API request with current conversation state
         console.log('Current role:', currentRole);
@@ -601,12 +622,6 @@ function AppContent() {
                   <span className="toggle-text">&nbsp;Upload History</span>
                 </label>
               </div>
-            </Col>
-          </Row>
-          <Row className="mb-3">
-            <Col>
-
-
             </Col>
           </Row>
           <Row>
