@@ -1,6 +1,260 @@
 import memoryService from './memoryService';
 import coEditService from './coEditService';
 
+// Token count estimation function (simple approximation)
+const estimateTokenCount = (text) => {
+  if (!text) return 0;
+  // Simple token estimation: average of 1.3 tokens per word
+  return Math.ceil(text.split(/\s+/).length * 1.3);
+};
+
+// Calculate total token count for conversation history
+const calculateConversationTokenCount = (conversation) => {
+  let totalTokens = 0;
+  
+  for (const message of conversation) {
+    if (message.parts) {
+      for (const part of message.parts) {
+        if (part.text) {
+          totalTokens += estimateTokenCount(part.text);
+        } else if (part.functionResponse && part.functionResponse.response && part.functionResponse.response.result) {
+          totalTokens += estimateTokenCount(JSON.stringify(part.functionResponse.response.result));
+        }
+      }
+    }
+  }
+  
+  return totalTokens;
+};
+
+// Check if a message is a summary message from Xaiver
+const isSummaryMessage = (message) => {
+  return message.role === 'model' && message.name === 'Xaiver';
+};
+
+// Helper function to get stored summaries from localStorage
+function getStoredSummaries() {
+  try {
+    const stored = localStorage.getItem('conversation_summaries');
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error getting stored summaries:', error);
+    return [];
+  }
+}
+
+// Helper function to store summaries in localStorage
+function storeSummary(summaryMessage) {
+  try {
+    const summaries = getStoredSummaries();
+    summaries.push(summaryMessage);
+    localStorage.setItem('conversation_summaries', JSON.stringify(summaries));
+  } catch (error) {
+    console.error('Error storing summary:', error);
+  }
+}
+
+// Function to find if a message range has already been summarized
+function hasBeenSummarized(messages) {
+  try {
+    const summaries = getStoredSummaries();
+    // Get the end timestamp of the messages to check, default to 0 for compatibility
+    const endTimestamp = messages[messages.length - 1]?.timestamp || 0;
+    
+    // If there's a summary with timestamp >= endTimestamp, the messages are already covered
+    // Now summaries are directly stored summaryMessage objects
+    return summaries.some(summary => (summary.timestamp || 0) >= endTimestamp);
+  } catch (error) {
+    console.error('Error checking if messages have been summarized:', error);
+    return false;
+  }
+}
+
+// Function to get the latest summary point
+function getLatestSummaryPoint() {
+  try {
+    const summaries = getStoredSummaries();
+    if (summaries.length === 0) return null;
+    
+    // Return the most recent summary's timestamp, treating null/undefined as 0
+    // Now summaries are directly stored summaryMessage objects
+    const latestSummary = summaries.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0];
+    return latestSummary.timestamp || 0;
+  } catch (error) {
+    console.error('Error getting latest summary point:', error);
+    return null;
+  }
+}
+
+// Function to apply dynamic memory compression
+async function applyMemoryCompression(contents, config, subscriptionKey, originalGenerationConfig) {
+  // Get the latest summary point to determine where to start summarizing from
+  const latestSummaryPoint = getLatestSummaryPoint();
+  
+  // Separate the conversation into sections for compression
+  const recentMessages = contents.slice(-config.RECENT_MESSAGES_COUNT);
+  
+  // Determine which messages need summarization
+  let messagesToSummarize;
+  if (latestSummaryPoint) {
+    // Find the index of the message after the latest summary point
+    const latestSummaryIndex = contents.findIndex(msg => 
+      (msg.timestamp || 0) === latestSummaryPoint
+    );
+    
+    if (latestSummaryIndex >= 0) {
+      // Only summarize messages after the latest summary point
+      messagesToSummarize = contents.slice(latestSummaryIndex + 1, -config.RECENT_MESSAGES_COUNT);
+      console.log(`Found existing summaries, will summarize ${messagesToSummarize.length} new messages`);
+    } else {
+      // Fall back to original behavior if summary point not found
+      messagesToSummarize = contents.slice(0, -config.RECENT_MESSAGES_COUNT);
+    }
+  } else {
+    // Original behavior for first summary
+    messagesToSummarize = contents.slice(0, -config.RECENT_MESSAGES_COUNT);
+  }
+  
+  // Skip compression if there aren't enough messages to summarize
+  if (messagesToSummarize.length < config.MIN_MESSAGES_BETWEEN_SUMMARIES) {
+    console.log('Not enough messages to compress');
+    return contents;
+  }
+  
+  // Check if these messages have already been summarized
+  if (hasBeenSummarized(messagesToSummarize)) {
+    console.log('Messages have already been summarized');
+    return contents;
+  }
+  
+  // Check if the messages to summarize only contain summaries
+  const containsOnlySummaries = messagesToSummarize.every(msg => isSummaryMessage(msg));
+  if (containsOnlySummaries) {
+    console.log('Messages to summarize already contain only summaries');
+    return contents;
+  }
+  
+  try {
+    // Generate a summary of the messages using Xaiver
+    const summaryText = await generateSummary(messagesToSummarize, subscriptionKey, originalGenerationConfig);
+    
+    // Create a summary message from Xaiver
+    const summaryMessage = {
+      role: 'model',
+      name: 'Xaiver',
+      parts: [{
+        text: summaryText
+      }],
+      timestamp: messagesToSummarize[messagesToSummarize.length - 1]?.timestamp || Date.now()
+    };
+    
+    // Store the summary in localStorage
+    storeSummary(summaryMessage);
+    
+    console.log('Memory compression successful, created and stored summary');
+    
+    // Build the compressed conversation
+    let compressedContents = [];
+    
+    if (latestSummaryPoint) {
+      // Include all existing summary messages before the new one
+      compressedContents = contents.filter(msg => isSummaryMessage(msg));
+    }
+    
+    // Add the new summary and recent messages
+    compressedContents.push(summaryMessage, ...recentMessages);
+    
+    return compressedContents;
+  } catch (error) {
+    console.error('Error during memory compression:', error);
+    // Fall back to original contents if compression fails
+    return contents;
+  }
+}
+
+// Function to generate a summary of conversation segments
+async function generateSummary(conversationSegment, subscriptionKey, originalGenerationConfig) {
+  // Prepare a request to generate the summary
+  const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/gemini-2.5-flash:generateContent`;
+  const requestHeader = {
+    "Content-Type": "application/json",
+    "Ocp-Apim-Subscription-Key": subscriptionKey
+  };
+  
+  // Format the conversation segment for summarization
+  const formattedConversation = conversationSegment.map(msg => {
+    const role = msg.role === 'user' ? 'User' : (msg.name || 'Assistant');
+    const content = msg.parts
+      .map(part => {
+        if (part.text) return part.text;
+        if (part.functionResponse) return `Function Response: ${JSON.stringify(part.functionResponse.response.result)}`;
+        if (part.inline_data) return '[Image/File]';
+        return '';
+      })
+      .filter(text => text.trim().length > 0)
+      .join(' ');
+    
+    return `${role}: ${content}`;
+  }).join('\n\n');
+  
+  const timestamp = conversationSegment[conversationSegment.length - 1]?.timestamp || Date.now();
+  // Create summarization request
+  const summarizationRequest = {
+    systemInstruction: {
+      role: "system",
+      parts: [
+        { text: roleDefinition.memoryManager.selfIntroduction },
+        { text: roleDefinition.memoryManager.detailedInstruction.replace('{{time}}', new Date(timestamp).toLocaleString()) }
+      ]
+    },
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: `Please summarize the following conversation segment:\n\n${formattedConversation}\n\nProvide a concise summary that captures the essential information.`
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      ...originalGenerationConfig,
+      temperature: 0.3 // Lower temperature for more deterministic summaries
+    }
+  };
+  
+  try {
+    const response = await fetch(apiRequestUrl, {
+      method: "POST",
+      headers: requestHeader,
+      body: JSON.stringify(summarizationRequest)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API error for summarization: ${response.status}`);
+    }
+    
+    const responseData = await response.json();
+    
+    // Extract summary text from response
+    if (responseData.candidates && responseData.candidates[0] && 
+        responseData.candidates[0].content && 
+        responseData.candidates[0].content.parts &&
+        responseData.candidates[0].content.parts[0] &&
+        responseData.candidates[0].content.parts[0].text) {
+      
+      // 连接所有part.text并过滤掉thought为true的部分
+      const filteredParts = responseData.candidates[0].content.parts.filter(part => part.thought !== true && part.text);
+      return filteredParts.map(part => part.text).join('\n');
+    }
+    
+    throw new Error('Invalid response format for summarization');
+  } catch (error) {
+    console.error('Error generating summary:', error);
+    throw error;
+  }
+}
+
 // Helper function to extract text from API response data
 export function extractTextFromResponse(responseData) {
   let fullText = '';
@@ -217,6 +471,31 @@ export const toolbox = {
 };
 
 export const roleDefinition = {
+  // Hidden role for memory management
+  memoryManager: {
+    name: 'Xaiver',
+    hidden: true,
+    description: 'memory manager (hidden role)',
+    selfIntroduction: `I am Xaiver, a specialized memory manager. My purpose is to create concise summaries of conversation history to optimize context for the main assistant.`,
+    detailedInstruction: `
+## My Task
+Create a information-dense summary of the provided conversation segment but still keep as much information as possible. Include all critical information that would be necessary for continuing the conversation meaningfully.
+
+I have no personality, no opinions, and no preferences. I just objectively observe what happened in the given conversation segment. I am not a part of the conversation.
+
+## Guidelines
+- Focus on key facts, decisions, and context that would be needed later
+- Omit repetitive or trivial details
+- Maintain the original meaning and intent
+- Analyze and summarize the user's sentiment in the conversation segment
+- Include timestamps of important events if mentioned
+
+## Output Format
+- Start by saying "$$$ BEGINNING OF SUMMARY $$$"
+- The conversation happened at {{time}}
+- End by saying "$$$ END OF SUMMARY $$$"
+    `
+  },
   general: {
     name: 'Adrien',
     description: 'general assistant, user memory management',
@@ -294,7 +573,7 @@ Please update the co-edited document content as requested.
 }
 
 // Role configuration for different bot personalities
-const userList = '- ' + Object.values(roleDefinition).map(role => `${role.name}: ${role.description}`).join('\n- ')
+const userList = '- ' + Object.values(roleDefinition).filter(role => !role.hidden).map(role => `${role.name}: ${role.description}`).join('\n- ')
 
 const userListPrompt = `I am in the chat room with the below users:
 ${userList}
@@ -334,6 +613,15 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   ];
   
+  // Dynamic memory compression configuration
+  const MEMORY_COMPRESSION_CONFIG = {
+    // 根据环境设置不同的token阈值
+    TOKEN_THRESHOLD: window.location.hostname === 'localhost' ? 10000 : 100000, // 本地环境10000，其他环境100000
+    RECENT_MESSAGES_COUNT: 10, // Keep these recent messages uncompressed
+    MIN_MESSAGES_BETWEEN_SUMMARIES: 5, // Minimum messages between summary points
+    AGE_THRESHOLD: 60 * 60 * 24 // 1 day in seconds
+  };
+  
   // Validate required parameters
   if (!contents || !Array.isArray(contents)) {
     throw new ApiError('Invalid or missing contents parameter', { 
@@ -347,6 +635,101 @@ export const fetchFromApi = async (contents, generationConfig, includeTools = fa
       errorType: 'validation_error',
       details: { parameter: 'generationConfig' }
     });
+  }
+  
+  // Dynamic memory compression implementation
+  let processedContents = [...contents];
+  
+  // Before calculating token count, replace summarized segments with stored summaries
+    const storedSummaries = getStoredSummaries();
+    if (storedSummaries.length > 0) {
+      console.log(`Found ${storedSummaries.length} stored summaries, replacing corresponding conversation segments...`);
+      
+      // Sort summaries by timestamp in descending order
+      const sortedSummaries = storedSummaries.sort((a, b) => b.timestamp - a.timestamp);
+      
+      // Find ranges of messages that have been summarized
+      let messagesToReplace = [];
+      let i = 0;
+      
+      while (i < processedContents.length) {
+        const currentMsg = processedContents[i];
+        const currentTimestamp = currentMsg.timestamp || 0; // Default to 0 for compatibility
+        
+        if (currentTimestamp !== undefined) { // Always process, even if timestamp is 0
+          // Find the most recent summary that covers this message
+          const coveringSummary = sortedSummaries.find(summary => (summary.timestamp || 0) >= currentTimestamp);
+          
+          if (coveringSummary) {
+            // Find the end of the messages covered by this summary
+            let j = i;
+            while (j < processedContents.length) {
+              const endMsg = processedContents[j];
+              const endTimestamp = endMsg.timestamp || 0; // Default to 0 for compatibility
+              
+              // If this message is not covered by the current summary, we've found the end
+              if (endTimestamp > (coveringSummary.timestamp || 0)) {
+                break;
+              }
+              j++;
+            }
+            
+            // Add this range to be replaced
+            messagesToReplace.push({
+              startIndex: i,
+              endIndex: j - 1,
+              summary: coveringSummary
+            });
+            
+            // Skip ahead to the next uncovered message
+            i = j;
+          } else {
+            // No summary covers this message, move to the next
+            i++;
+          }
+        } else {
+          // This case should not happen now, but kept for safety
+          i++;
+        }
+      }
+    
+    // Replace the identified message ranges with their summaries
+    // Process from last to first to avoid index shifting issues
+    messagesToReplace.sort((a, b) => b.startIndex - a.startIndex).forEach(replacement => {
+      console.log(`Replacing messages from index ${replacement.startIndex} to ${replacement.endIndex} with summary`);
+      processedContents.splice(replacement.startIndex, replacement.endIndex - replacement.startIndex + 1, replacement.summary);
+    });
+  }
+  
+  // Calculate current token count with summaries applied
+  const currentTokenCount = calculateConversationTokenCount(processedContents);
+  console.log(`Current conversation token count: ${currentTokenCount}`);
+  
+  // Check if compression is needed based on token count or age threshold
+  const currentTime = Date.now() / 1000; // Convert to seconds
+  // Find oldest message, treating those without timestamp as 0 (Jan 1, 1970)
+  const oldestMessage = processedContents.reduce((oldest, current) => {
+    const currentTimestamp = current.timestamp || 0;
+    const oldestTimestamp = oldest ? (oldest.timestamp || 0) : Infinity;
+    return currentTimestamp < oldestTimestamp ? current : oldest;
+  }, null);
+  const hasOldMessages = oldestMessage && 
+    (currentTime - (oldestMessage.timestamp || 0) / 1000) > MEMORY_COMPRESSION_CONFIG.AGE_THRESHOLD;
+  
+  if (currentTokenCount > MEMORY_COMPRESSION_CONFIG.TOKEN_THRESHOLD || hasOldMessages) {
+    if (currentTokenCount > MEMORY_COMPRESSION_CONFIG.TOKEN_THRESHOLD) {
+      console.log('Token threshold exceeded, applying memory compression...');
+    } else if (hasOldMessages) {
+      console.log('Found messages older than age threshold, applying memory compression...');
+    }
+    processedContents = await applyMemoryCompression(
+      processedContents, 
+      MEMORY_COMPRESSION_CONFIG,
+      subscriptionKey,
+      generationConfig
+    );
+  } else {
+    console.log('Token count below threshold and no messages exceed age threshold, no compression needed.');
   }
   
   // Extract all memories from storage service and include them in the prompt.
@@ -394,14 +777,14 @@ $$$`
   };
   
   // Filter contents first: for each content in contents, keep only "role" and "parts"
-  contents = contents.map(content => ({
+  const filteredContents = processedContents.map(content => ({
     role: content.role,
     parts: content.parts
   }));
 
   // Filter out thought contents before sending the request and process any image files
-  const filteredContents = [];
-  for (const content of contents) {
+  const finalContents = [];
+  for (const content of filteredContents) {
     if (content.parts) {
       // Process each part to handle image files and filter out thoughts
       const processedParts = [];
@@ -436,21 +819,21 @@ $$$`
       }
       
       if (processedParts.length > 0) {
-        filteredContents.push({
+        finalContents.push({
           ...content,
           parts: processedParts
         });
       }
     } else {
-      filteredContents.push(content);
+      finalContents.push(content);
     }
   }
   
   // Prepare the conversation contents (without system prompt)
   const conversationContents = [
-    ...filteredContents,
-    // Only add user message when the last element of filteredContents is not from the "user" role
-    ...(filteredContents.length === 0 || filteredContents[filteredContents.length - 1].role !== "user" ? [{
+    ...finalContents,
+    // Only add user message when the last element of finalContents is not from the "user" role
+    ...(finalContents.length === 0 || finalContents[finalContents.length - 1].role !== "user" ? [{
       "role": "user",
       "parts": [{
         "text": "$$$Read the previous dialog and continue$$$"

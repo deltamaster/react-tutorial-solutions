@@ -422,11 +422,18 @@ function AppContent() {
     setQuestion(question);
   };
 
-  // Reset conversation history
+  // Reset conversation history, summaries and predicted questions
   const resetConversation = () => {
     if (window.confirm('Are you sure you want to reset the conversation history?')) {
       setConversation([]);
-      setFollowUpQuestions([]);
+      setFollowUpQuestions([]); // Clear predicted questions
+      // Also clear conversation summaries from localStorage
+      try {
+        localStorage.removeItem('conversation_summaries');
+        console.log('Conversation summaries cleared');
+      } catch (error) {
+        console.error('Error clearing conversation summaries:', error);
+      }
     }
   };
 
@@ -453,6 +460,14 @@ function AppContent() {
       try {
         const conversationData = JSON.parse(e.target.result);
         setConversation(conversationData);
+        setFollowUpQuestions([]); // Clear predicted questions when uploading new conversation
+        // Also clear conversation summaries when uploading new conversation
+        try {
+          localStorage.removeItem('conversation_summaries');
+          console.log('Conversation summaries cleared after upload');
+        } catch (error) {
+          console.error('Error clearing conversation summaries:', error);
+        }
         event.target.value = '';
       } catch (error) {
         alert('Failed to upload conversation history. Please provide a valid JSON file.');
