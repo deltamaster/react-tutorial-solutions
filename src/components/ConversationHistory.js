@@ -6,6 +6,33 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import mermaid from "mermaid";
 
+// Helper function to format timestamp intelligently based on age
+const formatTimestamp = (timestamp) => {
+  if (!timestamp) return '';
+  
+  const date = new Date(timestamp);
+  const now = new Date();
+  
+  // Check if timestamp is from today
+  const isToday = date.toDateString() === now.toDateString();
+  
+  // Check if timestamp is from current year
+  const isCurrentYear = date.getFullYear() === now.getFullYear();
+  
+  if (isToday) {
+    // Today: show only time
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else if (isCurrentYear) {
+    // This year but not today: show date and time
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + 
+           date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else {
+    // Not current year: show full date with year and time
+    return date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) + ' ' + 
+           date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+};
+
 // Initialize mermaid configuration
 mermaid.initialize({
   startOnLoad: false,
@@ -538,6 +565,8 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
           return null;
         }
 
+        const formattedTime = content.timestamp ? formatTimestamp(content.timestamp) : '';
+
         return (
           <div
             key={index}
@@ -551,10 +580,20 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
             >
               <Icon.X size={14} />
             </button>
+            
+            {/* Message timestamp */}
+            <div className="message-timestamp" style={{
+              fontSize: '0.75rem',
+              color: '#666',
+              marginBottom: '4px',
+              textAlign: content.role === 'user' ? 'right' : 'left'
+            }}>
+              {formattedTime}
+            </div>
 
             {content.role === "user" ? (
-              <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', marginBottom: '8px'}}>
-                <img src={userAvatar === 'female' ? '/avatar-user-female.jpg' : '/avatar-user-male.jpg'} alt="You" className="avatar" style={{width: '48px', height: '48px', borderRadius: '25%', marginRight: '8px'}} />
+              <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', marginBottom: '8px'}}>
+                <img src={userAvatar === 'female' ? '/avatar-user-female.jpg' : '/avatar-user-male.jpg'} alt="You" className="avatar" style={{width: '48px', height: '48px', borderRadius: '25%', marginLeft: '8px'}} />
               </div>
             ) : (
               <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', marginBottom: '8px'}}>

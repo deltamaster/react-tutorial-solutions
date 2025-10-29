@@ -183,6 +183,7 @@ function AppContent() {
     const newUserMessage = {
       role: "user",
       parts: processedContentParts,
+      timestamp: Date.now() // Add timestamp when user submits message
     };
 
     setConversation((prev) => [...prev, newUserMessage]);
@@ -231,14 +232,26 @@ function AppContent() {
         console.log('Current role:', currentRole);
         const responseData = await fetchFromApi(currentConversation, dynamicGenerationConfig, true, subscriptionKey, systemPrompt, currentRole);
         
+        // Log token usage statistics in a single line
+        if (responseData.usageMetadata) {
+          const { promptTokenCount, candidatesTokenCount, thoughtsTokenCount, totalTokenCount } = responseData.usageMetadata;
+          console.log(`Token Usage: Prompt=${promptTokenCount}, Candidates=${candidatesTokenCount}, Thoughts=${thoughtsTokenCount} Total=${totalTokenCount}`);
+        } else {
+          console.log('No usageMetadata available in response');
+        }
+        
         // Check if response data has valid structure
-        if (responseData.candidates && responseData.candidates[0] && responseData.candidates[0].content) {
+        if (responseData.candidates && responseData.candidates[0]) {
           let finishReason = responseData.candidates[0].finishReason;
           let finishMessage = responseData.candidates[0].finishMessage;
           console.log('Finish reason:', finishReason);
           if (finishReason !== 'STOP') {
             // Throw exception showing finishReason and finishMessage
             throw new Error(`API request finished with reason: ${finishReason}. Message: ${finishMessage}`);
+          }
+
+          if (!responseData.candidates[0].content) {
+            throw new Error('No content in candidates[0]');
           }
           const responseParts = responseData.candidates[0].content.parts || [];
           
@@ -254,6 +267,7 @@ function AppContent() {
               role: "model",
               name: roleDefinition[currentRole]?.name || 'Adrien',
               parts: textParts,
+              timestamp: Date.now(), // Add timestamp when receiving bot response
               // 添加 grounding 数据到响应中，但这些数据不会被传递到下次请求
               groundingChunks: responseData.candidates[0]?.groundingMetadata?.groundingChunks || [],
               groundingSupports: responseData.candidates[0]?.groundingMetadata?.groundingSupports || []
@@ -286,6 +300,7 @@ function AppContent() {
               parts: functionResults.map(result => ({
                 functionResponse: { name: result.name, response: { result: result.result } }
               })),
+              timestamp: Date.now() // Add timestamp for function response
             };
             currentConversation = [...currentConversation, functionResponseMessage];
           } else {
