@@ -285,7 +285,7 @@ function AppContent() {
             for (const functionCallPart of functionCallParts) {
               const { name, args } = functionCallPart.functionCall;
               if (toolbox[name]) {
-                const result = toolbox[name](args);
+                const result = await toolbox[name](args);
                 functionResults.push({ name, result });
               }
             }
@@ -332,7 +332,8 @@ function AppContent() {
             }
           });
         } else {
-          // No valid content, exit loop
+          console.log('Nothing returned');
+          console.log(responseData);
           hasFunctionCalls = false;
         }
       }
@@ -349,6 +350,7 @@ function AppContent() {
                 "The answer should only contain the question proposed without anything else."
             }
           ],
+          timestamp: Date.now() // Add timestamp for follow-up question
         };
         // For follow-up questions, set ignoreSystemPrompts to true to completely ignore all system instructions
         const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, false, subscriptionKey, '', 'general', true);
