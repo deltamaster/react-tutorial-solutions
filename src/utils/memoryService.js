@@ -108,14 +108,14 @@ const memoryService = {
               return;
             }
             eventBus.publish(memoryKey, 'setItem');
-            resolve({ status: 'OK', memoryKey: key, memoryValue: value });
+            resolve({ status: 'OK', memoryKey: key });
           });
         });
       } else {
         // Fallback to localStorage
         localStorage.setItem(memoryKey, value);
         eventBus.publish(memoryKey, 'setItem');
-        return { status: 'OK', memoryKey: key, memoryValue: value };
+        return { status: 'OK', memoryKey: key };
       }
     } catch (error) {
       console.error(`Error setting memory for key ${key}:`, error);

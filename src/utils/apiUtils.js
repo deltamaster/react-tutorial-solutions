@@ -843,8 +843,9 @@ $$$`
     ...(finalContents.length === 0 || finalContents[finalContents.length - 1].role !== "user" ? [{
       "role": "user",
       "parts": [{
-        "text": "$$$Read the previous dialog and continue$$$"
-      }]
+        "text": "$$$Read the previous dialog and continue. AND REMEMBER TO MANAGE THE MEMORY.$$$"
+      }],
+      timestamp: Date.now() // Add timestamp for follow-up question
     }] : [])
   ];
   
