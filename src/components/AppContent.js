@@ -344,13 +344,14 @@ function AppContent() {
           role: "user",
           parts: [
             {
-              text: "Predict my follow-up question based on the previous conversation. " +
+              text: "Put yourself in the user's point of view, and predict the user's follow-up question based on the conversation so far. " +
                 "Come up with up to 3, each in a new line. " +
                 "The answer should only contain the question proposed without anything else."
             }
           ],
         };
-        const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, false, subscriptionKey, systemPrompt);
+        // For follow-up questions, set ignoreSystemPrompts to true to completely ignore all system instructions
+        const nextQuestionResponseData = await fetchFromApi([...currentConversation, askForFollowUpRequest], generationConfigForNextQuestion, false, subscriptionKey, '', 'general', true);
         const nextQuestionResponseObj = extractTextFromResponse(nextQuestionResponseData);
         const nextQuestionResponseText = nextQuestionResponseObj.responseText;
         
@@ -437,20 +438,35 @@ function AppContent() {
     }
   };
 
-  // Download conversation history
+  // Download conversation history - now includes conversation_summaries
   const downloadConversation = () => {
-    const dataStr = JSON.stringify(conversation, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = 'conversation_history.json';
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
+    try {
+      // Get conversation_summaries from localStorage
+      const summaries = JSON.parse(localStorage.getItem('conversation_summaries') || '[]');
+      
+      // Create new format with both conversation and summaries
+      const exportData = {
+        version: '1.1', // Version marker for future compatibility
+        conversation: conversation,
+        conversation_summaries: summaries
+      };
+      
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = 'conversation_history.json';
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+    } catch (error) {
+      console.error('Error downloading conversation:', error);
+      alert('Failed to download conversation history.');
+    }
   };
 
-  // Upload conversation history
+  // Upload conversation history - compatible with both old and new format
   const uploadConversation = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -458,16 +474,35 @@ function AppContent() {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const conversationData = JSON.parse(e.target.result);
-        setConversation(conversationData);
-        setFollowUpQuestions([]); // Clear predicted questions when uploading new conversation
-        // Also clear conversation summaries when uploading new conversation
-        try {
-          localStorage.removeItem('conversation_summaries');
-          console.log('Conversation summaries cleared after upload');
-        } catch (error) {
-          console.error('Error clearing conversation summaries:', error);
+        const uploadedData = JSON.parse(e.target.result);
+        
+        // Check if it's the new format with version and summaries
+        if (uploadedData.version && uploadedData.conversation) {
+          // New format: set both conversation and summaries
+          setConversation(uploadedData.conversation);
+          
+          // Restore conversation_summaries if present
+          if (uploadedData.conversation_summaries) {
+            try {
+              localStorage.setItem('conversation_summaries', JSON.stringify(uploadedData.conversation_summaries));
+              console.log('Conversation summaries restored from upload');
+            } catch (error) {
+              console.error('Error restoring conversation summaries:', error);
+            }
+          }
+        } else {
+          // Old format: just set the conversation (assuming the entire file is conversation data)
+          setConversation(uploadedData);
+          // Clear summaries for old format uploads (maintaining previous behavior)
+          try {
+            localStorage.removeItem('conversation_summaries');
+            console.log('Conversation summaries cleared for old format upload');
+          } catch (error) {
+            console.error('Error clearing conversation summaries:', error);
+          }
         }
+        
+        setFollowUpQuestions([]); // Clear predicted questions when uploading new conversation
         event.target.value = '';
       } catch (error) {
         alert('Failed to upload conversation history. Please provide a valid JSON file.');

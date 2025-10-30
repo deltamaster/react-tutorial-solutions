@@ -8,28 +8,38 @@ import mermaid from "mermaid";
 
 // Helper function to format timestamp intelligently based on age
 const formatTimestamp = (timestamp) => {
-  if (!timestamp) return '';
-  
+  if (!timestamp) return "";
+
   const date = new Date(timestamp);
   const now = new Date();
-  
+
   // Check if timestamp is from today
   const isToday = date.toDateString() === now.toDateString();
-  
+
   // Check if timestamp is from current year
   const isCurrentYear = date.getFullYear() === now.getFullYear();
-  
+
   if (isToday) {
     // Today: show only time
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   } else if (isCurrentYear) {
     // This year but not today: show date and time
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + 
-           date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return (
+      date.toLocaleDateString([], { month: "short", day: "numeric" }) +
+      " " +
+      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    );
   } else {
     // Not current year: show full date with year and time
-    return date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) + ' ' + 
-           date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return (
+      date.toLocaleDateString([], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }) +
+      " " +
+      date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    );
   }
 };
 
@@ -37,20 +47,23 @@ const formatTimestamp = (timestamp) => {
 mermaid.initialize({
   startOnLoad: false,
   theme: "default",
-  securityLevel: "loose" // Allow more features
+  securityLevel: "loose", // Allow more features
 });
-
 
 // Reusable function to render a single mermaid diagram
 const renderMermaidDiagram = async (element) => {
   try {
-    const graphCode = element.getAttribute('data-mermaid-content') || element.textContent.trim();
-    const uniqueId = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    const {svg} = await mermaid.render(uniqueId, graphCode);
+    const graphCode =
+      element.getAttribute("data-mermaid-content") ||
+      element.textContent.trim();
+    const uniqueId = `mermaid-${Date.now()}-${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    const { svg } = await mermaid.render(uniqueId, graphCode);
     element.innerHTML = svg;
   } catch (err) {
-    console.error('Error rendering individual mermaid diagram:', err);
+    console.error("Error rendering individual mermaid diagram:", err);
     element.innerHTML = `<div style="color: red; padding: 10px; background-color: #fee; border-radius: 4px;">Error rendering mermaid diagram: ${err.message}</div>`;
   }
 };
@@ -68,82 +81,84 @@ const MermaidDiagram = ({ content }) => {
 const ExpandableHtmlBlock = ({ code }) => {
   // State to track if HTML content is expanded
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   // Get the first line of HTML for preview
-  const firstLine = code.split('\n')[0];
-  const hasMoreContent = code.includes('\n');
-  
+  const firstLine = code.split("\n")[0];
+  const hasMoreContent = code.includes("\n");
+
   const toggleExpand = () => {
     setIsExpanded(!isExpanded);
   };
-  
+
   // Component styles
   const containerStyle = {
-    margin: '10px 0',
-    borderRadius: '6px',
-    overflow: 'hidden',
-    backgroundColor: '#1e1e1e',
-    border: '1px solid #3c3c3c',
+    margin: "10px 0",
+    borderRadius: "6px",
+    overflow: "hidden",
+    backgroundColor: "#1e1e1e",
+    border: "1px solid #3c3c3c",
   };
-  
+
   const headerStyle = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '8px 12px',
-    backgroundColor: '#252526',
-    borderBottom: '1px solid #3c3c3c',
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 12px",
+    backgroundColor: "#252526",
+    borderBottom: "1px solid #3c3c3c",
   };
-  
+
   const labelStyle = {
-    fontWeight: '500',
-    color: '#cccccc',
-    fontSize: '0.9rem',
+    fontWeight: "500",
+    color: "#cccccc",
+    fontSize: "0.9rem",
   };
-  
+
   const buttonStyle = {
-    background: 'none',
-    border: '1px solid #505050',
-    borderRadius: '4px',
-    color: '#cccccc',
-    padding: '2px 8px',
-    fontSize: '0.8rem',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
+    background: "none",
+    border: "1px solid #505050",
+    borderRadius: "4px",
+    color: "#cccccc",
+    padding: "2px 8px",
+    fontSize: "0.8rem",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
   };
-  
+
   const contentStyle = {
-    position: 'relative',
-    transition: 'all 0.3s ease',
+    position: "relative",
+    transition: "all 0.3s ease",
   };
-  
+
   const fadeStyle = {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: '40px',
-    background: 'linear-gradient(transparent, #1e1e1e)',
-    pointerEvents: 'none',
+    height: "40px",
+    background: "linear-gradient(transparent, #1e1e1e)",
+    pointerEvents: "none",
   };
-  
+
   const hintStyle = {
-    position: 'absolute',
-    bottom: '10px',
+    position: "absolute",
+    bottom: "10px",
     left: 0,
     right: 0,
-    textAlign: 'center',
-    color: '#888888',
-    fontSize: '0.8rem',
-    pointerEvents: 'none',
+    textAlign: "center",
+    color: "#888888",
+    fontSize: "0.8rem",
+    pointerEvents: "none",
   };
-  
+
   return (
     <div style={containerStyle} className="html-code-container">
       <div style={headerStyle} className="html-code-header">
-        <span style={labelStyle} className="html-label">HTML Content</span>
-        <button 
-          onClick={toggleExpand} 
+        <span style={labelStyle} className="html-label">
+          HTML Content
+        </span>
+        <button
+          onClick={toggleExpand}
           style={buttonStyle}
           className="expand-toggle-button"
           title={isExpanded ? "Collapse HTML" : "Expand HTML"}
@@ -151,26 +166,31 @@ const ExpandableHtmlBlock = ({ code }) => {
           {isExpanded ? "Collapse" : "Expand"}
         </button>
       </div>
-      <div 
-        className={`html-code-content ${isExpanded ? 'expanded' : 'collapsed'}`}
+      <div
+        className={`html-code-content ${isExpanded ? "expanded" : "collapsed"}`}
         onClick={hasMoreContent && !isExpanded ? toggleExpand : undefined}
-        style={{ ...contentStyle, cursor: hasMoreContent && !isExpanded ? 'pointer' : 'default' }}
+        style={{
+          ...contentStyle,
+          cursor: hasMoreContent && !isExpanded ? "pointer" : "default",
+        }}
       >
         {!isExpanded && hasMoreContent ? (
           <>
-            <SyntaxHighlighter 
-              language="html" 
+            <SyntaxHighlighter
+              language="html"
               style={vscDarkPlus}
               className="code-syntax-highlighter html-preview"
             >
               {firstLine}
             </SyntaxHighlighter>
             <div style={fadeStyle} className="html-fade-effect"></div>
-            <div style={hintStyle} className="html-expand-hint">Click to expand HTML content...</div>
+            <div style={hintStyle} className="html-expand-hint">
+              Click to expand HTML content...
+            </div>
           </>
         ) : (
-          <SyntaxHighlighter 
-            language="html" 
+          <SyntaxHighlighter
+            language="html"
             style={vscDarkPlus}
             className="code-syntax-highlighter"
           >
@@ -185,13 +205,13 @@ const ExpandableHtmlBlock = ({ code }) => {
 // Reusable component: Code block component
 const CodeBlock = ({ language, code }) => {
   // Special handling for HTML code blocks - make them expandable
-  if (language === 'html') {
+  if (language === "html") {
     return <ExpandableHtmlBlock code={code} />;
   }
-  
+
   return (
-    <SyntaxHighlighter 
-      language={language} 
+    <SyntaxHighlighter
+      language={language}
       style={vscDarkPlus}
       className="code-syntax-highlighter"
     >
@@ -201,11 +221,13 @@ const CodeBlock = ({ language, code }) => {
 };
 
 // Reusable component: Edit button
-const EditButton = ({ onClick, position = 'right' }) => {
+const EditButton = ({ onClick, position = "right" }) => {
   return (
     <button
       onClick={onClick}
-      className={`edit-button ${position === 'left' ? 'edit-button-left' : 'edit-button-right'}`}
+      className={`edit-button ${
+        position === "left" ? "edit-button-left" : "edit-button-right"
+      }`}
       title="Edit"
     >
       <Icon.Pencil size={14} />
@@ -220,7 +242,7 @@ const EditForm = ({ value, onChange, onSave, onCancel, isItalic = false }) => {
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`edit-textarea ${isItalic ? 'edit-textarea-italic' : ''}`}
+        className={`edit-textarea ${isItalic ? "edit-textarea-italic" : ""}`}
         placeholder="Edit your content here..."
       />
       <div className="button-group">
@@ -271,14 +293,14 @@ const GroundingData = ({ groundingChunks }) => {
 // Reusable component: Code execution result component
 const CodeExecutionResult = ({ result }) => {
   const isSuccess = result.outcome === "OUTCOME_OK";
-  
+
   return (
     <div className="code-block">
       <div className="code-block-title">
         <Icon.Terminal size={16} className="mr-2" />
         Execution Result ({isSuccess ? "Success" : "Error"})
       </div>
-      <pre className={isSuccess ? 'execution-result' : 'execution-error'}>
+      <pre className={isSuccess ? "execution-result" : "execution-error"}>
         {result.output}
       </pre>
     </div>
@@ -289,11 +311,7 @@ const CodeExecutionResult = ({ result }) => {
 const InlineImage = ({ dataUrl, alt = "Generated image" }) => {
   return (
     <div className="image-container">
-      <img
-        src={dataUrl}
-        alt={alt}
-        className="conversation-image"
-      />
+      <img src={dataUrl} alt={alt} className="conversation-image" />
     </div>
   );
 };
@@ -302,10 +320,7 @@ const InlineImage = ({ dataUrl, alt = "Generated image" }) => {
 const PdfPlaceholder = () => {
   return (
     <div className="pdf-placeholder">
-      <Icon.FileEarmarkPdf
-        size={32}
-        color="#dc3545"
-      />
+      <Icon.FileEarmarkPdf size={32} color="#dc3545" />
       <div>
         <div className="pdf-title">PDF Document Uploaded</div>
         <div className="pdf-description">
@@ -317,10 +332,20 @@ const PdfPlaceholder = () => {
 };
 
 // Reusable component: Text part component
-const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, onCancel, onEdit, isThought = false, position = 'right' }) => {
+const TextPart = ({
+  text,
+  isEditing,
+  editingText,
+  onEditingTextChange,
+  onSave,
+  onCancel,
+  onEdit,
+  isThought = false,
+  position = "right",
+}) => {
   // State to track if thought is expanded
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   if (isEditing) {
     return (
       <EditForm
@@ -332,31 +357,30 @@ const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, o
       />
     );
   }
-  
+
   // For thoughts, implement expandable behavior
   if (isThought) {
     // Split text to get the first line
-    const firstLine = text.split('\n')[0];
-    const hasMoreContent = text.includes('\n');
-    
+    const firstLine = text.split("\n")[0];
+    const hasMoreContent = text.includes("\n");
+
     const toggleExpand = () => {
       setIsExpanded(!isExpanded);
     };
-    
+
     return (
       <>
-        <EditButton
-          onClick={onEdit}
-          position={position}
-        />
-        <div 
+        <EditButton onClick={onEdit} position={position} />
+        <div
           className="markdown-content thought-content"
           onClick={hasMoreContent ? toggleExpand : undefined}
-          style={{ cursor: hasMoreContent ? 'pointer' : 'default' }}
+          style={{ cursor: hasMoreContent ? "pointer" : "default" }}
         >
           {!isExpanded && hasMoreContent ? (
             <>
-              <div className="thought-first-line">{renderTextContent(firstLine)}</div>
+              <div className="thought-first-line">
+                {renderTextContent(firstLine)}
+              </div>
               <div className="thought-fade-effect"></div>
               <div className="thought-expand-hint">Click to expand...</div>
             </>
@@ -367,17 +391,12 @@ const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, o
       </>
     );
   }
-  
+
   // Regular text part rendering
   return (
     <>
-      <EditButton
-        onClick={onEdit}
-        position={position}
-      />
-      <div className="markdown-content">
-        {renderTextContent(text)}
-      </div>
+      <EditButton onClick={onEdit} position={position} />
+      <div className="markdown-content">{renderTextContent(text)}</div>
     </>
   );
 };
@@ -385,28 +404,34 @@ const TextPart = ({ text, isEditing, editingText, onEditingTextChange, onSave, o
 // Function to replace @mentions with [@mention]() format
 const replaceMentions = (text) => {
   if (!text) return text;
-  
+
   // Regular expression to match valid @mentions (case insensitive)
   // This matches @adrien, @belinda, @charlie with word boundaries
-  return text.replace(/@(adrien|belinda|charlie)\b/gi, '[@$1](##)');
+  return text.replace(/@(adrien|belinda|charlie)\b/gi, "[@$1](##)");
 };
 
 // Unified function for rendering text content - supports mixed content
 const renderTextContent = (text) => {
   if (!text) return null;
-  
+
+  // Only remove BEGIN line at the beginning and END line at the end
+  let filteredText = text.replace(
+    /^\s*\$\$\$\s+[^\$]+\s+BEGIN\s+\$\$\$\s*\n/,
+    ""
+  );
+
   // Process mixed content: Split text by code blocks and render separately
   // Use regular expressions to match all code blocks (including mermaid and regular code blocks)
   const parts = [];
   const codeBlockRegex = /```(mermaid|\w+)[\s\S]*?```/g;
   let lastIndex = 0;
   let match;
-  
-  // Find all code blocks and split text
-  while ((match = codeBlockRegex.exec(text)) !== null) {
+
+  // Find all code blocks and split filtered text
+  while ((match = codeBlockRegex.exec(filteredText)) !== null) {
     // Add regular text before code block (if any)
     if (match.index > lastIndex) {
-      const nonCodeText = text.slice(lastIndex, match.index).trim();
+      const nonCodeText = filteredText.slice(lastIndex, match.index).trim();
       if (nonCodeText) {
         // Replace @mentions in non-code text
         const textWithReplacedMentions = replaceMentions(nonCodeText);
@@ -417,17 +442,21 @@ const renderTextContent = (text) => {
         );
       }
     }
-    
+
     // Process code block (keep unchanged - don't replace mentions inside code blocks)
     const fullCodeBlock = match[0];
     const language = match[1];
-    
-    if (language === 'mermaid') {
+
+    if (language === "mermaid") {
       // Extract mermaid content
       const mermaidMatch = fullCodeBlock.match(/```mermaid([\s\S]*?)```/);
       if (mermaidMatch && mermaidMatch[1]) {
         parts.push(
-          <div key={`mermaid-${parts.length}`} className="mermaid" data-mermaid-content={mermaidMatch[1].trim()}>
+          <div
+            key={`mermaid-${parts.length}`}
+            className="mermaid"
+            data-mermaid-content={mermaidMatch[1].trim()}
+          >
             {mermaidMatch[1].trim()}
           </div>
         );
@@ -437,7 +466,7 @@ const renderTextContent = (text) => {
       const codeMatch = fullCodeBlock.match(/```\w+([\s\S]*?)```/);
       if (codeMatch && codeMatch[1]) {
         // Special handling for HTML code blocks - use ExpandableHtmlBlock
-        if (language === 'html') {
+        if (language === "html") {
           parts.push(
             <div key={`html-${parts.length}`}>
               <ExpandableHtmlBlock code={codeMatch[1].trim()} />
@@ -445,20 +474,24 @@ const renderTextContent = (text) => {
           );
         } else {
           parts.push(
-            <SyntaxHighlighter key={`code-${parts.length}`} language={language} style={vscDarkPlus}>
+            <SyntaxHighlighter
+              key={`code-${parts.length}`}
+              language={language}
+              style={vscDarkPlus}
+            >
               {codeMatch[1].trim()}
             </SyntaxHighlighter>
           );
         }
       }
     }
-    
+
     lastIndex = match.index + match[0].length;
   }
-  
+
   // Add regular text after the last code block (if any)
-  if (lastIndex < text.length) {
-    const nonCodeText = text.slice(lastIndex).trim();
+  if (lastIndex < filteredText.length) {
+    const nonCodeText = filteredText.slice(lastIndex).trim();
     if (nonCodeText) {
       // Replace @mentions in non-code text
       const textWithReplacedMentions = replaceMentions(nonCodeText);
@@ -469,72 +502,91 @@ const renderTextContent = (text) => {
       );
     }
   }
-  
-  // If no code blocks are found, just replace mentions in the text
+
+  // If no code blocks are found, just replace mentions in the filtered text
   if (parts.length === 0) {
-    const textWithReplacedMentions = replaceMentions(text);
-    return <Markdown remarkPlugins={[remarkGfm]}>{textWithReplacedMentions}</Markdown>;
+    const textWithReplacedMentions = replaceMentions(filteredText);
+    return (
+      <Markdown remarkPlugins={[remarkGfm]}>
+        {textWithReplacedMentions}
+      </Markdown>
+    );
   }
-  
+
   // Return combination of all parts
   return <div className="mixed-content">{parts}</div>;
 };
 
 // Conversation history component
-function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingPartIndex, editingText, onEditingTextChange, onSave, onCancel }) {
-    // Add state to track avatar changes
-    const [userAvatar, setUserAvatar] = useState(localStorage.getItem('userAvatar') || 'male');
-    
-    // Update avatar state when localStorage changes or avatarChange event is triggered
-    useEffect(() => {
-      const handleAvatarChange = () => {
-        setUserAvatar(localStorage.getItem('userAvatar') || 'male');
-      };
-      
-      // Listen for both custom avatarChange event and storage events
-      window.addEventListener('avatarChange', handleAvatarChange);
-      window.addEventListener('storage', handleAvatarChange);
-      
-      return () => {
-        window.removeEventListener('avatarChange', handleAvatarChange);
-        window.removeEventListener('storage', handleAvatarChange);
-      };
-    }, []);
-    
-    // Render mermaid diagrams when the component updates
-    useEffect(() => {
+function ConversationHistory({
+  history,
+  onDelete,
+  onEdit,
+  editingIndex,
+  editingPartIndex,
+  editingText,
+  onEditingTextChange,
+  onSave,
+  onCancel,
+}) {
+  // Add state to track avatar changes
+  const [userAvatar, setUserAvatar] = useState(
+    localStorage.getItem("userAvatar") || "male"
+  );
+
+  // Update avatar state when localStorage changes or avatarChange event is triggered
+  useEffect(() => {
+    const handleAvatarChange = () => {
+      setUserAvatar(localStorage.getItem("userAvatar") || "male");
+    };
+
+    // Listen for both custom avatarChange event and storage events
+    window.addEventListener("avatarChange", handleAvatarChange);
+    window.addEventListener("storage", handleAvatarChange);
+
+    return () => {
+      window.removeEventListener("avatarChange", handleAvatarChange);
+      window.removeEventListener("storage", handleAvatarChange);
+    };
+  }, []);
+
+  // Render mermaid diagrams when the component updates
+  useEffect(() => {
     // Debug log
-    console.debug('useEffect for mermaid rendering triggered');
-    
+    console.debug("useEffect for mermaid rendering triggered");
+
     // Initialize mermaid
     if (mermaid && document) {
-      console.debug('Mermaid library available, starting rendering process');
+      console.debug("Mermaid library available, starting rendering process");
       let timer;
-      
+
       // Use setTimeout to delay rendering to ensure DOM is fully loaded
       timer = setTimeout(() => {
         try {
           // Select all mermaid elements
-          const allMermaidElements = document.querySelectorAll('.mermaid');
-          console.debug('Found total mermaid elements:', allMermaidElements.length);
-          
+          const allMermaidElements = document.querySelectorAll(".mermaid");
+          console.debug(
+            "Found total mermaid elements:",
+            allMermaidElements.length
+          );
+
           // Set data-mermaid-content attribute for elements that don't have it
           allMermaidElements.forEach((element) => {
-            if (!element.hasAttribute('data-mermaid-content')) {
+            if (!element.hasAttribute("data-mermaid-content")) {
               const graphCode = element.textContent.trim();
-              element.setAttribute('data-mermaid-content', graphCode);
+              element.setAttribute("data-mermaid-content", graphCode);
             }
           });
-          
+
           // Render all mermaid elements uniformly
           allMermaidElements.forEach((element) => {
             renderMermaidDiagram(element);
           });
         } catch (error) {
-          console.error('Error in mermaid rendering process:', error);
+          console.error("Error in mermaid rendering process:", error);
         }
       }, 200); // Slightly increased delay to ensure DOM is fully updated
-      
+
       // Clean up timer
       return () => {
         if (timer) clearTimeout(timer);
@@ -565,13 +617,12 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
           return null;
         }
 
-        const formattedTime = content.timestamp ? formatTimestamp(content.timestamp) : '';
+        const formattedTime = content.timestamp
+          ? formatTimestamp(content.timestamp)
+          : "";
 
         return (
-          <div
-            key={index}
-            className={`${content.role} conversation-container`}
-          >
+          <div key={index} className={`${content.role} conversation-container`}>
             {/* Delete button - light red, becomes darker on hover */}
             <button
               onClick={() => onDelete(index)}
@@ -580,30 +631,75 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
             >
               <Icon.X size={14} />
             </button>
-            
+
             {/* Message timestamp */}
-            <div className="message-timestamp" style={{
-              fontSize: '0.75rem',
-              color: '#666',
-              marginBottom: '4px',
-              textAlign: content.role === 'user' ? 'right' : 'left'
-            }}>
+            <div
+              className="message-timestamp"
+              style={{
+                fontSize: "0.75rem",
+                color: "#666",
+                marginBottom: "4px",
+                textAlign: content.role === "user" ? "right" : "left",
+              }}
+            >
               {formattedTime}
             </div>
 
             {content.role === "user" ? (
-              <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', marginBottom: '8px'}}>
-                <img src={userAvatar === 'female' ? '/avatar-user-female.jpg' : '/avatar-user-male.jpg'} alt="You" className="avatar" style={{width: '48px', height: '48px', borderRadius: '25%', marginLeft: '8px'}} />
+              <div
+                className="message-header"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "flex-end",
+                  marginBottom: "8px",
+                }}
+              >
+                <img
+                  src={
+                    userAvatar === "female"
+                      ? "/avatar-user-female.jpg"
+                      : "/avatar-user-male.jpg"
+                  }
+                  alt="You"
+                  className="avatar"
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "25%",
+                    marginLeft: "8px",
+                  }}
+                />
               </div>
             ) : (
-              <div className="message-header" style={{display: 'flex', alignItems: 'flex-end', marginBottom: '8px'}}>
-                <img 
-                  src={content.name === 'Belinda' ? '/avatar-belinda.jpg' : content.name === 'Charlie' ? '/avatar-charlie.jpg' : '/avator-adrien.jpg'} 
-                  alt={content.name || 'Assistant'} 
-                  className="avatar" 
-                  style={{width: '48px', height: '48px', borderRadius: '25%', marginRight: '8px'}} 
+              <div
+                className="message-header"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  marginBottom: "8px",
+                }}
+              >
+                <img
+                  src={
+                    content.name === "Belinda"
+                      ? "/avatar-belinda.jpg"
+                      : content.name === "Charlie"
+                      ? "/avatar-charlie.jpg"
+                      : "/avator-adrien.jpg"
+                  }
+                  alt={content.name || "Assistant"}
+                  className="avatar"
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "25%",
+                    marginRight: "8px",
+                  }}
                 />
-                <p style={{margin: '0', fontWeight: '500'}}>{content.name || 'Adrien'}: </p>
+                <p style={{ margin: "0", fontWeight: "500" }}>
+                  {content.name || "Adrien"}:{" "}
+                </p>
               </div>
             )}
 
@@ -612,8 +708,8 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
               content.parts.map((part, partIndex) => {
                 // Check if this part contains thoughts
                 const isThought = part.thought === true;
-                
-                              // Thoughts are now handled with expandable UI instead of being hidden completely
+
+                // Thoughts are now handled with expandable UI instead of being hidden completely
 
                 // Check if this part is being edited
                 const isEditing =
@@ -624,17 +720,17 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
                   // Handle executable code
                   if (part.executableCode) {
                     return (
-                      <div
-                        key={partIndex}
-                        className="code-part"
-                      >
+                      <div key={partIndex} className="code-part">
                         <div className="code-block">
                           <div className="code-block-title">
                             <Icon.Code size={16} className="mr-2" />
                             Code ({part.executableCode.language})
                           </div>
                           <CodeBlock
-                            language={part.executableCode.language.toLowerCase() || "javascript"}
+                            language={
+                              part.executableCode.language.toLowerCase() ||
+                              "javascript"
+                            }
                             code={part.executableCode.code}
                           />
                         </div>
@@ -645,11 +741,10 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
                   // Handle code execution results
                   if (part.codeExecutionResult) {
                     return (
-                      <div
-                        key={partIndex}
-                        className="execution-result-part"
-                      >
-                        <CodeExecutionResult result={part.codeExecutionResult} />
+                      <div key={partIndex} className="execution-result-part">
+                        <CodeExecutionResult
+                          result={part.codeExecutionResult}
+                        />
                       </div>
                     );
                   }
@@ -663,16 +758,13 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
                     // For images, create data URL and display
                     const imageSrc = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
                     return (
-                      <div
-                        key={partIndex}
-                        className="image-container-wrapper"
-                      >
+                      <div key={partIndex} className="image-container-wrapper">
                         <div className="code-block">
                           <div className="code-block-title">
                             <Icon.Image size={16} className="mr-2" />
                             Generated Image
                           </div>
-                          <InlineImage 
+                          <InlineImage
                             dataUrl={imageSrc}
                             alt="Model generated image"
                           />
@@ -703,10 +795,7 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
                     );
                   } else {
                     return (
-                      <div
-                        key={partIndex}
-                        className="response-part"
-                      >
+                      <div key={partIndex} className="response-part">
                         <TextPart
                           text={part.text}
                           isEditing={isEditing}
@@ -767,7 +856,9 @@ function ConversationHistory({ history, onDelete, onEdit, editingIndex, editingP
                 return null;
               })}
             {/* Render grounding data (if exists) */}
-            {content.role === "model" && <GroundingData groundingChunks={content.groundingChunks} />}
+            {content.role === "model" && (
+              <GroundingData groundingChunks={content.groundingChunks} />
+            )}
           </div>
         );
       })}
