@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import * as Icon from "react-bootstrap-icons";
@@ -529,6 +529,8 @@ function ConversationHistory({
   onSave,
   onCancel,
 }) {
+  // Ref to the conversation history container for auto-scrolling
+  const conversationContainerRef = useRef(null);
   // Add state to track avatar changes
   const [userAvatar, setUserAvatar] = useState(
     localStorage.getItem("userAvatar") || "male"
@@ -549,6 +551,44 @@ function ConversationHistory({
       window.removeEventListener("storage", handleAvatarChange);
     };
   }, []);
+
+  // Scroll to bottom ONLY when conversation container visibility changes
+  useEffect(() => {
+    const scrollToBottom = () => {
+      // Scroll the entire window to the bottom
+      window.scrollTo({ 
+        top: document.body.scrollHeight, 
+        behavior: 'instant' 
+      });
+      // Force immediate scroll to ensure we reach the bottom
+      window.scrollTop = document.body.scrollHeight;
+    };
+
+    // Set up Intersection Observer to detect when the conversation container becomes visible
+    let observer = null;
+    
+    if (conversationContainerRef.current) {
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // ONLY WHEN the container becomes visible, scroll WINDOW to bottom
+            setTimeout(scrollToBottom, 10);
+          }
+        });
+      }, {
+        threshold: 0.1 // Trigger when at least 10% of the element is visible
+      });
+      
+      observer.observe(conversationContainerRef.current);
+    }
+
+    // Clean up observer
+    return () => {
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, []); // No dependencies - only set up once when component mounts
 
   // Render mermaid diagrams when the component updates
   useEffect(() => {
@@ -595,7 +635,7 @@ function ConversationHistory({
   }, [history, editingIndex, editingPartIndex]); // Keep original dependencies;
 
   return (
-    <div className="conversation-history">
+    <div className="conversation-history" ref={conversationContainerRef}>
       {history.map((content, index) => {
         // Check if there are elements with text property or image data in content.parts
         const hasValidParts =
