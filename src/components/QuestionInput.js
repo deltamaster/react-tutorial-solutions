@@ -23,15 +23,18 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
   // Function to automatically adjust the height of the textarea
   const adjustHeight = () => {
     if (textareaRef.current) {
-      // Remove all inline styles that may limit the height
       textareaRef.current.style.height = "";
-      textareaRef.current.style.maxHeight = "10000px";
       // Force a layout recalculation
       textareaRef.current.scrollTop = 0;
       // Get the accurate scrollHeight
       const scrollHeight = textareaRef.current.scrollHeight;
-      // Set the height directly to ensure there's enough space to display the content
-      textareaRef.current.style.height = `${scrollHeight}px`;
+      let newHeight = scrollHeight + "px";
+      textareaRef.current.style.height = newHeight;
+      // Scroll the entire window to the bottom
+      window.scrollTo({ 
+        top: document.body.scrollHeight, 
+        behavior: 'instant' 
+      });
     }
   };
 
@@ -325,18 +328,17 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
               ref={textareaRef}
               value={localQuestion}
               onChange={handleChange}
-              placeholder="Enter your question (max 30000 characters)"
+              placeholder="Enter your question"
               disabled={disabled}
               className="question-input"
-              maxLength={30000}
               style={{
                 resize: "none",
                 minHeight: "60px",
                 overflow: "hidden",
                 height: "auto",
               }}
-              onInput={adjustHeight}
-              onKeyDown={adjustHeight}
+              // onInput={adjustHeight}
+              // onKeyDown={adjustHeight}
             />
           </Col>
         </Row>
