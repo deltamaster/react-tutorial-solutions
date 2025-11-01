@@ -844,8 +844,7 @@ $$$`
       "role": "user",
       "parts": [{
         "text": "$$$Read the previous dialog and continue. AND REMEMBER TO MANAGE THE MEMORY.$$$"
-      }],
-      timestamp: Date.now() // Add timestamp for follow-up question
+      }]
     }] : [])
   ];
   
