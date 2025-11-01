@@ -567,7 +567,7 @@ function ConversationHistory({
     // Set up Intersection Observer to detect when the conversation container becomes visible
     let observer = null;
     
-    if (conversationContainerRef.current) {
+    if (conversationContainerRef.current.parentElement) {
       observer = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
@@ -576,10 +576,10 @@ function ConversationHistory({
           }
         });
       }, {
-        threshold: 0.1 // Trigger when at least 10% of the element is visible
+        threshold: 0
       });
       
-      observer.observe(conversationContainerRef.current);
+      observer.observe(conversationContainerRef.current.parentElement);
     }
 
     // Clean up observer
