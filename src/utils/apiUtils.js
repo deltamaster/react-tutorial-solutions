@@ -217,7 +217,8 @@ async function generateSummary(conversationSegment, subscriptionKey, originalGen
           {
             text: `Please summarize the following conversation segment:\n\n${formattedConversation}\n\nProvide a concise summary that captures the essential information.`
           }
-        ]
+        ],
+        timestamp: Date.now()
       }
     ],
     generationConfig: {
@@ -608,7 +609,10 @@ export class ApiError extends Error {
   }
 }
 
-export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '', userDefinedSystemPrompt = '', role='general', ignoreSystemPrompts = false) => {
+export const fetchFromApi = async (contents, generationConfig, includeTools = false, subscriptionKey = '', userDefinedSystemPrompt = '', role='general', ignoreSystemPrompts = false, depth = 0) => {
+  if (depth >= 3) {
+    throw Error("Hit Max Retry");
+  }
   const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/gemini-2.5-flash:generateContent`;
   const requestHeader = {
     "Content-Type": "application/json",
@@ -873,7 +877,7 @@ $$$`
     ...(finalContents.length === 0 || finalContents[finalContents.length - 1].role !== "user" ? [{
       "role": "user",
       "parts": [{
-        "text": "$$$Read the previous dialog and continue. AND REMEMBER TO MANAGE THE MEMORY.$$$"
+        "text": "$$$Read the previous dialog and continue.$$$"
       }]
     }] : [])
   ];
@@ -938,8 +942,44 @@ $$$`
     if (!responseText.trim()) {
       return { success: true, data: null }; // Return a default object for empty responses
     }
+    let responseObj = JSON.parse(responseText);
     
-    return JSON.parse(responseText);
+    // Log token usage statistics in a single line
+    if (responseObj.usageMetadata) {
+      const { promptTokenCount, candidatesTokenCount, thoughtsTokenCount, totalTokenCount } = responseObj.usageMetadata;
+      console.log(`Token Usage: Prompt=${promptTokenCount}, Candidates=${candidatesTokenCount}, Thoughts=${thoughtsTokenCount} Total=${totalTokenCount}`);
+    } else {
+      console.log('No usageMetadata available in response');
+    }
+    
+    // Check if response data has valid structure and handle non-STOP finishReason
+    if (!responseObj.candidates || responseObj.candidates.length === 0) {
+      throw new Error('No candidates in response');
+    }
+
+    let finishReason = responseObj.candidates[0].finishReason;
+    let finishMessage = responseObj.candidates[0].finishMessage;
+    console.log('Finish reason:', finishReason);
+    if (finishReason === 'STOP') {
+      return responseObj;
+    } else if (finishReason === 'MAX_TOKENS') {
+      throw new Error(`API request finished with reason: ${finishReason}. Message: ${finishMessage}`);
+    } else if (finishReason === 'MALFORMED_FUNCTION_CALL') {
+      console.warn('Malformed function call detected, retrying by informing the model of the invalid call');
+      const retryContents = [...contents];
+      retryContents.push({
+        role: 'user',
+        parts: [{ text: '$$$Your previous function call was malformed. Ensure you ONLY call functions available to you.$$$' }],
+        timestamp: Date.now()
+      });
+      
+      return fetchFromApi(retryContents, generationConfig, includeTools, subscriptionKey, userDefinedSystemPrompt, role, ignoreSystemPrompts, depth + 1);
+    } else {
+      throw new Error(`API request finished with reason: ${finishReason}. Message: ${finishMessage}`);
+    }
+    
+    // Return the clean response object
+    
   } catch (error) {
     // If it's already an ApiError, rethrow it
     if (error instanceof ApiError) {
