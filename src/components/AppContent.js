@@ -307,8 +307,7 @@ function AppContent() {
             }
           }
           // Check if current role is configured to not allow function calls
-          const roleConfig = roleDefinition[currentRole] || {};
-          if (roleConfig.canRoleUseFunctions(currentRole) === false) {
+          if (roleUtils.canRoleUseFunctions(currentRole) === false) {
             // Skip function call processing for roles that don't support it
             continue;
           }

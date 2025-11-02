@@ -1,5 +1,99 @@
 // Centralized role configurations and definitions
 
+// DateTime function declaration for API tool calls
+export const getMemory = {
+  name: "get_memory",
+  description: "Get the value of a memory stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryKey: {
+        type: "string",
+        description: "The key of the memory to retrieve.",
+      },
+    },
+    required: ["memoryKey"],
+  },
+};
+
+export const getAllMemories = {
+  name: "get_all_memories",
+  description: "Get all memories stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {},
+    required: [],
+  },
+};
+
+export const updateMemory = {
+  name: "update_memory",
+  description: "Update the value of a memory stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryKey: {
+        type: "string",
+        description: "The key of the memory to set.",
+      },
+      memoryValue: {
+        type: "string",
+        description:
+          "The fact in string that you summarize and store in the memory.",
+      },
+    },
+    required: ["memoryKey", "memoryValue"],
+  },
+};
+
+export const createMemory = {
+  name: "create_memory",
+  description:
+    "Create a memory stored in localStorage. The key will be generated automatically.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryValue: {
+        type: "string",
+        description:
+          "The fact in string that you summarize and store in the memory.",
+      },
+    },
+    required: ["memoryValue"],
+  },
+};
+
+export const deleteMemory = {
+  name: "delete_memory",
+  description: "Delete a memory stored in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {
+      memoryKey: {
+        type: "string",
+        description: "The key of the memory to delete.",
+      },
+    },
+    required: ["memoryKey"],
+  },
+};
+
+// Function declaration for setting document content
+export const setDocumentContent = {
+  name: "set_document_content",
+  description: "Set the content for the co-edited document in localStorage.",
+  parameters: {
+    type: "object",
+    properties: {
+      documentContent: {
+        type: "string",
+        description: "The new content to set for the co-edited document.",
+      },
+    },
+    required: ["documentContent"],
+  },
+};
+
 /**
  * Role definitions containing all character information, behaviors, and configurations
  */
@@ -58,6 +152,9 @@ I have no personality, no opinions, and no preferences. I just objectively obser
     `,
     // Additional role-specific properties and behaviors can be added here
     canUseFunctions: true,
+    tools: {
+      function_declarations: [createMemory, updateMemory, deleteMemory],
+    },
   },
   searcher: {
     name: "Belinda",
@@ -79,6 +176,11 @@ I have no personality, no opinions, and no preferences. I just objectively obser
 - My responses should focus on information provision rather than personal interaction.
     `,
     canUseFunctions: false,
+    tools: {
+      google_search: {},
+      url_context: {},
+      code_execution: {},
+    },
   },
   editor: {
     name: "Charlie",
@@ -96,6 +198,7 @@ I have no personality, no opinions, and no preferences. I just objectively obser
 - **Practical Solutions:** I offer specific recommendations rather than general advice.
     `,
     canUseFunctions: true,
+    tools: { function_declarations: [setDocumentContent] },
   },
 };
 
