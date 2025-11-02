@@ -197,7 +197,7 @@ function AppContent() {
     // Create a new user message with the processed content parts
     const newUserMessage = {
       role: "user",
-      parts: processedContentParts,
+      parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...processedContentParts],
       timestamp: Date.now(), // Add timestamp when user submits message
     };
 

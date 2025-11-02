@@ -572,7 +572,7 @@ function ConversationHistory({
 
   return (
     <div className="conversation-history" ref={conversationContainerRef}>
-      {history.map((content, index) => {
+      {history.map((content, index) => {        
         // Check if there are elements with text property or image data in content.parts
         const hasValidParts =
           content.parts &&
@@ -682,6 +682,11 @@ function ConversationHistory({
             {content.parts &&
               Array.isArray(content.parts) &&
               content.parts.map((part, partIndex) => {
+                // Skip parts marked with hide: true
+                if (part.hide === true) {
+                  return null;
+                }
+
                 // Check if this part contains thoughts
                 const isThought = part.thought === true;
 

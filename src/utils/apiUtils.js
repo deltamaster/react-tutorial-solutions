@@ -842,6 +842,7 @@ $$$`;
       for (const part of content.parts) {
         // Skip thought parts
         if (part.thought) continue;
+        if (part.hide === true) delete part.hide;
 
         // Process files if any (works for both images and PDFs)
         if (part.inline_data && part.inline_data.file) {
