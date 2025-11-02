@@ -20,9 +20,9 @@ import {
   fetchFromApi,
   toolbox,
   ApiError,
-  roleDefinition,
 } from "../utils/apiUtils";
 import { useLocalStorage } from "../utils/storageUtils";
+import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import Settings from "./Settings";
 
 // Main application content component
@@ -219,33 +219,23 @@ function AppContent() {
       // Use a loop to handle multiple function calls
       let hasFunctionCalls = true;
       let shouldSwitchRole = false;
-      let currentRole = "general";
+      let currentRole = "general"; // default role
 
       // Check if user message contains an @mention to switch role
       // First, check if any text part contains an @mention
       for (const part of processedContentParts) {
-        if (part.text) {
-          const text = part.text.toLowerCase();
-
-          // Check for @mentions of each role
-          // Keep the @mention in the original text as requested
-          if (text.includes("@belinda")) {
-            currentRole = "searcher";
-            console.log(
-              `Belinda mentioned in user message, switching to ${currentRole}`
-            );
-          } else if (text.includes("@adrien")) {
-            currentRole = "general";
-            console.log(
-              `Adrien mentioned in user message, switching to ${currentRole}`
-            );
-          } else if (text.includes("@charlie")) {
-            currentRole = "editor";
-            console.log(
-              `Charlie mentioned in user message, switching to ${currentRole}`
-            );
-          }
+        if (!part.text) {
+          continue;
         }
+  
+        const text = part.text.toLowerCase();
+        const mentionedRole = roleUtils.getRoleByMention(text);
+        if (!mentionedRole) {
+          continue;
+        }
+        currentRole = mentionedRole;
+        const roleName = roleDefinition[currentRole]?.name;
+        console.log(`${roleName} (${currentRole}) mentioned in user message`);
       }
 
       while (hasFunctionCalls || shouldSwitchRole) {
@@ -316,9 +306,10 @@ function AppContent() {
               functionResults.push({ name, result });
             }
           }
-          // continue if the role is not general
-          if (currentRole === "searcher") {
-            // Only searcher does not have the ability to make functionCall
+          // Check if current role is configured to not allow function calls
+          const roleConfig = roleDefinition[currentRole] || {};
+          if (roleConfig.canRoleUseFunctions(currentRole) === false) {
+            // Skip function call processing for roles that don't support it
             continue;
           }
           // Add function results to conversation
@@ -343,27 +334,30 @@ function AppContent() {
         }
 
         // 遍历所有文本部分，查找@userName格式的标记
+        let prevRole = currentRole;
         textParts.forEach((part) => {
-          let prevRole = currentRole;
-          if (part.text) {
-            // 检查是否包含@Belinda或@Adrien标记
-            if (part.text.includes("@Belinda")) {
-              currentRole = "searcher";
-              console.log(`Belinda mentioned, switch role to ${currentRole}`);
-            } else if (part.text.includes("@Adrien")) {
-              currentRole = "general";
-              console.log(`Adrien mentioned, switch role to ${currentRole}`);
-            } else if (part.text.includes("@Charlie")) {
-              currentRole = "editor";
-              console.log(`Charlie mentioned, switch role to ${currentRole}`);
-            } else {
-              shouldSwitchRole = false;
-            }
-            if (prevRole !== currentRole) {
-              shouldSwitchRole = true;
-            }
+          if (shouldSwitchRole) {
+            return; // Only handle one mention request
+          }
+          if (!part.text || part.thought) {
+            return;
+          }
+          // Check for role mentions using centralized role configuration
+          const mentionedRole = roleUtils.getRoleByMention(part.text);
+          if (!mentionedRole) {
+            return;
+          }
+          const roleName = roleDefinition[mentionedRole]?.name;
+          console.log(`${roleName} (${mentionedRole}) mentioned`);
+          currentRole = mentionedRole;
+
+          if (prevRole !== currentRole) {
+            shouldSwitchRole = true;
           }
         });
+        if (prevRole == currentRole) {
+          shouldSwitchRole = false;
+        }
 
         // Default case if no function calls
         if (!hasFunctionCalls && !shouldSwitchRole) {
