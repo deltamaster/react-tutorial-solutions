@@ -842,3 +842,77 @@ textarea:focus {
     padding: 0.5rem 0.75rem;
   }
 }
+
+/* HTML Code Container Styles */
+.html-code-container {
+  margin: 10px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #1e1e1e;
+  border: 1px solid #3c3c3c;
+}
+
+.html-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #252526;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.html-label {
+  font-weight: 500;
+  color: #cccccc;
+  font-size: 0.9rem;
+}
+
+.expand-toggle-button {
+  background: none;
+  border: 1px solid #505050;
+  border-radius: 4px;
+  color: #cccccc;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.expand-toggle-button:hover {
+  background-color: #505050;
+  color: #ffffff;
+}
+
+.html-code-content {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.html-fade-effect {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(transparent, #1e1e1e);
+  pointer-events: none;
+}
+
+.html-expand-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: #888888;
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
+.html-code-content.collapsed {
+  cursor: pointer;
+}
+
+.html-code-content.expanded {
+  cursor: default;
+}

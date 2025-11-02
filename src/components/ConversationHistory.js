@@ -64,7 +64,7 @@ const renderMermaidDiagram = async (element) => {
     element.innerHTML = svg;
   } catch (err) {
     console.error("Error rendering individual mermaid diagram:", err);
-    element.innerHTML = `<div style="color: red; padding: 10px; background-color: #fee; border-radius: 4px;">Error rendering mermaid diagram: ${err.message}</div>`;
+    // element.innerHTML = `<div style="color: red; padding: 10px; background-color: #fee; border-radius: 4px;">Error rendering mermaid diagram: ${err.message}</div>`;
   }
 };
 
@@ -90,76 +90,16 @@ const ExpandableHtmlBlock = ({ code }) => {
     setIsExpanded(!isExpanded);
   };
 
-  // Component styles
-  const containerStyle = {
-    margin: "10px 0",
-    borderRadius: "6px",
-    overflow: "hidden",
-    backgroundColor: "#1e1e1e",
-    border: "1px solid #3c3c3c",
-  };
-
-  const headerStyle = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "8px 12px",
-    backgroundColor: "#252526",
-    borderBottom: "1px solid #3c3c3c",
-  };
-
-  const labelStyle = {
-    fontWeight: "500",
-    color: "#cccccc",
-    fontSize: "0.9rem",
-  };
-
-  const buttonStyle = {
-    background: "none",
-    border: "1px solid #505050",
-    borderRadius: "4px",
-    color: "#cccccc",
-    padding: "2px 8px",
-    fontSize: "0.8rem",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  };
-
-  const contentStyle = {
-    position: "relative",
-    transition: "all 0.3s ease",
-  };
-
-  const fadeStyle = {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: "40px",
-    background: "linear-gradient(transparent, #1e1e1e)",
-    pointerEvents: "none",
-  };
-
-  const hintStyle = {
-    position: "absolute",
-    bottom: "10px",
-    left: 0,
-    right: 0,
-    textAlign: "center",
-    color: "#888888",
-    fontSize: "0.8rem",
-    pointerEvents: "none",
-  };
+  // Using CSS classes instead of inline styles
 
   return (
-    <div style={containerStyle} className="html-code-container">
-      <div style={headerStyle} className="html-code-header">
-        <span style={labelStyle} className="html-label">
+    <div className="html-code-container">
+      <div className="html-code-header">
+        <span className="html-label">
           HTML Content
         </span>
         <button
           onClick={toggleExpand}
-          style={buttonStyle}
           className="expand-toggle-button"
           title={isExpanded ? "Collapse HTML" : "Expand HTML"}
         >
@@ -169,10 +109,6 @@ const ExpandableHtmlBlock = ({ code }) => {
       <div
         className={`html-code-content ${isExpanded ? "expanded" : "collapsed"}`}
         onClick={hasMoreContent && !isExpanded ? toggleExpand : undefined}
-        style={{
-          ...contentStyle,
-          cursor: hasMoreContent && !isExpanded ? "pointer" : "default",
-        }}
       >
         {!isExpanded && hasMoreContent ? (
           <>
@@ -183,8 +119,8 @@ const ExpandableHtmlBlock = ({ code }) => {
             >
               {firstLine}
             </SyntaxHighlighter>
-            <div style={fadeStyle} className="html-fade-effect"></div>
-            <div style={hintStyle} className="html-expand-hint">
+            <div className="html-fade-effect"></div>
+            <div className="html-expand-hint">
               Click to expand HTML content...
             </div>
           </>
