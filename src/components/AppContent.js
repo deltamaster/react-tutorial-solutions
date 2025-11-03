@@ -20,9 +20,10 @@ import {
   fetchFromApi,
   toolbox,
   ApiError,
+  generationConfigs,
 } from "../utils/apiUtils";
 import { useLocalStorage } from "../utils/storageUtils";
-import { roleDefinition, roleUtils } from "../utils/roleConfig";
+import { roleDefinition, roleUtils } from "../utils/roleConfig.js";
 import Settings from "./Settings";
 
 // Main application content component
@@ -32,9 +33,9 @@ function AppContent() {
     ""
   );
 
-  // 从Chrome storage获取API密钥
+  // Retrieve API key from Chrome storage
   useEffect(() => {
-    // 检查是否在Chrome扩展环境中
+    // Check if running in Chrome extension environment
     if (typeof chrome !== "undefined" && chrome.storage) {
       chrome.storage.sync.get(["apiKey"], (result) => {
         if (result.apiKey) {
@@ -44,7 +45,7 @@ function AppContent() {
     }
   }, []);
 
-  // 当subscriptionKey变化时，同时更新到Chrome storage
+  // Update Chrome storage when subscriptionKey changes
   useEffect(() => {
     if (subscriptionKey && typeof chrome !== "undefined" && chrome.storage) {
       chrome.storage.sync.set({ apiKey: subscriptionKey });
@@ -55,31 +56,30 @@ function AppContent() {
     "systemPrompt",
     "You are a helpful assistant."
   );
-  const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [question, setQuestion] = useState("");
 
-  // 从Chrome storage API获取内容并填充到问题输入框
+  // Retrieve content from Chrome storage API and fill into question input
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const contentStored = urlParams.get("content") === "stored";
 
     if (contentStored && typeof chrome !== "undefined" && chrome.storage) {
-      // 从Chrome storage获取内容
+      // Get content from Chrome storage
       chrome.storage.local.get(
         ["pageContent", "contentTimestamp"],
         (result) => {
           if (result.pageContent && result.contentTimestamp) {
-            // 检查内容是否是最近5分钟内存储的，避免使用过期内容
+            // Check if content is stored within last 5 minutes to avoid using expired content
             const now = Date.now();
             const fiveMinutes = 5 * 60 * 1000;
 
             if (now - result.contentTimestamp < fiveMinutes) {
-              // 使用存储的内容
+              // Use stored content
               setQuestion(result.pageContent.content);
 
-              // 内容使用后清理存储，避免下次打开时重复使用
+              // Clean up storage after using content to avoid reuse on next open
               chrome.storage.local.remove(["pageContent", "contentTimestamp"]);
             } else {
               console.log("Stored content is too old, ignoring");
@@ -88,17 +88,17 @@ function AppContent() {
         }
       );
     } else {
-      // 兼容处理：如果不是从右键菜单打开，或者不支持chrome.storage
-      // 仍然尝试从URL参数获取内容（用于测试或其他情况）
+      // Fallback: if not opened from context menu or chrome.storage not supported
+      // still try to get content from URL parameters (for testing or other cases)
       const markdownContent = urlParams.get("markdown");
       const htmlContent = urlParams.get("html");
 
-      // 优先使用markdown内容，如果没有则使用html内容
+      // Prefer markdown content, fallback to html content
       let content = markdownContent || htmlContent;
 
       if (content) {
         try {
-          // 解码URL编码的内容
+          // Decode URL-encoded content
           const decodedContent = decodeURIComponent(content);
           setQuestion(decodedContent);
         } catch (error) {
@@ -120,30 +120,6 @@ function AppContent() {
   // State for floating tabs visibility
   const [showFloatingTabs, setShowFloatingTabs] = useState(false);
   const tabsRef = useRef(null);
-
-  // Generation configurations
-  const generationConfig = {
-    temperature: 1,
-    topP: 0.95,
-    topK: 64,
-    responseMimeType: "text/plain",
-    thinkingConfig: {
-      includeThoughts: true,
-      thinkingBudget: -1, // -1 means adptive; 0 means no thinking
-    },
-  };
-
-  const generationConfigForNextQuestion = {
-    temperature: 1,
-    topP: 0.95,
-    topK: 64,
-    maxOutputTokens: 1024,
-    responseMimeType: "text/plain",
-    thinkingConfig: {
-      includeThoughts: false,
-      thinkingBudget: 0,
-    },
-  };
 
   // Helper function to convert image file to base64
   const convertImageToBase64 = (file) => {
@@ -209,9 +185,9 @@ function AppContent() {
 
       // Create dynamic generation config with the provided thinkingBudget
       const dynamicGenerationConfig = {
-        ...generationConfig,
+        ...generationConfigs.default,
         thinkingConfig: {
-          ...generationConfig.thinkingConfig,
+          ...generationConfigs.default.thinkingConfig,
           thinkingBudget: thinkingBudget,
         },
       };
@@ -382,7 +358,7 @@ function AppContent() {
         // For follow-up questions, set ignoreSystemPrompts to true to completely ignore all system instructions
         const nextQuestionResponseData = await fetchFromApi(
           [...currentConversation, askForFollowUpRequest],
-          generationConfigForNextQuestion,
+          generationConfigs.followUpQuestions,
           false,
           subscriptionKey,
           "",

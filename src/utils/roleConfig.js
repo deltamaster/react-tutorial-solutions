@@ -202,65 +202,7 @@ I have no personality, no opinions, and no preferences. I just objectively obser
   },
 };
 
-/**
- * Generation configurations for different contexts
- */
-export const generationConfigs = {
-  default: {
-    temperature: 1,
-    topP: 0.95,
-    topK: 64,
-    responseMimeType: "text/plain",
-    thinkingConfig: {
-      includeThoughts: true,
-      thinkingBudget: -1, // -1 means adaptive; 0 means no thinking
-    },
-  },
-  followUpQuestions: {
-    temperature: 1,
-    topP: 0.95,
-    topK: 64,
-    maxOutputTokens: 1024,
-    responseMimeType: "text/plain",
-    thinkingConfig: {
-      includeThoughts: false,
-      thinkingBudget: 0,
-    },
-  },
-  summarization: {
-    temperature: 0.3, // Lower temperature for more deterministic summaries
-    topP: 0.95,
-    topK: 64,
-    responseMimeType: "text/plain",
-  },
-};
-
-/**
- * Memory compression configuration
- */
-export const MEMORY_COMPRESSION_CONFIG = {
-  // 根据环境设置不同的token阈值
-  TOKEN_THRESHOLD: window.location.hostname === 'localhost' ? 10000 : 100000, // 本地环境10000，其他环境100000
-  RECENT_MESSAGES_COUNT: 10, // Keep these recent messages uncompressed
-  MIN_MESSAGES_BETWEEN_SUMMARIES: 5, // Minimum messages between summary points
-  AGE_THRESHOLD: 60 * 60 * 24 // 1 day in seconds
-};
-
-/**
- * API configuration settings
- */
-export const API_CONFIG = {
-  endpoint: "https://jp-gw2.azure-api.net/gemini/models/gemini-2.5-flash:generateContent",
-  defaultHeaders: {
-    "Content-Type": "application/json",
-  },
-  safetySettings: [
-    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-  ],
-};
+// The generationConfigs and MEMORY_COMPRESSION_CONFIG have been moved to apiUtils.js
 
 /**
  * Role management utility functions
