@@ -12,6 +12,7 @@ import "../styles.css";
 import ConversationHistory from "./ConversationHistory";
 import QuestionInput from "./QuestionInput";
 import LoadingSpinner from "./LoadingSpinner";
+import Settings from "./Settings";
 import FollowUpQuestions from "./FollowUpQuestions";
 import Memory from "./Memory";
 import MarkdownEditor from "./MarkdownEditor";
@@ -23,15 +24,31 @@ import {
   generationConfigs,
 } from "../utils/apiUtils";
 import { useLocalStorage } from "../utils/storageUtils";
-import { roleDefinition, roleUtils } from "../utils/roleConfig.js";
-import Settings from "./Settings";
+import { roleDefinition, roleUtils } from "../utils/roleConfig";
+import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar } from "../utils/settingsService";
 
 // Main application content component
 function AppContent() {
-  const [subscriptionKey, setSubscriptionKey] = useLocalStorage(
-    "subscriptionKey",
-    ""
-  );
+  // 使用settingsService获取和设置API密钥、系统提示和用户头像
+  const [subscriptionKey, setLocalSubscriptionKey] = useState(getSubscriptionKey());
+  const [systemPrompt, setLocalSystemPrompt] = useState(getSystemPrompt());
+  const [userAvatar, setLocalUserAvatar] = useState(getUserAvatar());
+  
+  // 包装setter函数以确保通过settingsService保存
+  const handleSubscriptionKeyChange = (key) => {
+    setSubscriptionKey(key); // 使用settingsService保存到localStorage
+    setLocalSubscriptionKey(key); // 更新本地状态
+  };
+  
+  const handleSystemPromptChange = (prompt) => {
+    setSystemPrompt(prompt); // 使用settingsService保存到localStorage
+    setLocalSystemPrompt(prompt); // 更新本地状态
+  };
+
+  const handleUserAvatarChange = (avatar) => {
+    setUserAvatar(avatar); // 使用settingsService保存到localStorage
+    setLocalUserAvatar(avatar); // 更新本地状态
+  };
 
   // Retrieve API key from Chrome storage
   useEffect(() => {
@@ -39,7 +56,8 @@ function AppContent() {
     if (typeof chrome !== "undefined" && chrome.storage) {
       chrome.storage.sync.get(["apiKey"], (result) => {
         if (result.apiKey) {
-          setSubscriptionKey(result.apiKey);
+          setSubscriptionKey(result.apiKey); // 使用settingsService保存
+          setLocalSubscriptionKey(result.apiKey); // 更新本地状态
         }
       });
     }
@@ -51,11 +69,11 @@ function AppContent() {
       chrome.storage.sync.set({ apiKey: subscriptionKey });
     }
   }, [subscriptionKey]);
+
+  // No subscription key format validation required
+
+
   const [conversation, setConversation] = useLocalStorage("conversation", []);
-  const [systemPrompt, setSystemPrompt] = useLocalStorage(
-    "systemPrompt",
-    "You are a helpful assistant."
-  );
   const [loading, setLoading] = useState(false);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
   const [question, setQuestion] = useState("");
@@ -221,8 +239,6 @@ function AppContent() {
           currentConversation,
           dynamicGenerationConfig,
           true,
-          subscriptionKey,
-          systemPrompt,
           currentRole
         );
 
@@ -360,8 +376,6 @@ function AppContent() {
           [...currentConversation, askForFollowUpRequest],
           generationConfigs.followUpQuestions,
           false,
-          subscriptionKey,
-          "",
           "general",
           true
         );
@@ -647,9 +661,11 @@ function AppContent() {
           {showTopSettings && (
             <Settings
               subscriptionKey={subscriptionKey}
-              setSubscriptionKey={setSubscriptionKey}
+              setSubscriptionKey={handleSubscriptionKeyChange}
               systemPrompt={systemPrompt}
-              setSystemPrompt={setSystemPrompt}
+              setSystemPrompt={handleSystemPromptChange}
+              userAvatar={userAvatar}
+              setUserAvatar={handleUserAvatarChange}
             />
           )}
         </Col>

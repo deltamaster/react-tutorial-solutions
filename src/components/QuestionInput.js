@@ -4,15 +4,13 @@ import Button from "react-bootstrap/Button";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
+import { getThinkingEnabled, setThinkingEnabled } from "../utils/settingsService";
 
 // Question input component
 function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
   const [localQuestion, setLocalQuestion] = useState(value);
-  // 从localStorage获取设置，如果没有则默认为true
-  const [isThinkingEnabled, setIsThinkingEnabled] = useState(() => {
-    const savedSetting = localStorage.getItem("thinkingEnabled");
-    return savedSetting === null ? true : savedSetting === "true";
-  });
+  // 使用settingsService获取思考模式设置
+  const [isThinkingEnabled, setIsThinkingEnabled] = useState(getThinkingEnabled());
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [selectedPdf, setSelectedPdf] = useState(null);
@@ -199,8 +197,8 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
   const toggleThinking = () => {
     const newValue = !isThinkingEnabled;
     setIsThinkingEnabled(newValue);
-    // 保存到localStorage
-    localStorage.setItem("thinkingEnabled", newValue.toString());
+    // 使用settingsService保存到localStorage
+    setThinkingEnabled(newValue);
   };
 
   return (

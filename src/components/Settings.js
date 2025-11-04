@@ -3,20 +3,21 @@ import Form from 'react-bootstrap/Form';
 import Card from 'react-bootstrap/Card';
 import Col from 'react-bootstrap/Col';
 import Row from 'react-bootstrap/Row';
+import { getUserAvatar, setUserAvatar } from '../utils/settingsService';
 
 const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystemPrompt }) => {
   const [selectedAvatar, setSelectedAvatar] = useState('male');
 
   // Load saved preference on mount
   useEffect(() => {
-    const savedAvatar = localStorage.getItem('userAvatar');
+    const savedAvatar = getUserAvatar();
     if (savedAvatar) setSelectedAvatar(savedAvatar);
   }, []);
 
-  // Save preference and update global state
+  // Save preference and update global state using settingsService
   const handleAvatarChange = (avatarType) => {
     setSelectedAvatar(avatarType);
-    localStorage.setItem('userAvatar', avatarType);
+    setUserAvatar(avatarType);
     // Trigger re-render of conversation history
     window.dispatchEvent(new Event('avatarChange'));
   };
