@@ -4,7 +4,7 @@ import coEditService from "./coEditService";
 import { 
   roleDefinition 
 } from './roleConfig.js';
-import { getSubscriptionKey, getSystemPrompt } from "./settingsService";
+import { getSubscriptionKey, getSystemPrompt, getThinkingEnabled } from "./settingsService";
 
 const safetySettings = [
   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -16,7 +16,7 @@ const safetySettings = [
 /**
  * Generation configurations for different contexts
  */
-export const generationConfigs = {
+const generationConfigs = {
   default: {
     temperature: 1,
     topP: 0.95,
@@ -49,6 +49,29 @@ export const generationConfigs = {
     },
   },
 };
+
+/**
+ * Get the appropriate generation configuration based on request type and thinking enabled state
+ * @param {string} requestType - The type of request (e.g., 'default', 'followUpQuestions', 'summarization')
+ * @returns {Object} The appropriate generation configuration
+ */
+export const getGenerationConfig = (requestType="default") => {
+  const baseConfig = generationConfigs[requestType] || generationConfigs.default;
+  if (requestType !== 'default') {
+    return baseConfig;
+  }
+
+  if (!getThinkingEnabled()) {
+    return {...baseConfig,
+      thinkingConfig: {
+        includeThoughts: true,
+        thinkingBudget: 0,
+      },
+    };
+  }
+
+  return baseConfig;
+}
 
 /**
  * Memory compression configuration
@@ -120,6 +143,55 @@ function storeSummary(summaryMessage) {
   } catch (error) {
     console.error("Error storing summary:", error);
   }
+}
+
+/**
+ * Replaces conversation segments with their corresponding summaries
+ * @param {Array} originalContents - The original conversation contents to process (assumed in ascending timestamp order)
+ * @returns {Array} - Processed contents with summaries replacing original message ranges
+ */
+function replaceSummarizedSegments(originalContents) {
+  // Create a deep copy to avoid modifying the original
+  const contents = JSON.parse(JSON.stringify(originalContents));
+  
+  // Get stored summaries (assumed in ascending timestamp order)
+  const summaries = getStoredSummaries();
+  
+  if (summaries.length === 0) {
+    return contents;
+  }
+  
+  console.log(
+    `Found ${summaries.length} stored summaries, replacing corresponding conversation segments...`
+  );
+  
+  // Optimized algorithm to merge contents and summaries
+  const result = [];
+  let i = summaries.length - 1; // Index for summaries (starting from the end)
+  let j = contents.length - 1;   // Index for contents (starting from the end)
+  
+  // Traverse from last element to first
+  while (i >= 0 && j >= 0) {
+    const summaryTimestamp = summaries[i].timestamp;
+    const contentTimestamp = contents[j].timestamp || 0;
+    
+    if (contentTimestamp > summaryTimestamp) {
+      // Content is newer than the current summary, keep the content
+      result.push(contents[j]);
+      j--;
+    } else {
+      result.push(summaries[i]);
+      i--;
+      // Skip all content items that should be replaced by this summary
+      while (i >= 0 && j >= 0 && (contents[j].timestamp || 0) > summaries[i].timestamp) {
+        j--;
+      }
+    }
+  }
+  
+  // Reverse to restore chronological order
+  result.reverse();
+  return result;
 }
 
 // Function to find if a message range has already been summarized
@@ -310,10 +382,9 @@ async function generateSummary(
             text: `Please summarize the following conversation segment:\n\n${formattedConversation}\n\nProvide a concise summary that captures the essential information.`,
           },
         ],
-        timestamp: Date.now(),
       },
     ],
-    generationConfig: generationConfigs.summarization
+    generationConfig: getGenerationConfig("summarization")
   };
 
   try {
@@ -528,7 +599,7 @@ export class ApiError extends Error {
 
 export const fetchFromApi = async (
   contents,
-  generationConfig,
+  requestType,
   includeTools = false,
   role = "general",
   ignoreSystemPrompts = false,
@@ -546,91 +617,8 @@ export const fetchFromApi = async (
     });
   }
 
-  if (!generationConfig || typeof generationConfig !== "object") {
-    throw new ApiError("Invalid or missing generationConfig parameter", {
-      errorType: "validation_error",
-      details: { parameter: "generationConfig" },
-    });
-  }
-
   // Dynamic memory compression implementation
-  let processedContents = JSON.parse(JSON.stringify(contents));
-
-  // Before calculating token count, replace summarized segments with stored summaries
-  const storedSummaries = getStoredSummaries();
-  if (storedSummaries.length > 0) {
-    console.log(
-      `Found ${storedSummaries.length} stored summaries, replacing corresponding conversation segments...`
-    );
-
-    // Sort summaries by timestamp in descending order
-    const sortedSummaries = storedSummaries.sort(
-      (a, b) => b.timestamp - a.timestamp
-    );
-
-    // Find ranges of messages that have been summarized
-    let messagesToReplace = [];
-    let i = 0;
-
-    while (i < processedContents.length) {
-      const currentMsg = processedContents[i];
-      const currentTimestamp = currentMsg.timestamp || 0; // Default to 0 for compatibility
-
-      if (currentTimestamp !== undefined) {
-        // Always process, even if timestamp is 0
-        // Find the most recent summary that covers this message
-        const coveringSummary = sortedSummaries.find(
-          (summary) => (summary.timestamp || 0) >= currentTimestamp
-        );
-
-        if (coveringSummary) {
-          // Find the end of the messages covered by this summary
-          let j = i;
-          while (j < processedContents.length) {
-            const endMsg = processedContents[j];
-            const endTimestamp = endMsg.timestamp || 0; // Default to 0 for compatibility
-
-            // If this message is not covered by the current summary, we've found the end
-            if (endTimestamp > (coveringSummary.timestamp || 0)) {
-              break;
-            }
-            j++;
-          }
-
-          // Add this range to be replaced
-          messagesToReplace.push({
-            startIndex: i,
-            endIndex: j - 1,
-            summary: coveringSummary,
-          });
-
-          // Skip ahead to the next uncovered message
-          i = j;
-        } else {
-          // No summary covers this message, move to the next
-          i++;
-        }
-      } else {
-        // This case should not happen now, but kept for safety
-        i++;
-      }
-    }
-
-    // Replace the identified message ranges with their summaries
-    // Process from last to first to avoid index shifting issues
-    messagesToReplace
-      .sort((a, b) => b.startIndex - a.startIndex)
-      .forEach((replacement) => {
-        console.log(
-          `Replacing messages from index ${replacement.startIndex} to ${replacement.endIndex} with summary`
-        );
-        processedContents.splice(
-          replacement.startIndex,
-          replacement.endIndex - replacement.startIndex + 1,
-          replacement.summary
-        );
-      });
-  }
+  let processedContents = replaceSummarizedSegments(contents);
 
   // Calculate current token count with summaries applied
   const currentTokenCount = calculateConversationTokenCount(processedContents);
@@ -835,7 +823,7 @@ export const fetchFromApi = async (
     ...(!ignoreSystemPrompts && { systemInstruction: systemPrompts }),
     contents: conversationContents,
     safety_settings: safetySettings,
-    generationConfig,
+    generationConfig: getGenerationConfig(requestType),
   };
 
   // Configure tools based on role
@@ -902,7 +890,7 @@ export const fetchFromApi = async (
 
       return fetchFromApi(
         retryContents,
-        generationConfig,
+        requestType,
         includeTools,
         role,
         ignoreSystemPrompts,

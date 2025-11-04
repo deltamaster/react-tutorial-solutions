@@ -21,7 +21,6 @@ import {
   fetchFromApi,
   toolbox,
   ApiError,
-  generationConfigs,
 } from "../utils/apiUtils";
 import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
@@ -201,15 +200,6 @@ function AppContent() {
       // Use system prompt as parameter, not as part of conversation
       let currentConversation = [...conversation, newUserMessage];
 
-      // Create dynamic generation config with the provided thinkingBudget
-      const dynamicGenerationConfig = {
-        ...generationConfigs.default,
-        thinkingConfig: {
-          ...generationConfigs.default.thinkingConfig,
-          thinkingBudget: thinkingBudget,
-        },
-      };
-
       // Use a loop to handle multiple function calls
       let hasFunctionCalls = true;
       let shouldSwitchRole = false;
@@ -237,7 +227,7 @@ function AppContent() {
         console.log("Current role:", currentRole);
         const responseData = await fetchFromApi(
           currentConversation,
-          dynamicGenerationConfig,
+          "default",
           true,
           currentRole
         );
@@ -374,7 +364,7 @@ function AppContent() {
         // For follow-up questions, set ignoreSystemPrompts to true to completely ignore all system instructions
         const nextQuestionResponseData = await fetchFromApi(
           [...currentConversation, askForFollowUpRequest],
-          generationConfigs.followUpQuestions,
+          "followUpQuestions",
           false,
           "general",
           true

@@ -28,7 +28,7 @@ export const setSubscriptionKey = (key) => {
 
 /**
  * Get the user avatar from localStorage
- * @returns {string} The saved user avatar URL or empty string if not found
+ * @returns {string} The saved user avatar name or empty string if not found
  */
 export const getUserAvatar = () => {
   return localStorage.getItem(STORAGE_KEYS.USER_AVATAR) || '';
@@ -36,7 +36,7 @@ export const getUserAvatar = () => {
 
 /**
  * Save the user avatar to localStorage
- * @param {string} avatarUrl - The avatar URL to save
+ * @param {string} avatarUrl - The avatar name to save
  */
 export const setUserAvatar = (avatarUrl) => {
   localStorage.setItem(STORAGE_KEYS.USER_AVATAR, avatarUrl);

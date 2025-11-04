@@ -202,8 +202,6 @@ I have no personality, no opinions, and no preferences. I just objectively obser
   },
 };
 
-// The generationConfigs and MEMORY_COMPRESSION_CONFIG have been moved to apiUtils.js
-
 /**
  * Role management utility functions
  */
