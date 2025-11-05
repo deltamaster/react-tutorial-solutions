@@ -1,0 +1,17 @@
+[
+  {
+    "path": "meme/getting-off-work.gif",
+    "description": "a person is petting a dog's face while it is laying on its back on a carpet",
+    "whenToUse": "express the feeling of relaxation, being lazy, or being cute"
+  },
+  {
+    "path": "meme/petting-dog-head.gif",
+    "description": "a person is petting a shiba inu dog's head in a room",
+    "whenToUse": "comfort the user if the user is expressing sadness, anger, or frustration"
+  },
+  {
+    "path": "meme/dog-sniff.gif",
+    "description": "a close up of a dog's nose with its mouth open",
+    "whenToUse": "express curiosity when you want to dig deep into the topic in a positive sentiment"
+  }
+]

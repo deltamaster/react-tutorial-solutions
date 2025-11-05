@@ -19,6 +19,7 @@ import MarkdownEditor from "./MarkdownEditor";
 import {
   extractTextFromResponse,
   fetchFromApi,
+  generateFollowUpQuestions,
   toolbox,
   ApiError,
 } from "../utils/apiUtils";
@@ -153,7 +154,7 @@ function AppContent() {
   };
 
   // Handle chatbot question submission
-  const handleSubmit = async (contentParts, thinkingBudget = 0) => {
+  const handleSubmit = async (contentParts) => {
     if (!subscriptionKey) {
       alert("Please input Subscription key");
       return;
@@ -277,7 +278,6 @@ function AppContent() {
 
         // Check if there are function calls to process
         if (functionCallParts.length > 0) {
-          hasFunctionCalls = true;
           const functionResults = [];
 
           // Execute each function call
@@ -286,28 +286,35 @@ function AppContent() {
             if (toolbox[name]) {
               const result = await toolbox[name](args);
               functionResults.push({ name, result });
+            } else {
+              console.error(`Function ${name} not found in toolbox`);
             }
           }
-          // Check if current role is configured to not allow function calls
-          if (roleUtils.canRoleUseFunctions(currentRole) === false) {
-            // Skip function call processing for roles that don't support it
-            continue;
+          if (functionResults.length > 0) {
+            hasFunctionCalls = true;
+            // Check if current role is configured to not allow function calls
+            if (roleUtils.canRoleUseFunctions(currentRole)) {
+              // Add function results to conversation
+              const functionResponseMessage = {
+                role: "user",
+                parts: functionResults.map((result) => ({
+                  functionResponse: {
+                    name: result.name,
+                    response: { result: result.result },
+                  },
+                })),
+                timestamp: Date.now(), // Add timestamp for function response
+              };
+              currentConversation = [
+                ...currentConversation,
+                functionResponseMessage,
+              ];
+            }
+          } else {
+            // No more function calls, exit loop
+            hasFunctionCalls = false;
+            currentRole = "general";
           }
-          // Add function results to conversation
-          const functionResponseMessage = {
-            role: "user",
-            parts: functionResults.map((result) => ({
-              functionResponse: {
-                name: result.name,
-                response: { result: result.result },
-              },
-            })),
-            timestamp: Date.now(), // Add timestamp for function response
-          };
-          currentConversation = [
-            ...currentConversation,
-            functionResponseMessage,
-          ];
         } else {
           // No more function calls, exit loop
           hasFunctionCalls = false;
@@ -349,26 +356,7 @@ function AppContent() {
       // After all function calls are processed, generate follow-up questions
       setNextQuestionLoading(true);
       try {
-        let askForFollowUpRequest = {
-          role: "user",
-          parts: [
-            {
-              text:
-                "Put yourself in the user's point of view, and predict the user's follow-up question based on the conversation so far. " +
-                "Come up with up to 3, each in a new line. " +
-                "The answer should only contain the question proposed without anything else.",
-            },
-          ],
-          timestamp: Date.now(), // Add timestamp for follow-up question
-        };
-        // For follow-up questions, set ignoreSystemPrompts to true to completely ignore all system instructions
-        const nextQuestionResponseData = await fetchFromApi(
-          [...currentConversation, askForFollowUpRequest],
-          "followUpQuestions",
-          false,
-          "general",
-          true
-        );
+        const nextQuestionResponseData = await generateFollowUpQuestions(currentConversation);
         const nextQuestionResponseObj = extractTextFromResponse(
           nextQuestionResponseData
         );
