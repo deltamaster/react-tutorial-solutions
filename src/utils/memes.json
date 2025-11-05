@@ -13,5 +13,15 @@
     "path": "meme/dog-sniff.gif",
     "description": "a close up of a dog's nose with its mouth open",
     "whenToUse": "express curiosity when you want to dig deep into the topic in a positive sentiment"
+  },
+  {
+    "path": "meme/shocking-hamster.gif",
+    "description": "a shocked hamster looking surprised",
+    "whenToUse": "express shock, surprise or disbelief about something"
+  },
+  {
+    "path": "meme/eat-stealthily.gif",
+    "description": "a stealthy eating situation",
+    "whenToUse": "when the topic is about delicious food and you cannot resist the temptation of stealing a piece to eat"
   }
 ]
