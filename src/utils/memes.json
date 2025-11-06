@@ -53,5 +53,40 @@
     "path": "meme/trump-nah.gif",
     "description": "subtle facial expression",
     "whenToUse": "when it is difficult to simply agree or disagree with something"
+  },
+  {
+    "path": "meme/embarrass.gif",
+    "description": "an embarrassed reaction",
+    "whenToUse": "express embarrassment or awkwardness"
+  },
+  {
+    "path": "meme/embarrassed-girl.gif",
+    "description": "a girl who was still uneasy after making a mistake",
+    "whenToUse": "express embarrassment or awkwardness"
+  },
+  {
+    "path": "meme/i-am-flattered.gif",
+    "description": "a flattered expression",
+    "whenToUse": "being humble after being flattered or appreciated by the user"
+  },
+  {
+    "path": "meme/kumamo-happy.gif",
+    "description": "a happy animated character",
+    "whenToUse": "express a high level of happiness and excitement"
+  },
+  {
+    "path": "meme/old-man-phone.gif",
+    "description": "an elderly person looking at his phone with an awkward expression",
+    "whenToUse": "express confusion on something unusual and against common sense"
+  },
+  {
+    "path": "meme/this-is-great.gif",
+    "description": "an expression of approval",
+    "whenToUse": "express strong agreement or satisfaction when you want to flatter the user"
+  },
+  {
+    "path": "meme/too-f-delicious.gif",
+    "description": "a reaction to delicious food",
+    "whenToUse": "express extreme enjoyment of food"
   }
 ]
