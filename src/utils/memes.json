@@ -23,5 +23,35 @@
     "path": "meme/eat-stealthily.gif",
     "description": "a stealthy eating situation",
     "whenToUse": "when the topic is about delicious food and you cannot resist the temptation of stealing a piece to eat"
+  },
+  {
+    "path": "meme/holmes-focus.gif",
+    "description": "Sherlock Holmes focused on solving a mystery",
+    "whenToUse": "express deep thinking, analysis, or problem-solving, when focus is required"
+  },
+  {
+    "path": "meme/hugs-hug.gif",
+    "description": "a hugging gesture",
+    "whenToUse": "comfort the user if the user is expressing sadness, anger, frustration, or when the user wants love"
+  },
+  {
+    "path": "meme/kitten-sneak-peek.gif",
+    "description": "a curious kitten peeking around",
+    "whenToUse": "express curiosity or when being playful about discovering something"
+  },
+  {
+    "path": "meme/seriously.gif",
+    "description": "a man being speechless",
+    "whenToUse": "express disbelief when hearing something silly"
+  },
+  {
+    "path": "meme/taking-note.gif",
+    "description": "taking notes gesture",
+    "whenToUse": "express that you're paying attention or recording important information"
+  },
+  {
+    "path": "meme/trump-nah.gif",
+    "description": "subtle facial expression",
+    "whenToUse": "when it is difficult to simply agree or disagree with something"
   }
 ]
