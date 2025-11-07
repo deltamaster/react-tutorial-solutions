@@ -389,7 +389,7 @@ async function generateSummary(
 
   try {
     const response = await fetchFromApiCore(
-      "gemini-2.5-flash",
+      DEFAULT_MODEL,
       summarizationRequest
     );
     
@@ -472,77 +472,50 @@ const convertFileToBase64 = (file) => {
 // Toolbox implementation for API function calls
 export const toolbox = {
   get_memory: (args) => {
-    // Check if memoryKey is undefined or null
-    if (args.memoryKey === undefined || args.memoryKey === null) {
-      return {
-        success: false,
-        error: "Missing required argument memoryKey",
-      };
-    }
+    const validationError = validateRequiredParams(args, ['memoryKey']);
+    if (validationError) return validationError;
+    
     const memoryKey = args.memoryKey;
-    // log in the console output the memoryKey
     console.log("get_memory", memoryKey);
     return memoryService.getMemory(memoryKey);
   },
+  
   get_all_memories: () => {
     return memoryService.getAllMemories();
   },
+  
   update_memory: (args) => {
-    // Check if memoryKey or memoryValue is undefined or null
-    if (args.memoryKey === undefined || args.memoryKey === null) {
-      return {
-        success: false,
-        error: "Missing required argument memoryKey",
-      };
-    }
-    if (args.memoryValue === undefined || args.memoryValue === null) {
-      return {
-        success: false,
-        error: "Missing required argument memoryValue",
-      };
-    }
+    const validationError = validateRequiredParams(args, ['memoryKey', 'memoryValue']);
+    if (validationError) return validationError;
+    
     const memoryKey = args.memoryKey;
     const memoryValue = args.memoryValue;
-    // Use memoryService to update memory item, maintaining encapsulation
     return memoryService.setMemory(memoryKey, memoryValue);
   },
+  
   delete_memory: (args) => {
-    // Check if memoryKey is undefined or null
-    if (args.memoryKey === undefined || args.memoryKey === null) {
-      return {
-        success: false,
-        error: "Missing required argument memoryKey",
-      };
-    }
+    const validationError = validateRequiredParams(args, ['memoryKey']);
+    if (validationError) return validationError;
+    
     const memoryKey = args.memoryKey;
-    // Use memoryService to delete memory item, maintaining encapsulation
     return memoryService.deleteMemory(memoryKey);
   },
+  
   create_memory: (args) => {
-    // Check if memoryValue is undefined or null
-    if (args.memoryValue === undefined || args.memoryValue === null) {
-      return {
-        success: false,
-        error: "Missing required argument memoryValue",
-      };
-    }
+    const validationError = validateRequiredParams(args, ['memoryValue']);
+    if (validationError) return validationError;
+    
     const memoryKey = crypto.randomUUID();
     const memoryValue = args.memoryValue;
-    // Use memoryService to create memory item, maintaining encapsulation
     return memoryService.setMemory(memoryKey, memoryValue);
   },
+  
   set_document_content: (args) => {
-    // Check if documentContent is undefined or null
-    if (args.documentContent === undefined || args.documentContent === null) {
-      return {
-        success: false,
-        error: "Missing required argument documentContent",
-      };
-    }
+    const validationError = validateRequiredParams(args, ['documentContent']);
+    if (validationError) return validationError;
+    
     const documentContent = args.documentContent;
-    // Log the document content being set
     console.log("Setting document content");
-    // Use coEditService to set document content
     return coEditService.setDocumentContent(documentContent);
   },
 };
@@ -569,6 +542,67 @@ $$$`;
 
 // Import memes data from the external JSON file
 import memes from './memes.json';
+
+// Constants
+const DEFAULT_MODEL = "gemini-2.5-flash";
+
+/**
+ * Validate required parameters in an arguments object
+ * @param {Object} args - The arguments object to validate
+ * @param {Array<string>} requiredParams - List of required parameter names
+ * @returns {Object|null} - Error object if validation fails, null if successful
+ */
+function validateRequiredParams(args, requiredParams) {
+  for (const param of requiredParams) {
+    if (args[param] === undefined || args[param] === null) {
+      return {
+        success: false,
+        error: `Missing required argument ${param}`,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Handle API response parsing and validation
+ * @param {Response} response - The fetch response object
+ * @returns {Promise<Object>} - Parsed response object
+ * @throws {Error} - If response is invalid
+ */
+async function handleApiResponse(response) {
+  // Check if response is empty before parsing JSON
+  const responseText = await response.text();
+  if (!responseText.trim()) {
+    return { success: true, data: null }; // Return a default object for empty responses
+  }
+  
+  let responseObj = JSON.parse(responseText);
+  
+  // Check if response data has valid structure
+  if (!responseObj.candidates || responseObj.candidates.length === 0) {
+    throw new Error("No candidates in response");
+  }
+  
+  return responseObj;
+}
+
+/**
+ * Fetch and format memory text from memory service
+ * @returns {Promise<string>} - Formatted memory text
+ */
+async function fetchMemoryText() {
+  try {
+    const memories = await memoryService.getAllMemories();
+    return Object.entries(memories)
+      .map(([key, value]) => `Memory ${key}: ${value}`)
+      .join("\n");
+  } catch (error) {
+    console.error("Error fetching memories:", error);
+    // Default to empty memory text if there's an error - non-critical
+    return "";
+  }
+}
 
 const generateWorldFact = (role) => { return `$$$ FACT of the real world for reference:
 - The current date is ${new Date().toLocaleDateString()}.
@@ -611,7 +645,7 @@ export class ApiError extends Error {
 export const generateFollowUpQuestions = async (contents) => {
   const finalContents = await prepareContentsForRequest(contents);
   const response = await fetchFromApiCore(
-    "gemini-2.5-flash",
+    DEFAULT_MODEL,
     {
       systemInstruction: {role: "system", parts: [{text: "IGNORE the format pattern of all previous output. NO MARKDOWN FORMATTING. NO $$$ in the response."}]},
       contents: [...finalContents, {
@@ -629,20 +663,14 @@ export const generateFollowUpQuestions = async (contents) => {
       generationConfig: getGenerationConfig("followUpQuestions"),
     }
   );
-  const responseText = await response.text();
-  if (!responseText.trim()) {
-    return { success: true, data: null }; // Return a default object for empty responses
-  }
-  let responseObj = JSON.parse(responseText);
-
-  // Check if response data has valid structure and handle non-STOP finishReason
-  if (!responseObj.candidates || responseObj.candidates.length === 0) {
-    throw new Error("No candidates in response");
-  }
-
+  
+  const responseObj = await handleApiResponse(response);
+  
+  // Handle finishReason
   let finishReason = responseObj.candidates[0].finishReason;
   let finishMessage = responseObj.candidates[0].finishMessage;
   console.log("Finish reason:", finishReason);
+  
   if (finishReason === "STOP") {
     return responseObj; // GOOD
   } else {
@@ -831,20 +859,6 @@ export const fetchFromApi = async (
   // Extract all memories from storage service and include them in the prompt
   const memoryText = await fetchMemoryText();
 
-  // Helper function to fetch and format memory text
-  async function fetchMemoryText() {
-    try {
-      const memories = await memoryService.getAllMemories();
-      return Object.entries(memories)
-        .map(([key, value]) => `Memory ${key}: ${value}`)
-        .join("\n");
-    } catch (error) {
-      console.error("Error fetching memories:", error);
-      // Default to empty memory text if there's an error - non-critical, continue execution
-      return "";
-    }
-  }
-
   let documentContent = "";
   try {
     const coEditContent = await coEditService.getDocumentContent();
@@ -910,41 +924,31 @@ export const fetchFromApi = async (
   }
 
   try {
-    const response = await fetchFromApiCore(
-      "gemini-2.5-flash",
-      requestBody
-    );
-
-    // Check if response is empty before parsing JSON
-    const responseText = await response.text();
-    if (!responseText.trim()) {
-      return { success: true, data: null }; // Return a default object for empty responses
-    }
-    let responseObj = JSON.parse(responseText);
-
-    // Log token usage statistics in a single line
-    if (responseObj.usageMetadata) {
-      const {
-        promptTokenCount,
-        candidatesTokenCount,
-        thoughtsTokenCount,
-        totalTokenCount,
-      } = responseObj.usageMetadata;
-      console.log(
-        `Token Usage: Prompt=${promptTokenCount}, Candidates=${candidatesTokenCount}, Thoughts=${thoughtsTokenCount} Total=${totalTokenCount}`
+      const response = await fetchFromApiCore(
+        DEFAULT_MODEL,
+        requestBody
       );
-    } else {
-      console.log("No usageMetadata available in response");
-    }
 
-    // Check if response data has valid structure and handle non-STOP finishReason
-    if (!responseObj.candidates || responseObj.candidates.length === 0) {
-      throw new Error("No candidates in response");
-    }
+      let responseObj = await handleApiResponse(response);
 
-    let finishReason = responseObj.candidates[0].finishReason;
-    let finishMessage = responseObj.candidates[0].finishMessage;
-    console.log("Finish reason:", finishReason);
+      // Log token usage statistics in a single line
+      if (responseObj.usageMetadata) {
+        const {
+          promptTokenCount,
+          candidatesTokenCount,
+          thoughtsTokenCount,
+          totalTokenCount,
+        } = responseObj.usageMetadata;
+        console.log(
+          `Token Usage: Prompt=${promptTokenCount}, Candidates=${candidatesTokenCount}, Thoughts=${thoughtsTokenCount} Total=${totalTokenCount}`
+        );
+      } else {
+        console.log("No usageMetadata available in response");
+      }
+
+      let finishReason = responseObj.candidates[0].finishReason;
+      let finishMessage = responseObj.candidates[0].finishMessage;
+      console.log("Finish reason:", finishReason);
     if (finishReason === "STOP") {
       return responseObj; // GOOD
     } else if (finishReason === "MAX_TOKENS") {
@@ -995,8 +999,8 @@ export const fetchFromApiCore = async (
   model,
   requestBody,
 ) => {
-  if (model !== "gemini-2.5-flash") {
-    throw new Error("Only gemini-2.5-flash model is supported");
+  if (model !== DEFAULT_MODEL) {
+    throw new Error(`Only ${DEFAULT_MODEL} model is supported`);
   }
   const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/${model}:generateContent`;
   const requestHeader = {
