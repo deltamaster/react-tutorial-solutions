@@ -422,6 +422,7 @@ const renderTextContent = (text) => {
               key={`code-${parts.length}`}
               language={language}
               style={vscDarkPlus}
+              className="code-syntax-highlighter"
             >
               {codeMatch[1].trim()}
             </SyntaxHighlighter>

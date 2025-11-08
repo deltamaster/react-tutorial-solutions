@@ -446,8 +446,8 @@ textarea:focus {
   }
   
   .message-content {
-    flex: 1 1 100%;
-    max-width: 100%;
+    flex: 1 1 calc(100% - 52px);
+    max-width: calc(100% - 52px);
   }
   
   .btn {
@@ -690,6 +690,24 @@ textarea:focus {
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 8px;
+}
+
+.code-syntax-highlighter {
+  font-size: 0.9rem !important;
+}
+
+.code-syntax-highlighter * {
+  font-size: inherit !important;
+}
+
+@media (max-width: 576px) {
+  .code-syntax-highlighter {
+    font-size: 9px !important;
+  }
+
+  .code-syntax-highlighter * {
+    font-size: inherit !important;
+  }
 }
 
 .code-block-title {
