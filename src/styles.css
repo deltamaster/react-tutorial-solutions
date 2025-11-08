@@ -44,9 +44,161 @@ input[type="password"]:focus {
 .conversation-container {
   background-color: white;
   border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 6px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.conversation-container.user {
+  align-items: flex-end;
+}
+
+.conversation-container.model {
+  align-items: flex-start;
+}
+
+.message-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+.conversation-container.user .message-wrapper {
+  flex-direction: row-reverse;
+}
+
+.message-content {
+  flex: 0 1 calc(91.666% - 52px);
+  max-width: calc(91.666% - 52px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conversation-container.user .message-content {
+  align-items: flex-end;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: #666;
+}
+
+.message-bubble-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+}
+
+.conversation-container.user .message-bubble-wrapper {
+  justify-content: flex-end;
+}
+
+.delete-button {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  background-color: #f8d7da;
+  color: #dc3545;
+  border: 1px solid #f5c6cb;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.delete-button:hover {
+  background-color: #dc3545;
+  color: white;
+  border-color: #c82333;
+}
+
+.conversation-container.user .message-bubble-wrapper .delete-button {
+  right: auto;
+  left: -10px;
+}
+
+.message-avatar img {
+  width: 40px;
+  height: 40px;
+  border-radius: 25%;
+  object-fit: cover;
+}
+
+.message-content {
+  flex: 0 1 calc(91.666% - 52px);
+  max-width: calc(91.666% - 52px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conversation-container.user .message-content {
+  align-items: flex-end;
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.conversation-container.user .message-meta {
+  justify-content: flex-end;
+}
+
+.message-author {
+  font-weight: 600;
+  color: #444;
+}
+
+.message-time {
+  color: #666;
+}
+
+.message-bubble {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conversation-container.user .message-bubble {
+  margin-left: auto;
+}
+
+.message-bubble.model {
+  background-color: #f5f5f5;
+}
+
+.message-bubble.user {
+  background-color: #e3f2fd;
+}
+
+.conversation-container.user .message-bubble {
+  border-top-right-radius: 4px;
+}
+
+.conversation-container.model .message-bubble {
+  border-top-left-radius: 4px;
 }
 
 /* Thought expansion styles */
@@ -77,39 +229,13 @@ input[type="password"]:focus {
   pointer-events: none;
 }
 
+/* Legacy float-based classes removed in favor of flex layout */
 .user,
-.Me {
-  display: block;
-  float: right;
-  width: 80%;
-  font-style: normal;
-  clear: both;
-  margin-bottom: 16px;
-}
-
-div.user,
-div.Me {
-  background-color: #e3f2fd;
-  padding: 12px 16px;
-  margin: 12 px;
-  border-radius: 12px;
-}
-
+.Me,
 .model,
 .You {
-  display: block;
-  float: left;
-  width: 80%;
-  clear: both;
-  margin-bottom: 16px;
-}
-
-div.model,
-div.You {
-  background-color: #f5f5f5;
-  padding: 12px 16px;
-  margin: 12 px;
-  border-radius: 12px;
+  width: 100%;
+  float: none;
 }
 
 /* Question Input */
@@ -251,8 +377,7 @@ textarea:focus {
 .tab-content {
   background-color: white;
   border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 0;
 }
 
 /* Thinking Toggle Styles */
@@ -318,13 +443,6 @@ textarea:focus {
 @media (max-width: 768px) {
   .App {
     padding: 0;
-  }
-  
-  .user,
-  .model,
-  .Me,
-  .You {
-    width: 90%;
   }
   
   .btn {
@@ -450,40 +568,6 @@ textarea:focus {
   background-color: #ccc;
   border-color: #ccc;
   cursor: not-allowed;
-}
-
-/* Conversation History Components */
-.conversation-container {
-  position: relative;
-  margin-bottom: 16px;
-}
-
-/* Delete Button */
-.delete-button {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  background-color: #f8d7da;
-  color: #dc3545;
-  border: 1px solid #f5c6cb;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  font-size: 14px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  transition: all 0.2s ease;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-.delete-button:hover {
-  background-color: #dc3545;
-  color: white;
-  border-color: #c82333;
 }
 
 /* Close Button - Perfect Circle */
@@ -647,11 +731,6 @@ textarea:focus {
   font-style: italic;
 }
 
-.thought-label {
-  color: #6c757d;
-  font-weight: bold;
-}
-
 /* Image Styles */
 .image-container {
   margin: 10px 0;
@@ -731,7 +810,7 @@ textarea:focus {
 }
 
 .markdown-content {
-  margin-top: 8px;
+  margin-top: 4px;
   position: relative;
   z-index: 1;
 }

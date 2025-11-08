@@ -614,91 +614,22 @@ function ConversationHistory({
           ? formatTimestamp(content.timestamp)
           : "";
 
-        return (
-          <div key={index} className={`${content.role} conversation-container`}>
-            {/* Delete button - light red, becomes darker on hover */}
-            <button
-              onClick={() => onDelete(index)}
-              className="delete-button"
-              title="Delete message"
-            >
-              <Icon.X size={14} />
-            </button>
+        const isUserMessage = content.role === "user";
+        const avatarSrc = isUserMessage
+          ? userAvatar === "female"
+            ? "/avatar-user-female.jpg"
+            : "/avatar-user-male.jpg"
+          : content.name === "Belinda"
+          ? "/avatar-belinda.jpg"
+          : content.name === "Charlie"
+          ? "/avatar-charlie.jpg"
+          : "/avator-adrien.jpg";
 
-            {/* Message timestamp */}
-            <div
-              className="message-timestamp"
-              style={{
-                fontSize: "0.75rem",
-                color: "#666",
-                marginBottom: "4px",
-                textAlign: content.role === "user" ? "right" : "left",
-              }}
-            >
-              {formattedTime}
-            </div>
-
-            {content.role === "user" ? (
-              <div
-                className="message-header"
-                style={{
-                  display: "flex",
-                  alignItems: "flex-end",
-                  justifyContent: "flex-end",
-                  marginBottom: "8px",
-                }}
-              >
-                <img
-                  src={
-                    userAvatar === "female"
-                      ? "/avatar-user-female.jpg"
-                      : "/avatar-user-male.jpg"
-                  }
-                  alt="You"
-                  className="avatar"
-                  style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "25%",
-                    marginLeft: "8px",
-                  }}
-                />
-              </div>
-            ) : (
-              <div
-                className="message-header"
-                style={{
-                  display: "flex",
-                  alignItems: "flex-end",
-                  marginBottom: "8px",
-                }}
-              >
-                <img
-                  src={
-                    content.name === "Belinda"
-                      ? "/avatar-belinda.jpg"
-                      : content.name === "Charlie"
-                        ? "/avatar-charlie.jpg"
-                        : "/avator-adrien.jpg"
-                  }
-                  alt={content.name || "Assistant"}
-                  className="avatar"
-                  style={{
-                    width: "48px",
-                    height: "48px",
-                    borderRadius: "25%",
-                    marginRight: "8px",
-                  }}
-                />
-                <p style={{ margin: "0", fontWeight: "500" }}>
-                  {content.name || "Adrien"}:{" "}
-                </p>
-              </div>
-            )}
-
-            {content.parts &&
-              Array.isArray(content.parts) &&
-              content.parts.map((part, partIndex) => {
+        const renderedParts =
+          content.parts &&
+          Array.isArray(content.parts) &&
+          content.parts
+            .map((part, partIndex) => {
                 // Skip parts marked with hide: true
                 if (part.hide === true) {
                   return null;
@@ -776,7 +707,6 @@ function ConversationHistory({
                     return (
                       <div key={partIndex} className="thought-part">
                         <div className="thought-block">
-                          <span className="thought-label">Thought:</span>
                           <TextPart
                             text={part.text}
                             isEditing={isEditing}
@@ -852,11 +782,61 @@ function ConversationHistory({
                   );
                 }
                 return null;
-              })}
-            {/* Render grounding data (if exists) */}
-            {content.role === "model" && (
-              <GroundingData groundingChunks={content.groundingChunks} />
-            )}
+              })
+            .filter(Boolean);
+
+        return (
+          <div
+            key={index}
+            className={`conversation-container ${
+              isUserMessage ? "user" : "model"
+            }`}
+          >
+            <div className="message-wrapper">
+              <div className="message-avatar">
+                <img
+                  src={avatarSrc}
+                  alt={isUserMessage ? "You" : content.name || "Assistant"}
+                />
+              </div>
+
+              <div className="message-content">
+                <div className="message-meta">
+                  {!isUserMessage && (
+                    <span className="message-author">
+                      {content.name || "Adrien"}
+                    </span>
+                  )}
+                  <span className="message-time">{formattedTime}</span>
+                </div>
+
+                <div
+                  className={`message-bubble-wrapper ${
+                    isUserMessage ? "user" : "model"
+                  }`}
+                >
+                  <button
+                    onClick={() => onDelete(index)}
+                    className="delete-button"
+                    title="Delete message"
+                  >
+                    <Icon.X size={14} />
+                  </button>
+                  <div
+                    className={`message-bubble ${
+                      isUserMessage ? "user" : "model"
+                    }`}
+                  >
+                    {renderedParts}
+                    {content.role === "model" && (
+                      <GroundingData
+                        groundingChunks={content.groundingChunks}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         );
       })}
