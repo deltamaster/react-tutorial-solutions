@@ -8,6 +8,7 @@ import * as Icon from "react-bootstrap-icons";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import mermaid from "mermaid";
+import { requestSpeechAudio, sanitizeTextForSpeech } from "../utils/ttsUtils";
 
 // Helper function to format timestamp intelligently based on age
 const formatTimestamp = (timestamp) => {
@@ -44,6 +45,14 @@ const formatTimestamp = (timestamp) => {
       date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     );
   }
+};
+
+const VOICE_MAP = {
+  Adrien: "Ethan",
+  Belinda: "Cherry",
+  Charlie: "Nofish",
+  userMale: "Ryan",
+  userFemale: "Katerina",
 };
 
 // Initialize mermaid configuration
@@ -173,6 +182,36 @@ const EditButton = ({ onClick, position = "right" }) => {
   );
 };
 
+const SpeakerButton = ({ onClick, position = "right", status = "idle" }) => {
+  const isLoading = status === "loading";
+  const isPlaying = status === "playing";
+  const title = isLoading
+    ? "Generating audio..."
+    : isPlaying
+      ? "Stop audio playback"
+      : "Play audio";
+
+  let icon = <Icon.VolumeUp size={14} />;
+  if (isLoading) {
+    icon = <Icon.HourglassSplit size={14} />;
+  } else if (isPlaying) {
+    icon = <Icon.StopFill size={14} />;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`speaker-button ${position === "left" ? "speaker-button-left" : "speaker-button-right"
+        }`}
+      title={title}
+      disabled={isLoading}
+    >
+      {icon}
+    </button>
+  );
+};
+
 // Reusable component: Edit form
 const EditForm = ({ value, onChange, onSave, onCancel, isItalic = false }) => {
   return (
@@ -280,9 +319,217 @@ const TextPart = ({
   onEdit,
   isThought = false,
   position = "right",
+  speakerVoice = null,
 }) => {
-  // State to track if thought is expanded
   const [isExpanded, setIsExpanded] = useState(false);
+  const [audioSegments, setAudioSegments] = useState([]);
+  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [isWaitingForNextSegment, setIsWaitingForNextSegment] = useState(false);
+  const [audioError, setAudioError] = useState("");
+  const audioRef = useRef(null);
+  const audioSegmentsRef = useRef([]);
+  const currentSegmentIndexRef = useRef(0);
+  const isPlayingAudioRef = useRef(false);
+  const waitingForNextRef = useRef(false);
+  const generationCancelledRef = useRef(false);
+  const isGeneratingAudioRef = useRef(false);
+
+  const normalizedText = typeof text === "string" ? text : "";
+  const speakableText = sanitizeTextForSpeech(normalizedText);
+  const hasSpeakableText = speakableText.length > 0;
+
+  const updateGeneratingState = (value) => {
+    setIsGeneratingAudio(value);
+    isGeneratingAudioRef.current = value;
+    if (!value) {
+      waitingForNextRef.current = false;
+      setIsWaitingForNextSegment(false);
+    }
+  };
+
+  const stopAudio = ({ clearSegments = false, cancelGeneration = false } = {}) => {
+    if (cancelGeneration) {
+      generationCancelledRef.current = true;
+      updateGeneratingState(false);
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current = null;
+    }
+    setIsPlayingAudio(false);
+    isPlayingAudioRef.current = false;
+    waitingForNextRef.current = false;
+    setIsWaitingForNextSegment(false);
+    setCurrentSegmentIndex(0);
+    currentSegmentIndexRef.current = 0;
+    if (clearSegments) {
+      audioSegmentsRef.current = [];
+      setAudioSegments([]);
+    }
+  };
+
+  const playSegmentAtIndex = (index) => {
+    const segments = audioSegmentsRef.current;
+    currentSegmentIndexRef.current = index;
+    setCurrentSegmentIndex(index);
+
+    if (index >= segments.length) {
+      if (isGeneratingAudioRef.current) {
+        waitingForNextRef.current = true;
+        setIsWaitingForNextSegment(true);
+        setIsPlayingAudio(true);
+        isPlayingAudioRef.current = true;
+      } else {
+        stopAudio();
+      }
+      return;
+    }
+
+    const segment = segments[index];
+    const segmentUrl =
+      typeof segment === "string"
+        ? segment
+        : segment?.url || segment?.audioUrl || "";
+
+    if (!segmentUrl) {
+      playSegmentAtIndex(index + 1);
+      return;
+    }
+
+    waitingForNextRef.current = false;
+    setIsWaitingForNextSegment(false);
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+    }
+
+    const audio = new Audio(segmentUrl);
+    audioRef.current = audio;
+
+    audio.onended = () => {
+      playSegmentAtIndex(index + 1);
+    };
+
+    audio.onerror = () => {
+      setAudioError("Audio playback failed.");
+      stopAudio({ cancelGeneration: true, clearSegments: true });
+    };
+
+    audio
+      .play()
+      .then(() => {
+        setIsPlayingAudio(true);
+        isPlayingAudioRef.current = true;
+      })
+      .catch((error) => {
+        console.error("Audio playback failed:", error);
+        setAudioError("Audio playback failed.");
+        stopAudio({ cancelGeneration: true, clearSegments: true });
+      });
+  };
+
+  const handleSpeakerClick = async () => {
+    if (!hasSpeakableText) {
+      setAudioError("No text to convert to speech.");
+      return;
+    }
+
+    if (isGeneratingAudioRef.current && !isPlayingAudioRef.current) {
+      stopAudio({ cancelGeneration: true, clearSegments: true });
+      return;
+    }
+
+    if (isGeneratingAudioRef.current) {
+      return;
+    }
+
+    if (isPlayingAudio) {
+      stopAudio({ cancelGeneration: true });
+      return;
+    }
+
+    setAudioError("");
+
+    if (audioSegmentsRef.current.length > 0) {
+      playSegmentAtIndex(currentSegmentIndexRef.current || 0);
+      return;
+    }
+
+    updateGeneratingState(true);
+    generationCancelledRef.current = false;
+    audioSegmentsRef.current = [];
+    setAudioSegments([]);
+    currentSegmentIndexRef.current = 0;
+    setCurrentSegmentIndex(0);
+    waitingForNextRef.current = false;
+    setIsWaitingForNextSegment(false);
+
+    const handleSegmentGenerated = (segment) => {
+      if (generationCancelledRef.current) {
+        return;
+      }
+
+      audioSegmentsRef.current = [...audioSegmentsRef.current, segment];
+      setAudioSegments(audioSegmentsRef.current);
+
+      if (!isPlayingAudioRef.current || waitingForNextRef.current) {
+        playSegmentAtIndex(currentSegmentIndexRef.current || 0);
+      }
+    };
+
+    try {
+      const options = {};
+      if (speakerVoice) {
+        options.voice = speakerVoice;
+      }
+
+      await requestSpeechAudio(
+        speakableText,
+        options,
+        handleSegmentGenerated
+      );
+
+      if (!generationCancelledRef.current && audioSegmentsRef.current.length === 0) {
+        setAudioError("Failed to generate audio for this message.");
+      }
+    } catch (error) {
+      if (!generationCancelledRef.current) {
+        console.error("Failed to generate speech audio:", error);
+        setAudioError(
+          error?.message || "Failed to generate audio for this message."
+        );
+        stopAudio({ cancelGeneration: true, clearSegments: true });
+      }
+    } finally {
+      if (!generationCancelledRef.current) {
+        updateGeneratingState(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      generationCancelledRef.current = true;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    generationCancelledRef.current = true;
+    stopAudio({ clearSegments: true, cancelGeneration: true });
+    updateGeneratingState(false);
+  }, [text]);
 
   if (isEditing) {
     return (
@@ -296,11 +543,29 @@ const TextPart = ({
     );
   }
 
-  // For thoughts, implement expandable behavior
+  const actionButtons = (
+    <>
+      <EditButton onClick={onEdit} position={position} />
+      {hasSpeakableText && (
+        <SpeakerButton
+          onClick={handleSpeakerClick}
+          position={position}
+          status={
+            isGeneratingAudio
+              ? "loading"
+              : isPlayingAudio
+              ? "playing"
+              : "idle"
+          }
+        />
+      )}
+    </>
+  );
+
   if (isThought) {
-    // Split text to get the first line
-    const firstLine = text.split("\n")[0];
-    const hasMoreContent = text.includes("\n");
+    const safeText = normalizedText;
+    const firstLine = safeText.split("\n")[0];
+    const hasMoreContent = safeText.includes("\n");
 
     const toggleExpand = () => {
       setIsExpanded(!isExpanded);
@@ -308,7 +573,7 @@ const TextPart = ({
 
     return (
       <>
-        <EditButton onClick={onEdit} position={position} />
+        {actionButtons}
         <div
           className="markdown-content thought-content"
           onClick={hasMoreContent ? toggleExpand : undefined}
@@ -323,18 +588,26 @@ const TextPart = ({
               <div className="thought-expand-hint">Click to expand...</div>
             </>
           ) : (
-            renderTextContent(text)
+            renderTextContent(safeText)
           )}
         </div>
+        {audioError && <div className="tts-error">{audioError}</div>}
       </>
     );
   }
 
-  // Regular text part rendering
   return (
     <>
-      <EditButton onClick={onEdit} position={position} />
-      <div className="markdown-content">{renderTextContent(text)}</div>
+      {actionButtons}
+      <div className="markdown-content">{renderTextContent(normalizedText)}</div>
+      {audioSegments.length > 1 && isPlayingAudio && (
+        <div className="tts-progress">
+          Segment {Math.min(currentSegmentIndex + 1, audioSegments.length)} of{" "}
+          {audioSegments.length}
+          {isWaitingForNextSegment ? " (loading next...)" : ""}
+        </div>
+      )}
+      {audioError && <div className="tts-error">{audioError}</div>}
     </>
   );
 };
@@ -626,6 +899,12 @@ function ConversationHistory({
           ? "/avatar-charlie.jpg"
           : "/avator-adrien.jpg";
 
+        const speakerVoice = isUserMessage
+          ? userAvatar === "female"
+            ? VOICE_MAP.userFemale
+            : VOICE_MAP.userMale
+          : VOICE_MAP[content.name] || VOICE_MAP.Adrien;
+
         const renderedParts =
           content.parts &&
           Array.isArray(content.parts) &&
@@ -718,6 +997,7 @@ function ConversationHistory({
                             onEdit={() => onEdit(index, partIndex, part.text)}
                             isThought={true}
                             position="right"
+                            speakerVoice={speakerVoice}
                           />
                         </div>
                       </div>
@@ -735,6 +1015,7 @@ function ConversationHistory({
                           onEdit={() => onEdit(index, partIndex, part.text)}
                           isThought={false}
                           position="right"
+                          speakerVoice={speakerVoice}
                         />
                       </div>
                     );
@@ -778,6 +1059,7 @@ function ConversationHistory({
                         onEdit={() => onEdit(index, partIndex, part.text)}
                         isThought={false}
                         position="left"
+                        speakerVoice={speakerVoice}
                       />
                     </div>
                   );
