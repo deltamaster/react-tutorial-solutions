@@ -76,6 +76,7 @@ input[type="password"]:focus {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  font-size: 0.9em;
 }
 
 .conversation-container.user .message-content {
@@ -448,6 +449,7 @@ textarea:focus {
   .message-content {
     flex: 1 1 calc(100% - 52px);
     max-width: calc(100% - 52px);
+    font-size: 0.8em;
   }
   
   .btn {
