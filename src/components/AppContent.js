@@ -25,6 +25,7 @@ import {
 import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar } from "../utils/settingsService";
+import { sanitizeFollowUpResponse } from "../utils/followUpUtils";
 
 const MAX_CONCURRENT_ROLE_REQUESTS = 3;
 
@@ -282,33 +283,19 @@ function AppContent() {
     setErrorMessage(userMessage);
   };
 
-  const sanitizeFollowUpResponse = (text) => {
-    if (!text) {
-      return "";
-    }
+  const reorderResponseParts = (parts = []) => {
+    const regularParts = [];
+    const deferredParts = [];
 
-    let cleaned = text;
+    parts.forEach((part) => {
+      if (part?.executableCode || part?.inlineData || part?.inline_data) {
+        deferredParts.push(part);
+      } else {
+        regularParts.push(part);
+      }
+    });
 
-    cleaned = cleaned.replace(
-      /\$\$\$\s+[A-Za-z0-9_\-]+\s+BEGIN\s+\$\$\$/gi,
-      ""
-    );
-    cleaned = cleaned.replace(
-      /\$\$\$\s+[A-Za-z0-9_\-]+\s+END\s+\$\$\$/gi,
-      ""
-    );
-
-    const lines = cleaned
-      .split(/\r?\n/)
-      .map((line) =>
-        line
-          .replace(/^\s*(?:[-*•]|>\s*[-*•])\s*/, "")
-          .replace(/^\s*\d+[\.)]\s*/, "")
-          .trim()
-      )
-      .filter((line) => line.length > 0);
-
-    return lines.join("\n");
+    return [...regularParts, ...deferredParts];
   };
 
   function cancelPendingFollowUpQuestions() {
@@ -462,10 +449,11 @@ function AppContent() {
         if (task.cancelled) {
           return;
         }
+        const orderedParts = reorderResponseParts(textParts);
         const botResponse = {
           role: "model",
           name: roleDefinition[role]?.name || "Adrien",
-          parts: textParts,
+          parts: orderedParts,
           timestamp: Date.now(),
           groundingChunks:
             candidate?.groundingMetadata?.groundingChunks || [],
@@ -475,7 +463,7 @@ function AppContent() {
 
         appendMessageToConversation(botResponse);
 
-        const mentionedRoles = extractMentionedRolesFromParts(textParts).filter(
+        const mentionedRoles = extractMentionedRolesFromParts(orderedParts).filter(
           (roleKey) => roleKey !== role
         );
 
