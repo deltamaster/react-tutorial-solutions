@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import * as Icon from "react-bootstrap-icons";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -161,9 +164,8 @@ const EditButton = ({ onClick, position = "right" }) => {
   return (
     <button
       onClick={onClick}
-      className={`edit-button ${
-        position === "left" ? "edit-button-left" : "edit-button-right"
-      }`}
+      className={`edit-button ${position === "left" ? "edit-button-left" : "edit-button-right"
+        }`}
       title="Edit"
     >
       <Icon.Pencil size={14} />
@@ -367,12 +369,18 @@ const renderTextContent = (text) => {
   while ((match = codeBlockRegex.exec(filteredText)) !== null) {
     // Add regular text before code block (if any)
     if (match.index > lastIndex) {
-      const nonCodeText = filteredText.slice(lastIndex, match.index).trim();
-      if (nonCodeText) {
-        // Replace @mentions in non-code text
+      const nonCodeText = filteredText.slice(lastIndex, match.index);
+      // Only trim if the text is not empty after trimming
+      const trimmedText = nonCodeText.trim();
+      if (trimmedText) {
+        // Replace @mentions in non-code text (preserve original whitespace structure)
         const textWithReplacedMentions = replaceMentions(nonCodeText);
         parts.push(
-          <Markdown key={`md-${parts.length}`} remarkPlugins={[remarkGfm]}>
+          <Markdown
+            key={`md-${parts.length}`}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          >
             {textWithReplacedMentions}
           </Markdown>
         );
@@ -427,12 +435,18 @@ const renderTextContent = (text) => {
 
   // Add regular text after the last code block (if any)
   if (lastIndex < filteredText.length) {
-    const nonCodeText = filteredText.slice(lastIndex).trim();
-    if (nonCodeText) {
-      // Replace @mentions in non-code text
+    const nonCodeText = filteredText.slice(lastIndex);
+    // Only check if text exists after trimming, but preserve original whitespace
+    const trimmedText = nonCodeText.trim();
+    if (trimmedText) {
+      // Replace @mentions in non-code text (preserve original whitespace structure)
       const textWithReplacedMentions = replaceMentions(nonCodeText);
       parts.push(
-        <Markdown key={`md-${parts.length}`} remarkPlugins={[remarkGfm]}>
+        <Markdown
+          key={`md-${parts.length}`}
+          remarkPlugins={[remarkGfm, remarkMath]}
+          rehypePlugins={[rehypeKatex]}
+        >
           {textWithReplacedMentions}
         </Markdown>
       );
@@ -443,7 +457,10 @@ const renderTextContent = (text) => {
   if (parts.length === 0) {
     const textWithReplacedMentions = replaceMentions(filteredText);
     return (
-      <Markdown remarkPlugins={[remarkGfm]}>
+      <Markdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+      >
         {textWithReplacedMentions}
       </Markdown>
     );
@@ -492,9 +509,9 @@ function ConversationHistory({
   useEffect(() => {
     const scrollToBottom = () => {
       // Scroll the entire window to the bottom
-      window.scrollTo({ 
-        top: document.body.scrollHeight, 
-        behavior: 'instant' 
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: 'instant'
       });
       // Force immediate scroll to ensure we reach the bottom
       window.scrollTop = document.body.scrollHeight;
@@ -502,7 +519,7 @@ function ConversationHistory({
 
     // Set up Intersection Observer to detect when the conversation container becomes visible
     let observer = null;
-    
+
     if (conversationContainerRef.current.parentElement) {
       observer = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
@@ -514,7 +531,7 @@ function ConversationHistory({
       }, {
         threshold: 0
       });
-      
+
       observer.observe(conversationContainerRef.current.parentElement);
     }
 
@@ -572,7 +589,7 @@ function ConversationHistory({
 
   return (
     <div className="conversation-history" ref={conversationContainerRef}>
-      {history.map((content, index) => {        
+      {history.map((content, index) => {
         // Check if there are elements with text property or image data in content.parts
         const hasValidParts =
           content.parts &&
@@ -661,8 +678,8 @@ function ConversationHistory({
                     content.name === "Belinda"
                       ? "/avatar-belinda.jpg"
                       : content.name === "Charlie"
-                      ? "/avatar-charlie.jpg"
-                      : "/avator-adrien.jpg"
+                        ? "/avatar-charlie.jpg"
+                        : "/avator-adrien.jpg"
                   }
                   alt={content.name || "Assistant"}
                   className="avatar"

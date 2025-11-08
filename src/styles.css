@@ -530,6 +530,9 @@ textarea:focus {
   min-width: 28px;
   height: 28px;
   transition: all 0.2s ease;
+  position: relative;
+  z-index: 5;
+  pointer-events: auto;
 }
 
 .edit-button:hover {
@@ -729,6 +732,15 @@ textarea:focus {
 
 .markdown-content {
   margin-top: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.markdown-content .katex-display {
+  display: block;
+  margin: 12px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 /* Markdown Editor and Preview Styles */

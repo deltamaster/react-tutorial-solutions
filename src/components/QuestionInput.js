@@ -50,10 +50,8 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     adjustHeight();
   }, []);
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
+  const processImageFile = (file) => {
+    if (!file) return false;
     // Reset error state
     setUploadError("");
 
@@ -69,14 +67,14 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
       setUploadError(
         "Unsupported file format. Please upload PNG, JPEG, WEBP, HEIC, or HEIF."
       );
-      return;
+      return false;
     }
 
     // Validate file size (20MB)
     const maxSize = 20 * 1024 * 1024; // 20MB in bytes
     if (file.size > maxSize) {
       setUploadError("File size exceeds 20MB limit.");
-      return;
+      return false;
     }
 
     // Set selected image
@@ -88,6 +86,14 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
       setImagePreview(reader.result);
     };
     reader.readAsDataURL(file);
+    return true;
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    processImageFile(file);
   };
 
   const removeSelectedImage = () => {
@@ -191,6 +197,23 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     adjustHeight();
     if (onChange) {
       onChange(newValue);
+    }
+  };
+
+  const handlePaste = (event) => {
+    if (!event.clipboardData || disabled) {
+      return;
+    }
+
+    const items = event.clipboardData.items || [];
+    for (const item of items) {
+      if (item.type && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file && processImageFile(file)) {
+          event.preventDefault();
+        }
+        break;
+      }
     }
   };
 
@@ -326,6 +349,7 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
               ref={textareaRef}
               value={localQuestion}
               onChange={handleChange}
+              onPaste={handlePaste}
               placeholder="Enter your question"
               disabled={disabled}
               className="question-input"
