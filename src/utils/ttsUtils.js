@@ -26,7 +26,7 @@ export const sanitizeTextForSpeech = (text = "") => {
   sanitized = sanitized.replace(/<\/?[^>]+>/g, " ");
 
   // Replace Markdown images with alt text
-  sanitized = sanitized.replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1");
+  sanitized = sanitized.replace(/!\[([^\]]*)\]\([^)]+\)/g, "");
 
   // Replace Markdown links with link text
   sanitized = sanitized.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
@@ -38,11 +38,11 @@ export const sanitizeTextForSpeech = (text = "") => {
   sanitized = sanitized.replace(/^\s{0,3}#{1,6}\s+/gm, "");
 
   // Strip list markers
-  sanitized = sanitized.replace(/^\s{0,3}[-*+]\s+/gm, "");
-  sanitized = sanitized.replace(/^\s{0,3}\d+\.\s+/gm, "");
+  sanitized = sanitized.replace(/^\s{0,3}[-*+]\s+/gm, "\n");
+  sanitized = sanitized.replace(/^\s{0,3}\d+\.\s+/gm, "\n");
 
   // Remove fenced code block markers but keep code content
-  sanitized = sanitized.replace(/```([\s\S]*?)```/g, (_, code) => code);
+  sanitized = sanitized.replace(/```([\s\S]*?)```/g, "");
 
   // Remove inline code markers
   sanitized = sanitized.replace(/`([^`]+)`/g, "$1");
