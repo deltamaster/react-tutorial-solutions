@@ -137,8 +137,7 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const submitQuestion = () => {
     if ((localQuestion.trim() || selectedImage) && !disabled) {
       // Set thinkingBudget to -1 if thinking is enabled, else 0
       const thinkingBudget = isThinkingEnabled ? -1 : 0;
@@ -188,6 +187,18 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
       if (onChange) {
         onChange("");
       }
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    submitQuestion();
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" && event.ctrlKey && !disabled) {
+      event.preventDefault();
+      submitQuestion();
     }
   };
 
@@ -350,6 +361,7 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
               value={localQuestion}
               onChange={handleChange}
               onPaste={handlePaste}
+              onKeyDown={handleKeyDown}
               placeholder="Enter your question"
               disabled={disabled}
               className="question-input"

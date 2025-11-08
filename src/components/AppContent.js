@@ -26,6 +26,7 @@ import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar } from "../utils/settingsService";
 import { sanitizeFollowUpResponse } from "../utils/followUpUtils";
+import { normalizeBeginMarker } from "../utils/responseUtils";
 
 const MAX_CONCURRENT_ROLE_REQUESTS = 3;
 
@@ -450,10 +451,14 @@ function AppContent() {
           return;
         }
         const orderedParts = reorderResponseParts(textParts);
+        const normalizedParts = normalizeBeginMarker(
+          orderedParts,
+          roleDefinition[role]?.name
+        );
         const botResponse = {
           role: "model",
           name: roleDefinition[role]?.name || "Adrien",
-          parts: orderedParts,
+          parts: normalizedParts,
           timestamp: Date.now(),
           groundingChunks:
             candidate?.groundingMetadata?.groundingChunks || [],
@@ -463,7 +468,9 @@ function AppContent() {
 
         appendMessageToConversation(botResponse);
 
-        const mentionedRoles = extractMentionedRolesFromParts(orderedParts).filter(
+        const mentionedRoles = extractMentionedRolesFromParts(
+          normalizedParts
+        ).filter(
           (roleKey) => roleKey !== role
         );
 
