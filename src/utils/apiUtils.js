@@ -547,9 +547,6 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
 {{memories}}
 $$$`;
 
-// Import memes data from the external JSON file
-import memes from './memes.json';
-
 // Constants
 const DEFAULT_MODEL = "gemini-2.5-flash";
 
@@ -624,10 +621,6 @@ const generateWorldFact = (role) => { return `$$$ FACT of the real world for ref
 - To render mathematical expressions, use LaTeX math syntax. For both inline and block math, enclose expressions with \`$...$\` for inline math and \`$$...$$\` for block math.
 - All math expressions will be rendered using KaTeX on the client side for proper display.
 - Do not explain or mention KaTeX explicitly to the user; just use standard LaTeX syntax for mathematical formatting in your responses.
-- Use memes properly to make the conversation more natrual. ONLY use memes in the list below. Put memes in a separate paragraph. **DO NOT SHOW USER ALL THE MEMES YOU HAVE.** DO NOT USE MORE THAN 2 MEMES in a single response. DO NOT REPEAT THE SAME MEME in a single conversation. Format: ![meme]({{meme.path}})
-
-**Memes List:**
-${memes.map((meme) => `- path: ${meme.path}, description: ${meme.description}, When to use: (${meme.whenToUse})`).join("\n")}
 
 **Format of Response:**
 - Start the response with "$$$ ${roleDefinition[role].name} BEGIN $$$\n"
@@ -889,10 +882,12 @@ export const fetchFromApi = async (
       { text: roleDefinition[role].selfIntroduction },
       { text: userListPrompt },
       {
-        text: roleDefinition[role].detailedInstruction.replace(
-          "{{coEditContent}}",
-          documentContent
-        ),
+        text: role === "editor" 
+          ? roleDefinition[role].detailedInstruction.replace(
+              "{{coEditContent}}",
+              documentContent || "(No document content has been set yet.)"
+            )
+          : roleDefinition[role].detailedInstruction,
       },
       { text: memoryPrompt.replace("{{memories}}", memoryText) },
       { text: getSystemPrompt() },
