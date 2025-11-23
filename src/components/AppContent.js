@@ -16,7 +16,6 @@ import FollowUpQuestions from "./FollowUpQuestions";
 import Memory from "./Memory";
 import MarkdownEditor from "./MarkdownEditor";
 import {
-  extractTextFromResponse,
   fetchFromApi,
   generateFollowUpQuestions,
   toolbox,
@@ -25,7 +24,6 @@ import {
 import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar } from "../utils/settingsService";
-import { sanitizeFollowUpResponse } from "../utils/followUpUtils";
 import { normalizeBeginMarker } from "../utils/responseUtils";
 
 const MAX_CONCURRENT_ROLE_REQUESTS = 3;
@@ -346,19 +344,25 @@ function AppContent() {
           return;
         }
 
-        const nextQuestionResponseObj = extractTextFromResponse(
-          nextQuestionResponseData
-        );
-        const nextQuestionResponseText =
-          nextQuestionResponseObj.responseText;
-
-        if (nextQuestionResponseText) {
-          const sanitizedText = sanitizeFollowUpResponse(
-            nextQuestionResponseText
-          );
-          const lines = sanitizedText.split("\n");
-          const questions = lines.slice(0, 3).filter((q) => q.trim());
-          setFollowUpQuestions(questions);
+        // Extract JSON array from structured output
+        const candidate = nextQuestionResponseData?.candidates?.[0];
+        if (candidate?.content?.parts?.[0]?.text) {
+          try {
+            const jsonText = candidate.content.parts[0].text;
+            const questions = JSON.parse(jsonText);
+            if (Array.isArray(questions)) {
+              // Filter out empty strings and limit to 3
+              const validQuestions = questions
+                .filter((q) => typeof q === "string" && q.trim())
+                .slice(0, 3);
+              setFollowUpQuestions(validQuestions);
+            } else {
+              setFollowUpQuestions([]);
+            }
+          } catch (error) {
+            console.error("Error parsing follow-up questions JSON:", error);
+            setFollowUpQuestions([]);
+          }
         } else {
           setFollowUpQuestions([]);
         }
@@ -712,11 +716,12 @@ function AppContent() {
 
     appendMessageToConversation(newUserMessage);
 
-    const rolesToProcess = new Set(["general"]);
     const mentionedRoles = extractMentionedRolesFromParts(processedContentParts);
-    mentionedRoles.forEach((roleKey) => rolesToProcess.add(roleKey));
+    const rolesToProcess = mentionedRoles.length > 0 
+      ? mentionedRoles 
+      : ["general"];
 
-    enqueueRoleRequests(Array.from(rolesToProcess), {
+    enqueueRoleRequests(rolesToProcess, {
       source: "user",
       triggerMessageId: newUserMessage.timestamp,
     });

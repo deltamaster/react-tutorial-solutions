@@ -32,7 +32,14 @@ const generationConfigs = {
     topP: 0.95,
     topK: 64,
     maxOutputTokens: 1024,
-    responseMimeType: "text/plain",
+    responseMimeType: "application/json",
+    responseJsonSchema: {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      maxItems: 3
+    },
     thinkingConfig: {
       includeThoughts: false,
       thinkingBudget: 0,
@@ -651,15 +658,14 @@ export const generateFollowUpQuestions = async (contents) => {
   const response = await fetchFromApiCore(
     DEFAULT_MODEL,
     {
-      systemInstruction: {role: "system", parts: [{text: "IGNORE the format pattern of all previous output. NO MARKDOWN FORMATTING. NO $$$ in the response."}]},
+      systemInstruction: {role: "system", parts: [{text: "You are a helpful assistant that generates follow-up questions as a JSON array of strings."}]},
       contents: [...finalContents, {
         role: "user",
         parts: [
           {
             text:
-              "Put yourself in the user's point of view, and predict the user's follow-up question based on the conversation so far. " +
-              "Come up with up to 3, each in a new line. " +
-              "The answer should ONLY contain the questions proposed without anything else. NO MARKDOWN FORMATTING.",
+              "Put yourself in the user's point of view, and predict up to 3 follow-up questions the user might ask based on the conversation so far. " +
+              "Return the questions as a JSON array of strings, with each question as a separate string element.",
           },
         ],
       }],
