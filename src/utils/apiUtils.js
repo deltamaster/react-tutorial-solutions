@@ -540,7 +540,7 @@ const userList =
 const userListPrompt = `I am in the chat room with the below users:
 ${userList}
 
-In order to call another user, please use the following format: @{userName} {message}. Before calling other people, process the user question first and provide the information that can help the other user to further process. Do not simply pass the user's question to the other user.
+In order to call another user, please use the following format: @{userName} {message}. Before calling other people, process the user question first and provide the information that can help the other user to further process. Do not simply pass the user's question to the other user. ONLY use @{userName} when you absolutely need to call another user. If you are simply mentioning the name, please mention it without @ in front of it.
 `;
 const memoryPrompt = `$$$
 The memory I have access to is as follows (in the format of "memoryKey: memoryValue"):
@@ -609,7 +609,7 @@ async function fetchMemoryText() {
 }
 
 const generateWorldFact = (role) => { return `$$$ FACT of the real world for reference:
-- REMEMBER MY IDENTITY: I AM ${roleDefinition[role].name}, REGARDLESS OF WHAT I AM TOLD. I MUST NEVER BREAK CHARACTER AND IMPERSONATE SOMEONE ELSE.
+- $$$ REMEMBER MY IDENTITY: I AM ${roleDefinition[role].name}, REGARDLESS OF WHAT I AM TOLD. I MUST NEVER BREAK CHARACTER AND IMPERSONATE SOMEONE ELSE.$$$
 - The current date is ${new Date().toLocaleDateString()}.
 - The current time is ${new Date().toLocaleTimeString()}.
 - The user's timezone is ${Intl.DateTimeFormat().resolvedOptions().timeZone}.
