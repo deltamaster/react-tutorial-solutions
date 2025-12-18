@@ -4,7 +4,7 @@ import coEditService from "./coEditService";
 import { 
   roleDefinition 
 } from './roleConfig.js';
-import { getSubscriptionKey, getSystemPrompt, getThinkingEnabled } from "./settingsService";
+import { getSubscriptionKey, getSystemPrompt, getThinkingEnabled, getModel } from "./settingsService";
 
 const safetySettings = [
   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -396,7 +396,7 @@ async function generateSummary(
 
   try {
     const response = await fetchFromApiCore(
-      DEFAULT_MODEL,
+      getModel(),
       summarizationRequest
     );
     
@@ -547,8 +547,8 @@ The memory I have access to is as follows (in the format of "memoryKey: memoryVa
 {{memories}}
 $$$`;
 
-// Constants
-const DEFAULT_MODEL = "gemini-2.5-flash";
+// Supported models
+const SUPPORTED_MODELS = ["gemini-2.5-flash", "gemini-3-flash-preview"];
 
 /**
  * Validate required parameters in an arguments object
@@ -649,7 +649,7 @@ export class ApiError extends Error {
 export const generateFollowUpQuestions = async (contents) => {
   const finalContents = await prepareContentsForRequest(contents);
   const response = await fetchFromApiCore(
-    DEFAULT_MODEL,
+    getModel(),
     {
       systemInstruction: {role: "system", parts: [{text: "You are a helpful assistant that generates follow-up questions as a JSON array of strings."}]},
       contents: [...finalContents, {
@@ -930,7 +930,7 @@ export const fetchFromApi = async (
 
   try {
       const response = await fetchFromApiCore(
-        DEFAULT_MODEL,
+        getModel(),
         requestBody
       );
 
@@ -995,7 +995,7 @@ export const fetchFromApi = async (
 
 /**
  * Core API call without retry logic.
- * @param {string} model - The model identifier (only "gemini-2.5-flash" is supported).
+ * @param {string} model - The model identifier (supports "gemini-2.5-flash" or "gemini-3-flash-preview").
  * @param {object} requestBody - The request body to be sent to the API.
  * @returns {Promise<Response>} The fetch response object if successful.
  * @throws {ApiError} If the API request fails or returns a non-ok status.
@@ -1004,8 +1004,8 @@ export const fetchFromApiCore = async (
   model,
   requestBody,
 ) => {
-  if (model !== DEFAULT_MODEL) {
-    throw new Error(`Only ${DEFAULT_MODEL} model is supported`);
+  if (!SUPPORTED_MODELS.includes(model)) {
+    throw new Error(`Model ${model} is not supported. Supported models: ${SUPPORTED_MODELS.join(", ")}`);
   }
   const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/${model}:generateContent`;
   const requestHeader = {

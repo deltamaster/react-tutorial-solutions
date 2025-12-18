@@ -5,7 +5,7 @@ import Col from 'react-bootstrap/Col';
 import Row from 'react-bootstrap/Row';
 import { getUserAvatar, setUserAvatar } from '../utils/settingsService';
 
-const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystemPrompt }) => {
+const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystemPrompt, model, setModel }) => {
   const [selectedAvatar, setSelectedAvatar] = useState('male');
 
   // Load saved preference on mount
@@ -63,6 +63,25 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
               />
               <Form.Text className="text-muted">
                 System prompts help define how the assistant behaves. Example: 'You are a helpful assistant specialized in technology.'
+              </Form.Text>
+            </Form.Group>
+          </Col>
+        </Row>
+        
+        {/* Model Selection Section */}
+        <Row className="mb-4">
+          <Col xs={12}>
+            <Form.Group controlId="model-selection">
+              <Form.Label>Model</Form.Label>
+              <Form.Select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+              >
+                <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+              </Form.Select>
+              <Form.Text className="text-muted">
+                Select the AI model to use for generating responses.
               </Form.Text>
             </Form.Group>
           </Col>

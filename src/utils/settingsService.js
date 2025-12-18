@@ -7,7 +7,8 @@ const STORAGE_KEYS = {
   SUBSCRIPTION_KEY: 'subscriptionKey',
   USER_AVATAR: 'userAvatar',
   SYSTEM_PROMPT: 'systemPrompt',
-  THINKING_ENABLED: 'thinkingEnabled'
+  THINKING_ENABLED: 'thinkingEnabled',
+  MODEL: 'model'
 };
 
 /**
@@ -76,6 +77,22 @@ export const setThinkingEnabled = (enabled) => {
 };
 
 /**
+ * Get the selected model from localStorage
+ * @returns {string} The saved model or "gemini-3-flash-preview" as default
+ */
+export const getModel = () => {
+  return localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-3-flash-preview';
+};
+
+/**
+ * Save the model to localStorage
+ * @param {string} model - The model identifier to save
+ */
+export const setModel = (model) => {
+  localStorage.setItem(STORAGE_KEYS.MODEL, model);
+};
+
+/**
  * Clear all settings from localStorage
  */
 export const clearAllSettings = () => {
@@ -93,6 +110,7 @@ export const getAllSettings = () => {
     subscriptionKey: getSubscriptionKey(),
     userAvatar: getUserAvatar(),
     systemPrompt: getSystemPrompt(),
-    thinkingEnabled: getThinkingEnabled()
+    thinkingEnabled: getThinkingEnabled(),
+    model: getModel()
   };
 };

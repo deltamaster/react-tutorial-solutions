@@ -23,7 +23,7 @@ import {
 } from "../utils/apiUtils";
 import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
-import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar } from "../utils/settingsService";
+import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar, getModel, setModel } from "../utils/settingsService";
 import { normalizeBeginMarker } from "../utils/responseUtils";
 
 const MAX_CONCURRENT_ROLE_REQUESTS = 3;
@@ -34,6 +34,7 @@ function AppContent() {
   const [subscriptionKey, setLocalSubscriptionKey] = useState(getSubscriptionKey());
   const [systemPrompt, setLocalSystemPrompt] = useState(getSystemPrompt());
   const [userAvatar, setLocalUserAvatar] = useState(getUserAvatar());
+  const [model, setLocalModel] = useState(getModel());
 
   const mentionRoleMap = useMemo(() => {
     const map = {};
@@ -63,6 +64,11 @@ function AppContent() {
   const handleUserAvatarChange = (avatar) => {
     setUserAvatar(avatar); // 使用settingsService保存到localStorage
     setLocalUserAvatar(avatar); // 更新本地状态
+  };
+
+  const handleModelChange = (model) => {
+    setModel(model); // 使用settingsService保存到localStorage
+    setLocalModel(model); // 更新本地状态
   };
 
   // Retrieve API key from Chrome storage
@@ -946,6 +952,8 @@ function AppContent() {
               setSystemPrompt={handleSystemPromptChange}
               userAvatar={userAvatar}
               setUserAvatar={handleUserAvatarChange}
+              model={model}
+              setModel={handleModelChange}
             />
           )}
         </Col>
