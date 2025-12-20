@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Button from "react-bootstrap/Button";
 import Alert from "react-bootstrap/Alert";
 import Container from "react-bootstrap/Container";
@@ -683,7 +683,7 @@ function AppContent() {
   }
 
   // Handle chatbot question submission
-  const handleSubmit = async (contentParts) => {
+  const handleSubmit = useCallback(async (contentParts) => {
     if (!subscriptionKey) {
       alert("Please input Subscription key");
       return;
@@ -731,14 +731,14 @@ function AppContent() {
       source: "user",
       triggerMessageId: newUserMessage.timestamp,
     });
-  };
+  }, [subscriptionKey, conversationRef, mentionRoleMap]);
 
   // Handle follow-up question click
-  const handleFollowUpClick = (question) => {
+  const handleFollowUpClick = useCallback((question) => {
     // For follow-up questions, we just set the question text directly
     // since follow-up questions don't include images
     setQuestion(question);
-  };
+  }, []);
 
   // Reset conversation history, summaries and predicted questions
   const resetConversation = () => {
@@ -840,21 +840,28 @@ function AppContent() {
   };
 
   // Delete a conversation message
-  const deleteConversationMessage = (index) => {
+  const deleteConversationMessage = useCallback((index) => {
     if (window.confirm("Are you sure you want to delete this message?")) {
       setConversation((prev) => prev.filter((_, i) => i !== index));
     }
-  };
+  }, []);
 
   // Start editing a conversation part
-  const startEditing = (index, partIndex, text) => {
+  const startEditing = useCallback((index, partIndex, text) => {
     setEditingIndex(index);
     setEditingPartIndex(partIndex);
     setEditingText(text);
-  };
+  }, []);
+
+  // Cancel editing
+  const cancelEditing = useCallback(() => {
+    setEditingIndex(null);
+    setEditingPartIndex(null);
+    setEditingText("");
+  }, []);
 
   // Save edited conversation part
-  const saveEditing = () => {
+  const saveEditing = useCallback(() => {
     if (editingIndex !== null && editingPartIndex !== null) {
       setConversation((prev) =>
         prev.map((message, index) => {
@@ -874,14 +881,7 @@ function AppContent() {
       );
       cancelEditing();
     }
-  };
-
-  // Cancel editing
-  const cancelEditing = () => {
-    setEditingIndex(null);
-    setEditingPartIndex(null);
-    setEditingText("");
-  };
+  }, [editingIndex, editingPartIndex, editingText, cancelEditing]);
 
   // Handle scroll to show/hide floating tabs
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -1127,4 +1127,18 @@ function ConversationHistory({
   );
 }
 
-export default ConversationHistory;
+// Memoize ConversationHistory to prevent unnecessary re-renders
+// Only re-render when history, editingIndex, editingPartIndex, or editingText changes
+export default memo(ConversationHistory, (prevProps, nextProps) => {
+  return (
+    prevProps.history === nextProps.history &&
+    prevProps.editingIndex === nextProps.editingIndex &&
+    prevProps.editingPartIndex === nextProps.editingPartIndex &&
+    prevProps.editingText === nextProps.editingText &&
+    prevProps.onDelete === nextProps.onDelete &&
+    prevProps.onEdit === nextProps.onEdit &&
+    prevProps.onEditingTextChange === nextProps.onEditingTextChange &&
+    prevProps.onSave === nextProps.onSave &&
+    prevProps.onCancel === nextProps.onCancel
+  );
+});

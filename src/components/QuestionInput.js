@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo, useCallback } from "react";
 import * as Icon from "react-bootstrap-icons";
 import Button from "react-bootstrap/Button";
 import Container from "react-bootstrap/Container";
@@ -18,23 +18,45 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const pdfInputRef = useRef(null);
-  // Function to automatically adjust the height of the textarea
-  const adjustHeight = () => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "";
-      // Force a layout recalculation
-      textareaRef.current.scrollTop = 0;
-      // Get the accurate scrollHeight
-      const scrollHeight = textareaRef.current.scrollHeight;
-      let newHeight = scrollHeight + "px";
-      textareaRef.current.style.height = newHeight;
-      // Scroll the entire window to the bottom
-      window.scrollTo({ 
-        top: document.body.scrollHeight, 
-        behavior: 'instant' 
-      });
+  const adjustHeightTimeoutRef = useRef(null);
+  
+  // Optimized function to adjust the height of the textarea
+  // Debounced to avoid excessive layout recalculations
+  const adjustHeight = useCallback(() => {
+    // Clear any pending height adjustment
+    if (adjustHeightTimeoutRef.current) {
+      clearTimeout(adjustHeightTimeoutRef.current);
     }
-  };
+    
+    // Debounce the height adjustment to avoid excessive reflows
+    adjustHeightTimeoutRef.current = setTimeout(() => {
+      if (textareaRef.current) {
+        // Use requestAnimationFrame to batch DOM updates
+        requestAnimationFrame(() => {
+          if (textareaRef.current) {
+            textareaRef.current.style.height = "";
+            // Get the accurate scrollHeight without forcing a full layout recalculation
+            const scrollHeight = textareaRef.current.scrollHeight;
+            const newHeight = scrollHeight + "px";
+            textareaRef.current.style.height = newHeight;
+            window.scrollTo({ 
+              top: document.body.scrollHeight, 
+              behavior: 'instant' 
+            });
+          }
+        });
+      }
+    }, 16); // ~60fps debounce
+  }, []);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (adjustHeightTimeoutRef.current) {
+        clearTimeout(adjustHeightTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Sync external value with local state
   useEffect(() => {
@@ -202,14 +224,14 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     }
   };
 
-  const handleChange = (e) => {
+  const handleChange = useCallback((e) => {
     const newValue = e.target.value;
     setLocalQuestion(newValue);
     adjustHeight();
     if (onChange) {
       onChange(newValue);
     }
-  };
+  }, [onChange, adjustHeight]);
 
   const handlePaste = (event) => {
     if (!event.clipboardData || disabled) {
@@ -477,4 +499,5 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
   );
 }
 
-export default QuestionInput;
+// Memoize QuestionInput to prevent unnecessary re-renders
+export default memo(QuestionInput);
