@@ -1,12 +1,21 @@
 {
   "name": "react.dev",
-  "version": "0.0.0",
-  "main": "/src/index.js",
+  "version": "1.0.0",
+  "description": "QnA App - A React-based Electron application",
+  "author": "Your Name",
+    "main": "build/electron.js",
+  "homepage": "./",
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "react-scripts build && node before-pack.js",
     "test": "react-scripts test --env=jsdom",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "electron": "cross-env NODE_ENV=development npx electron electron.js",
+    "electron-dev": "concurrently \"cross-env BROWSER=none npm start\" \"node electron-dev.js\" --kill-others --kill-others-on-fail",
+    "electron-build": "cross-env NODE_ENV=production npm run build && electron-builder",
+    "dist": "cross-env NODE_ENV=production npm run build && electron-builder --publish=never",
+    "dist:msi": "cross-env NODE_ENV=production npm run build && electron-builder --win msi --publish=never",
+    "dist:win": "cross-env NODE_ENV=production npm run build && electron-builder --win --publish=never"
   },
   "dependencies": {
     "bootstrap": "^5.3.3",
@@ -36,10 +45,74 @@
     ]
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
     "react-refresh": "^0.18.0",
-    "sharp": "^0.34.4"
+    "sharp": "^0.34.4",
+    "wait-on": "^9.0.3"
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "build": {
+    "appId": "com.reactdev.app",
+    "productName": "QnA App",
+    "extends": null,
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "public/android-chrome-512x512.png"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "public/apple-touch-icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "public/android-chrome-512x512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "msi": {
+      "oneClick": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
