@@ -23,6 +23,72 @@
     <noscript>
       You need to enable JavaScript to run this app.
     </noscript>
+    <!-- Loading Screen - Shows before React loads -->
+    <div id="loading-screen" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+    ">
+      <div style="text-align: center; color: white;">
+        <div style="
+          font-size: 3rem;
+          font-weight: bold;
+          margin-bottom: 2rem;
+          opacity: 0;
+          animation: fadeIn 0.5s ease-in forwards;
+        ">QnA</div>
+        <div style="
+          width: 60px;
+          height: 60px;
+          margin: 0 auto 1.5rem;
+          border: 4px solid rgba(255, 255, 255, 0.3);
+          border-top-color: white;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        "></div>
+        <div style="
+          font-size: 1.2rem;
+          opacity: 0.9;
+          animation: pulse 1.5s ease-in-out infinite;
+        ">Loading<span style="
+          display: inline-block;
+        ">...</span></div>
+      </div>
+    </div>
+    <style>
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 1; }
+      }
+      #loading-screen.fade-out {
+        opacity: 0;
+        transition: opacity 0.3s ease-out;
+        pointer-events: none;
+      }
+    </style>
     <div id="root"></div>
     <!--
       This HTML file is a template.

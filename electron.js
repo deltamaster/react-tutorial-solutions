@@ -12,10 +12,11 @@ function createWindow() {
   // Determine if we're running from build folder (production) or root (development)
   const isInBuildFolder = __dirname.includes('build') || __dirname.includes('app.asar');
   
-  // Create the browser window
+  // Create the browser window - show immediately to display loading screen
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: true, // Show window immediately
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -25,7 +26,7 @@ function createWindow() {
     // Icon is handled by electron-builder configuration
   });
 
-  // Load the app
+  // Load the app - the inline loading screen in index.html will show automatically
   if (isDev) {
     // In development, load from React dev server
     mainWindow.loadURL('http://localhost:3000');

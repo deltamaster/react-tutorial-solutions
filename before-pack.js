@@ -4,12 +4,14 @@ const path = require('path');
 
 console.log('Running beforePack script...');
 
-// Ensure electron.js and preload.js are in build folder
+// Ensure electron.js, preload.js, and loading.html are in build folder
 const buildDir = path.join(__dirname, 'build');
 const electronSrc = path.join(__dirname, 'public', 'electron.js');
 const preloadSrc = path.join(__dirname, 'public', 'preload.js');
+const loadingSrc = path.join(__dirname, 'loading.html');
 const electronDest = path.join(buildDir, 'electron.js');
 const preloadDest = path.join(buildDir, 'preload.js');
+const loadingDest = path.join(buildDir, 'loading.html');
 
 if (fs.existsSync(electronSrc)) {
   fs.copyFileSync(electronSrc, electronDest);
@@ -23,6 +25,13 @@ if (fs.existsSync(preloadSrc)) {
   console.log('✓ Copied preload.js to build folder');
 } else {
   console.error('✗ preload.js not found in public folder');
+}
+
+if (fs.existsSync(loadingSrc)) {
+  fs.copyFileSync(loadingSrc, loadingDest);
+  console.log('✓ Copied loading.html to build folder');
+} else {
+  console.error('✗ loading.html not found in root folder');
 }
 
 
