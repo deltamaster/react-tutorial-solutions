@@ -45,9 +45,14 @@ export function useLocalStorage(key, initialValue) {
 
   const setValue = async (value) => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
+      // Use functional update to get the current value, not stale closure value
+      let valueToStore;
+      setStoredValue((currentStoredValue) => {
+        valueToStore = value instanceof Function ? value(currentStoredValue) : value;
+        return valueToStore;
+      });
       
+      // Save to storage asynchronously after state update
       // Check if we're in a Chrome extension environment
       if (typeof chrome !== 'undefined' && chrome.storage) {
         // Use Chrome's storage API
