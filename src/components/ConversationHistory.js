@@ -878,7 +878,10 @@ function ConversationHistory({
                 part.inlineData.mimeType) ||
               (part.inline_data &&
                 part.inline_data.data &&
-                part.inline_data.mime_type)
+                part.inline_data.mime_type) ||
+              (part.file_data &&
+                part.file_data.file_uri &&
+                part.file_data.mime_type)
           );
         if (!hasValidParts) {
           return null;
@@ -1025,6 +1028,7 @@ function ConversationHistory({
                   part.inline_data.data &&
                   part.inline_data.mime_type
                 ) {
+                  // Handle inline_data with base64 data (prioritize for immediate display)
                   // If it's a PDF, show a placeholder instead of the actual content
                   if (part.inline_data.mime_type === "application/pdf") {
                     return (
@@ -1040,6 +1044,30 @@ function ConversationHistory({
                       <InlineImage
                         key={partIndex}
                         dataUrl={imageSrc}
+                        alt="User uploaded image"
+                      />
+                    );
+                  }
+                } else if (
+                  part.file_data &&
+                  part.file_data.file_uri &&
+                  part.file_data.mime_type
+                ) {
+                  // Handle file_data with file URI (fallback if inline_data not available)
+                  // If it's a PDF, show a placeholder instead of the actual content
+                  if (part.file_data.mime_type === "application/pdf") {
+                    return (
+                      <div key={partIndex} className="pdf-container">
+                        <PdfPlaceholder />
+                      </div>
+                    );
+                  }
+                  // For images, use the file URI directly
+                  else {
+                    return (
+                      <InlineImage
+                        key={partIndex}
+                        dataUrl={part.file_data.file_uri}
                         alt="User uploaded image"
                       />
                     );

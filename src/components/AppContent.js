@@ -20,6 +20,7 @@ import {
   generateFollowUpQuestions,
   toolbox,
   ApiError,
+  uploadFile,
 } from "../utils/apiUtils";
 import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
@@ -172,19 +173,6 @@ function AppContent() {
   const [showFloatingTabs, setShowFloatingTabs] = useState(false);
   const tabsRef = useRef(null);
 
-  // Helper function to convert image file to base64
-  const convertImageToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        // Remove the data:image/xxx;base64, prefix to get just the base64 data
-        const base64String = reader.result.split(",")[1];
-        resolve(base64String);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
 
   const updateLoadingState = () => {
     const rolesInFlight = new Set();
@@ -693,44 +681,169 @@ function AppContent() {
     setFollowUpQuestions([]);
     setErrorMessage("");
 
-    const processedContentParts = [];
+    // Helper function to convert file to base64
+    const convertFileToBase64 = (file) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result.split(",")[1];
+          resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    };
+
+    // Step 1: Prepare user message with inline_data for immediate display
+    const displayContentParts = [];
+    const filesToUpload = [];
+    
     for (const part of contentParts) {
       if (part.inline_data && part.inline_data.file) {
-        try {
-          const base64Data = await convertImageToBase64(part.inline_data.file);
-          processedContentParts.push({
-            inline_data: {
-              mime_type: part.inline_data.mime_type,
-              data: base64Data,
-            },
-          });
-        } catch (error) {
-          console.error("Error converting image to base64:", error);
-          alert("Failed to process image file");
-          return;
+        const file = part.inline_data.file;
+        const mimeType = part.inline_data.mime_type;
+        const isImage = mimeType.startsWith("image/");
+
+        // Create display part with inline_data base64 for images
+        const displayPart = {};
+        if (isImage) {
+          // Convert to base64 for immediate display
+          const base64Data = await convertFileToBase64(file);
+          displayPart.inline_data = {
+            mime_type: mimeType,
+            data: base64Data,
+          };
         }
+        // For PDFs, we don't need inline_data for display
+
+        // Store file info for async upload
+        filesToUpload.push({
+          partIndex: displayContentParts.length,
+          file: file,
+          mimeType: mimeType,
+          isImage: isImage,
+        });
+
+        displayContentParts.push(displayPart);
       } else {
-        processedContentParts.push(part);
+        displayContentParts.push(part);
       }
     }
 
+    // Step 2: Show user message immediately with inline_data
     const newUserMessage = {
       role: "user",
-      parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...processedContentParts],
+      parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...displayContentParts],
       timestamp: Date.now(),
     };
 
     appendMessageToConversation(newUserMessage);
 
-    const mentionedRoles = extractMentionedRolesFromParts(processedContentParts);
+    // Step 3: Extract roles and prepare for API request
+    const mentionedRoles = extractMentionedRolesFromParts(displayContentParts);
     const rolesToProcess = mentionedRoles.length > 0 
       ? mentionedRoles 
       : ["general"];
 
-    enqueueRoleRequests(rolesToProcess, {
-      source: "user",
-      triggerMessageId: newUserMessage.timestamp,
-    });
+    // Step 4: Show typing indicator immediately by adding a temporary typing task
+    // This will show "... is typing ..." even before upload completes
+    if (filesToUpload.length > 0) {
+      // Add temporary typing indicators for the roles
+      rolesToProcess.forEach((role, index) => {
+        const taskId = `uploading-${Date.now()}-${role}-${index}`;
+        activeRequestsRef.current.set(taskId, {
+          id: taskId,
+          role,
+          cancelled: false,
+        });
+      });
+      updateLoadingState();
+    }
+
+    // Step 5: Upload files asynchronously, then send API request
+    (async () => {
+      try {
+        // Upload all files
+        const uploadedFiles = filesToUpload.length > 0
+          ? await Promise.all(
+              filesToUpload.map(async ({ file, mimeType }) => {
+                const fileUri = await uploadFile(file, subscriptionKey);
+                return { mimeType, fileUri };
+              })
+            )
+          : [];
+
+        // Update message parts with file_data
+        const updatedParts = [...displayContentParts];
+        filesToUpload.forEach(({ partIndex, mimeType, isImage }, uploadIndex) => {
+          const uploadedFile = uploadedFiles[uploadIndex];
+          updatedParts[partIndex] = {
+            ...updatedParts[partIndex],
+            file_data: {
+              mime_type: mimeType,
+              file_uri: uploadedFile.fileUri,
+            },
+            // Keep inline_data for images (already set above)
+          };
+        });
+
+        // Update the user message in conversation with file_data
+        const latestConversation = conversationRef.current || [];
+        const messageIndex = latestConversation.findIndex(
+          msg => msg.timestamp === newUserMessage.timestamp
+        );
+        if (messageIndex >= 0) {
+          const updatedConversation = [...latestConversation];
+          updatedConversation[messageIndex] = {
+            ...updatedConversation[messageIndex],
+            parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...updatedParts],
+          };
+          setConversation(updatedConversation);
+          conversationRef.current = updatedConversation;
+        }
+
+        // Remove temporary typing indicators
+        if (filesToUpload.length > 0) {
+          rolesToProcess.forEach(role => {
+            Array.from(activeRequestsRef.current.keys()).forEach(key => {
+              if (key.startsWith(`uploading-`) && activeRequestsRef.current.get(key)?.role === role) {
+                activeRequestsRef.current.delete(key);
+              }
+            });
+          });
+          updateLoadingState();
+        }
+
+        // Step 6: Send API request with file_data
+        enqueueRoleRequests(rolesToProcess, {
+          source: "user",
+          triggerMessageId: newUserMessage.timestamp,
+        });
+      } catch (error) {
+        console.error("Error uploading file:", error);
+        
+        // Remove temporary typing indicators on error
+        if (filesToUpload.length > 0) {
+          rolesToProcess.forEach(role => {
+            Array.from(activeRequestsRef.current.keys()).forEach(key => {
+              if (key.startsWith(`uploading-`) && activeRequestsRef.current.get(key)?.role === role) {
+                activeRequestsRef.current.delete(key);
+              }
+            });
+          });
+          updateLoadingState();
+        }
+        
+        alert("Failed to upload file. Please try again.");
+        // Remove the user message on error
+        const latestConversation = conversationRef.current || [];
+        const filteredConversation = latestConversation.filter(
+          msg => msg.timestamp !== newUserMessage.timestamp
+        );
+        setConversation(filteredConversation);
+        conversationRef.current = filteredConversation;
+      }
+    })();
   }, [subscriptionKey, conversationRef, mentionRoleMap]);
 
   // Handle follow-up question click
