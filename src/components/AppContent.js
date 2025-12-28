@@ -681,7 +681,45 @@ function AppContent() {
     setFollowUpQuestions([]);
     setErrorMessage("");
 
-    // Helper function to convert file to base64
+    // Helper function to compress image for display
+    const compressImageForDisplay = (file, maxWidth = 720, maxHeight = 720, quality = 0.7) => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const img = new Image();
+          img.onload = () => {
+            // Calculate new dimensions while maintaining aspect ratio
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > maxWidth || height > maxHeight) {
+              const ratio = Math.min(maxWidth / width, maxHeight / height);
+              width = width * ratio;
+              height = height * ratio;
+            }
+            
+            // Create canvas and draw resized image
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convert to base64 with compression
+            const mimeType = file.type || 'image/jpeg';
+            const compressedDataUrl = canvas.toDataURL(mimeType, quality);
+            const base64String = compressedDataUrl.split(",")[1];
+            resolve(base64String);
+          };
+          img.onerror = reject;
+          img.src = reader.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    };
+
+    // Helper function to convert file to base64 (for non-images or when compression not needed)
     const convertFileToBase64 = (file) => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -707,11 +745,11 @@ function AppContent() {
         // Create display part with inline_data base64 for images
         const displayPart = {};
         if (isImage) {
-          // Convert to base64 for immediate display
-          const base64Data = await convertFileToBase64(file);
+          // Compress image for display (reduces localStorage size)
+          const compressedBase64Data = await compressImageForDisplay(file);
           displayPart.inline_data = {
             mime_type: mimeType,
-            data: base64Data,
+            data: compressedBase64Data,
           };
         }
         // For PDFs, we don't need inline_data for display
