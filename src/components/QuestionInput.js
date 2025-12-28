@@ -4,6 +4,7 @@ import Button from "react-bootstrap/Button";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
+import Form from "react-bootstrap/Form";
 import { getThinkingEnabled, setThinkingEnabled } from "../utils/settingsService";
 
 // Question input component
@@ -401,28 +402,15 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
         <Row>
           <Col className="d-flex justify-content-end gap-2">
             {/* Thinking Toggle */}
-            <div className="relative thinking-toggle">
-              <input
-                type="checkbox"
-                id="thinking-toggle"
-                checked={isThinkingEnabled}
-                onChange={toggleThinking}
-                disabled={disabled}
-                className="toggle-checkbox"
-                style={{ display: "none" }}
-              />
-              <label
-                htmlFor="thinking-toggle"
-                className={`toggle-label ${isThinkingEnabled ? "toggle-on" : "toggle-off"}`}
-                style={{
-                  cursor: disabled ? "not-allowed" : "pointer",
-                  border: "1px solid #dee2e6",
-                }}
-              >
-                <Icon.Lightbulb size={16} className="mr-1" />
-                <span className="toggle-text">Thinking</span>
-              </label>
-            </div>
+            <Form.Check
+              type="switch"
+              id="thinking-toggle"
+              label="Thinking"
+              checked={isThinkingEnabled}
+              onChange={toggleThinking}
+              disabled={disabled}
+              title="Enable thinking mode for more detailed responses"
+            />
 
             {/* PDF Upload Button */}
             <div className="pdf-upload-container">
