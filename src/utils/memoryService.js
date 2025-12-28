@@ -3,6 +3,15 @@
 // Storage prefix
 const MEMORY_PREFIX = 'memory-';
 
+// Lazy import profileSyncService to avoid circular dependencies
+let profileSyncService = null;
+const getProfileSyncService = async () => {
+  if (!profileSyncService) {
+    profileSyncService = await import('./profileSyncService');
+  }
+  return profileSyncService;
+};
+
 // Check if Chrome storage is available (for extension environment)
 const isChromeExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
 
@@ -101,11 +110,30 @@ const memoryService = {
       const memoryKey = MEMORY_PREFIX + key;
       
       if (isChromeExtension) {
-        return new Promise((resolve, reject) => {
-          chrome.storage.local.set({ [memoryKey]: value }, () => {
+        return new Promise(async (resolve, reject) => {
+          chrome.storage.local.set({ [memoryKey]: value }, async () => {
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError);
               return;
+            }
+            // If memory was previously deleted, remove it from deleted list
+            try {
+              const syncService = await getProfileSyncService();
+              if (syncService.default && syncService.default.getDeletedMemories) {
+                const deleted = await syncService.default.getDeletedMemories();
+                if (deleted.has(key)) {
+                  // Memory is being restored, remove from deleted list
+                  const removeDeleted = await import('./profileSyncService');
+                  if (removeDeleted.default && removeDeleted.default.removeDeletedMemory) {
+                    // We need to call the internal function, but it's not exported
+                    // Instead, we'll handle this during sync - if a memory exists locally,
+                    // it will be included in the merged set regardless of deleted list
+                  }
+                }
+              }
+            } catch (syncError) {
+              // Non-critical error, log but don't fail
+              console.warn('Failed to check deleted memories:', syncError);
             }
             eventBus.publish(memoryKey, 'setItem');
             resolve({ status: 'OK', memoryKey: key });
@@ -114,6 +142,8 @@ const memoryService = {
       } else {
         // Fallback to localStorage
         localStorage.setItem(memoryKey, value);
+        // Note: We don't remove from deleted list here - sync will handle it
+        // because local memories take precedence during merge
         eventBus.publish(memoryKey, 'setItem');
         return { status: 'OK', memoryKey: key };
       }
@@ -130,11 +160,21 @@ const memoryService = {
       const memoryKey = MEMORY_PREFIX + key;
       
       if (isChromeExtension) {
-        return new Promise((resolve, reject) => {
-          chrome.storage.local.remove([memoryKey], () => {
+        return new Promise(async (resolve, reject) => {
+          chrome.storage.local.remove([memoryKey], async () => {
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError);
               return;
+            }
+            // Track deletion for sync purposes
+            try {
+              const syncService = await getProfileSyncService();
+              if (syncService.default && syncService.default.trackMemoryDeletion) {
+                await syncService.default.trackMemoryDeletion(key);
+              }
+            } catch (syncError) {
+              // Non-critical error, log but don't fail
+              console.warn('Failed to track memory deletion for sync:', syncError);
             }
             eventBus.publish(memoryKey, 'removeItem');
             resolve({ status: 'OK', memoryKey: key });
@@ -143,6 +183,16 @@ const memoryService = {
       } else {
         // Fallback to localStorage
         localStorage.removeItem(memoryKey);
+        // Track deletion for sync purposes
+        try {
+          const syncService = await getProfileSyncService();
+          if (syncService.default && syncService.default.trackMemoryDeletion) {
+            await syncService.default.trackMemoryDeletion(key);
+          }
+        } catch (syncError) {
+          // Non-critical error, log but don't fail
+          console.warn('Failed to track memory deletion for sync:', syncError);
+        }
         eventBus.publish(memoryKey, 'removeItem');
         return { status: 'OK', memoryKey: key };
       }

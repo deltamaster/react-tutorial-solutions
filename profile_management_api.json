@@ -1,0 +1,161 @@
+{
+    "openapi": "3.0.1",
+    "info": {
+        "title": "llm-profile",
+        "description": "",
+        "version": "1.0"
+    },
+    "servers": [{
+        "url": "https://jp-gw2.azure-api.net/profile"
+    }],
+    "paths": {
+        "/profiles/{tenant_id}": {
+            "get": {
+                "summary": "get profile",
+                "operationId": "profiles",
+                "parameters": [{
+                    "name": "tenant_id",
+                    "in": "path",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }, {
+                    "name": "keypass",
+                    "in": "query",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                }
+            },
+            "put": {
+                "summary": "update profile",
+                "operationId": "69512a15847002c82af3fb23",
+                "parameters": [{
+                    "name": "tenant_id",
+                    "in": "path",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/tenant_profile"
+                            },
+                            "example": {
+                                "tenant_id": "my_tenant_id",
+                                "keypass": "my_key_pass",
+                                "profile_data": {}
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "summary": "delete profile",
+                "operationId": "69512a90d2dd18125ba689f0",
+                "parameters": [{
+                    "name": "tenant_id",
+                    "in": "path",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }, {
+                    "name": "keypass",
+                    "in": "query",
+                    "required": true,
+                    "schema": {
+                        "type": "string"
+                    }
+                }],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/profiles": {
+            "post": {
+                "summary": "create profile",
+                "operationId": "create-profile",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/tenant_profile"
+                            },
+                            "example": {
+                                "tenant_id": "my_tenant_id",
+                                "keypass": "my_key_pass",
+                                "profile_data": {}
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": ""
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "tenant_profile": {
+                "type": "object",
+                "properties": {
+                    "tenant_id": {
+                        "type": "string"
+                    },
+                    "keypass": {
+                        "type": "string"
+                    },
+                    "profile_data": {
+                        "type": "object"
+                    }
+                },
+                "example": {
+                    "tenant_id": "my_tenant_id",
+                    "keypass": "my_key_pass",
+                    "profile_data": {
+                        "foo": "bar"
+                    }
+                }
+            }
+        },
+        "securitySchemes": {
+            "apiKeyHeader": {
+                "type": "apiKey",
+                "name": "Ocp-Apim-Subscription-Key",
+                "in": "header"
+            },
+            "apiKeyQuery": {
+                "type": "apiKey",
+                "name": "subscription-key",
+                "in": "query"
+            }
+        }
+    },
+    "security": [{
+        "apiKeyHeader": []
+    }, {
+        "apiKeyQuery": []
+    }]
+}

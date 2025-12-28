@@ -8,7 +8,10 @@ const STORAGE_KEYS = {
   USER_AVATAR: 'userAvatar',
   SYSTEM_PROMPT: 'systemPrompt',
   THINKING_ENABLED: 'thinkingEnabled',
-  MODEL: 'model'
+  MODEL: 'model',
+  TENANT_ID: 'tenantId',
+  KEYPASS: 'keypass',
+  AUTO_SYNC_ENABLED: 'autoSyncEnabled'
 };
 
 /**
@@ -102,6 +105,55 @@ export const clearAllSettings = () => {
 };
 
 /**
+ * Get the tenant ID from localStorage
+ * @returns {string} The saved tenant ID or empty string if not found
+ */
+export const getTenantId = () => {
+  return localStorage.getItem(STORAGE_KEYS.TENANT_ID) || '';
+};
+
+/**
+ * Save the tenant ID to localStorage
+ * @param {string} tenantId - The tenant ID to save
+ */
+export const setTenantId = (tenantId) => {
+  localStorage.setItem(STORAGE_KEYS.TENANT_ID, tenantId);
+};
+
+/**
+ * Get the keypass from localStorage
+ * @returns {string} The saved keypass or empty string if not found
+ */
+export const getKeypass = () => {
+  return localStorage.getItem(STORAGE_KEYS.KEYPASS) || '';
+};
+
+/**
+ * Save the keypass to localStorage
+ * @param {string} keypass - The keypass to save
+ */
+export const setKeypass = (keypass) => {
+  localStorage.setItem(STORAGE_KEYS.KEYPASS, keypass);
+};
+
+/**
+ * Get the auto-sync enabled state from localStorage
+ * @returns {boolean} The saved auto-sync state or false by default
+ */
+export const getAutoSyncEnabled = () => {
+  const savedSetting = localStorage.getItem(STORAGE_KEYS.AUTO_SYNC_ENABLED);
+  return savedSetting === 'true';
+};
+
+/**
+ * Save the auto-sync enabled state to localStorage
+ * @param {boolean} enabled - Whether auto-sync is enabled
+ */
+export const setAutoSyncEnabled = (enabled) => {
+  localStorage.setItem(STORAGE_KEYS.AUTO_SYNC_ENABLED, enabled.toString());
+};
+
+/**
  * Get all settings as an object
  * @returns {Object} Object containing all current settings
  */
@@ -111,6 +163,9 @@ export const getAllSettings = () => {
     userAvatar: getUserAvatar(),
     systemPrompt: getSystemPrompt(),
     thinkingEnabled: getThinkingEnabled(),
-    model: getModel()
+    model: getModel(),
+    tenantId: getTenantId(),
+    keypass: getKeypass(),
+    autoSyncEnabled: getAutoSyncEnabled()
   };
 };

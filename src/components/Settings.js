@@ -3,15 +3,25 @@ import Form from 'react-bootstrap/Form';
 import Card from 'react-bootstrap/Card';
 import Col from 'react-bootstrap/Col';
 import Row from 'react-bootstrap/Row';
-import { getUserAvatar, setUserAvatar } from '../utils/settingsService';
+import Button from 'react-bootstrap/Button';
+import Alert from 'react-bootstrap/Alert';
+import { getUserAvatar, setUserAvatar, getTenantId, setTenantId, getKeypass, setKeypass } from '../utils/settingsService';
 
 const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystemPrompt, model, setModel }) => {
   const [selectedAvatar, setSelectedAvatar] = useState('male');
+  const [tenantId, setLocalTenantId] = useState('');
+  const [keypass, setLocalKeypass] = useState('');
+  const [syncMessage, setSyncMessage] = useState('');
+  const [syncMessageType, setSyncMessageType] = useState('');
 
-  // Load saved preference on mount
+  // Load saved preferences on mount
   useEffect(() => {
     const savedAvatar = getUserAvatar();
     if (savedAvatar) setSelectedAvatar(savedAvatar);
+    const savedTenantId = getTenantId();
+    if (savedTenantId) setLocalTenantId(savedTenantId);
+    const savedKeypass = getKeypass();
+    if (savedKeypass) setLocalKeypass(savedKeypass);
   }, []);
 
   // Save preference and update global state using settingsService
@@ -24,6 +34,16 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
 
   const handleSaveSubscriptionKey = () => {
     localStorage.setItem('subscriptionKey', subscriptionKey);
+  };
+
+  const handleTenantIdChange = (value) => {
+    setLocalTenantId(value);
+    setTenantId(value);
+  };
+
+  const handleKeypassChange = (value) => {
+    setLocalKeypass(value);
+    setKeypass(value);
   };
 
   return (
@@ -84,6 +104,42 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
                 Select the AI model to use for generating responses.
               </Form.Text>
             </Form.Group>
+          </Col>
+        </Row>
+        
+        {/* Profile Sync Configuration Section */}
+        <Row className="mb-4">
+          <Col xs={12}>
+            <h6 className="mb-3">Profile Sync Configuration</h6>
+            <Form.Group controlId="tenant-id" className="mb-3">
+              <Form.Label>Tenant ID</Form.Label>
+              <Form.Control
+                type="text"
+                value={tenantId}
+                onChange={(e) => handleTenantIdChange(e.target.value)}
+                placeholder="Enter your tenant ID"
+              />
+              <Form.Text className="text-muted">
+                Your tenant ID for profile synchronization.
+              </Form.Text>
+            </Form.Group>
+            <Form.Group controlId="keypass">
+              <Form.Label>Keypass</Form.Label>
+              <Form.Control
+                type="password"
+                value={keypass}
+                onChange={(e) => handleKeypassChange(e.target.value)}
+                placeholder="Enter your keypass"
+              />
+              <Form.Text className="text-muted">
+                Your keypass for encrypting/decrypting your profile data.
+              </Form.Text>
+            </Form.Group>
+            {syncMessage && (
+              <Alert variant={syncMessageType === 'success' ? 'success' : 'danger'} className="mt-2" onClose={() => setSyncMessage('')} dismissible>
+                {syncMessage}
+              </Alert>
+            )}
           </Col>
         </Row>
         

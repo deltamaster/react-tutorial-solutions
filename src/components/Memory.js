@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Row, Col, Form, Button, ListGroup, Alert } from 'react-bootstrap';
-import { Database, PlusCircle, CheckCircle, List, Trash, Pencil, X, InfoCircle, Save, Inbox } from "react-bootstrap-icons";
+import { Database, PlusCircle, CheckCircle, List, Trash, Pencil, X, InfoCircle, Save, Inbox, CloudArrowUp, ExclamationTriangle } from "react-bootstrap-icons";
 import * as Icon from "react-bootstrap-icons";
 import memoryService from '../utils/memoryService';
+import profileSyncService from '../utils/profileSyncService';
+import { getTenantId, getKeypass, getAutoSyncEnabled, setAutoSyncEnabled } from '../utils/settingsService';
 
 function Memory() {
   const [memories, setMemories] = useState({});
@@ -12,6 +14,10 @@ function Memory() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [autoSyncEnabled, setAutoSyncEnabledState] = useState(false);
+  const syncIntervalRef = useRef(null);
+  const lastSyncTimeRef = useRef(null);
 
   // Load all memories
   const loadMemories = async () => {
@@ -24,15 +30,75 @@ function Memory() {
     }
   };
 
+  // Sync memories with remote profile
+  const handleSyncMemories = React.useCallback(async (silent = false) => {
+    if (!profileSyncService.isSyncConfigured()) {
+      if (!silent) {
+        setError('Please configure Tenant ID and Keypass in Settings before syncing.');
+      }
+      return;
+    }
+
+    if (!silent) {
+      setSyncing(true);
+      setError('');
+      setSuccess('');
+    }
+
+    try {
+      const result = await profileSyncService.syncMemories();
+      
+      if (result.success) {
+        const stats = result.stats;
+        if (!silent) {
+          setSuccess(
+            `${result.message}. ` +
+            `Local: ${stats.localCount}, Remote: ${stats.remoteCount}, ` +
+            `Merged: ${stats.mergedCount}, Deleted: ${stats.deletedCount}`
+          );
+        }
+        // Reload memories after sync
+        await loadMemories();
+      } else {
+        if (!silent) {
+          setError(result.message || 'Failed to sync memories');
+        }
+      }
+    } catch (err) {
+      if (!silent) {
+        setError(`Sync failed: ${err.message}`);
+      }
+      console.error('Error syncing memories:', err);
+    } finally {
+      if (!silent) {
+        setSyncing(false);
+      }
+    }
+  }, []);
+
   // Load memories on initialization and listen for memory changes
   useEffect(() => {
     loadMemories();
+    
+    // Load auto-sync setting
+    setAutoSyncEnabledState(getAutoSyncEnabled());
 
     // Subscribe to memory change events
     const unsubscribe = memoryService.subscribe((key, action) => {
       console.log(`Memory component received notification: ${action} for key ${key}`);
       // Reload when memory changes
       loadMemories();
+      
+      // Auto-sync when memory is updated (if enabled)
+      const currentAutoSync = getAutoSyncEnabled();
+      if (currentAutoSync && profileSyncService.isSyncConfigured()) {
+        const now = Date.now();
+        // Debounce: only sync if last sync was more than 2 seconds ago
+        if (!lastSyncTimeRef.current || (now - lastSyncTimeRef.current) > 2000) {
+          lastSyncTimeRef.current = now;
+          handleSyncMemories(true); // true = silent sync
+        }
+      }
     });
     
     // Cleanup function
@@ -42,7 +108,31 @@ function Memory() {
         unsubscribe();
       }
     };
-  }, []);
+  }, [handleSyncMemories]);
+
+  // Set up auto-sync interval (every 5 minutes)
+  useEffect(() => {
+    // Clear existing interval
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+
+    // Set up new interval if auto-sync is enabled
+    if (autoSyncEnabled && profileSyncService.isSyncConfigured()) {
+      syncIntervalRef.current = setInterval(() => {
+        handleSyncMemories(true); // true = silent sync
+      }, 5 * 60 * 1000); // 5 minutes
+    }
+
+    // Cleanup on unmount or when auto-sync is disabled
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    };
+  }, [autoSyncEnabled, handleSyncMemories]);
 
   // Add new memory
   const handleAddMemory = async (e) => {
@@ -188,6 +278,13 @@ function Memory() {
     }
   };
 
+  // Toggle auto-sync
+  const handleToggleAutoSync = () => {
+    const newValue = !autoSyncEnabled;
+    setAutoSyncEnabledState(newValue);
+    setAutoSyncEnabled(newValue);
+  };
+
   return (
     <div className="memory-container">
       <Row className="mb-4">
@@ -199,6 +296,18 @@ function Memory() {
           <p>Manage your stored memories that the assistant can reference during conversations.</p>
         </Col>
       </Row>
+
+      {/* Warning banner for missing tenant ID or keypass */}
+      {(!getTenantId() || !getKeypass()) && (
+        <Row className="mb-3">
+          <Col xs={12}>
+            <Alert variant="warning" onClose={() => {}} dismissible={false}>
+              <ExclamationTriangle size={16} className="mr-2" />
+              Profile sync is not configured. Please set Tenant ID and Keypass in Settings to enable memory synchronization.
+            </Alert>
+          </Col>
+        </Row>
+      )}
 
       {/* Error and success messages */}
       {error && (
@@ -265,11 +374,48 @@ function Memory() {
         <Col xs={12}>
           <div className="card">
             <div className="card-header d-flex justify-content-between align-items-center">
-              <h5>
-                <List size={18} className="mr-2" />
-                Stored Memories ({Object.keys(memories).length})
-              </h5>
+              <div className="d-flex align-items-center gap-3">
+                <h5>
+                  <List size={18} className="mr-2" />
+                  Stored Memories ({Object.keys(memories).length})
+                </h5>
+                {profileSyncService.isSyncConfigured() && (
+                  <Form.Check
+                    type="switch"
+                    id="auto-sync-switch"
+                    label="Auto-sync"
+                    checked={autoSyncEnabled}
+                    onChange={handleToggleAutoSync}
+                    title="Automatically sync memories every 5 minutes and when memories are updated"
+                  />
+                )}
+              </div>
               <div className="d-flex gap-2">
+                <div className="relative">
+                  <Button 
+                    id="sync-memory-btn"
+                    variant="secondary" 
+                    onClick={() => {
+                      if (!syncing && profileSyncService.isSyncConfigured()) {
+                        handleSyncMemories();
+                      }
+                    }}
+                    style={{ display: "none" }} 
+                  ></Button>
+                  <label 
+                    htmlFor="sync-memory-btn" 
+                    className="toggle-label toggle-on"
+                    style={{ 
+                      opacity: (syncing || !profileSyncService.isSyncConfigured()) ? 0.6 : 1,
+                      cursor: (syncing || !profileSyncService.isSyncConfigured()) ? 'not-allowed' : 'pointer',
+                      pointerEvents: (syncing || !profileSyncService.isSyncConfigured()) ? 'none' : 'auto'
+                    }}
+                    title={profileSyncService.isSyncConfigured() ? 'Sync memories with remote profile' : 'Configure Tenant ID and Keypass in Settings first'}
+                  >
+                    <CloudArrowUp size={16} className="mr-2" />
+                    <span className="toggle-text">{syncing ? 'Syncing...' : 'Sync'}</span>
+                  </label>
+                </div>
                 <div className="relative">
                   <Button 
                     id="upload-memory-btn"
