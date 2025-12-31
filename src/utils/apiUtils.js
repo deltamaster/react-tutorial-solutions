@@ -5,6 +5,7 @@ import {
   roleDefinition 
 } from './roleConfig.js';
 import { getSubscriptionKey, getSystemPrompt, getThinkingEnabled, getModel } from "./settingsService";
+import { removeExpiredFilesFromContents, markFileExpired, extractFileIdFromError } from "./fileTrackingService";
 
 const safetySettings = [
   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -796,7 +797,9 @@ const prepareContentsForRequest = async (contents, role) => {
     });
   }
 
-  let processedContents = JSON.parse(JSON.stringify(contents)); // Deep copy to avoid mutating original
+  // Remove expired files from contents before processing
+  let processedContents = removeExpiredFilesFromContents(contents);
+  processedContents = JSON.parse(JSON.stringify(processedContents)); // Deep copy to avoid mutating original
   // For the contents, update "role" to "user" for all except for the contents from the role
   if (role && roleDefinition[role]) {
     processedContents.forEach((content) => {
@@ -896,7 +899,8 @@ export const fetchFromApi = async (
   includeTools = false,
   role = "general",
   ignoreSystemPrompts = false,
-  depth = 0
+  depth = 0,
+  onContentsUpdated = null
 ) => {
   if (depth >= 3) {
     throw Error("Hit Max Retry");
@@ -1111,6 +1115,35 @@ export const fetchFromApi = async (
       );
     }
   } catch (error) {
+    // Handle 403 errors (expired files)
+    if (error instanceof ApiError && error.status === 403) {
+      const errorMessage = error.message || "";
+      const fileId = extractFileIdFromError(errorMessage);
+      
+      if (fileId) {
+        console.warn(`File ${fileId} expired (403 error), marking as expired and retrying`);
+        markFileExpired(fileId);
+        
+        // Remove expired files from conversation and retry
+        const cleanedContents = removeExpiredFilesFromContents(contents);
+        
+        // Notify caller that contents were updated (so conversation history can be updated)
+        if (onContentsUpdated) {
+          onContentsUpdated(cleanedContents);
+        }
+        
+        // Retry the request with cleaned contents
+        return fetchFromApi(
+          cleanedContents,
+          requestType,
+          includeTools,
+          role,
+          ignoreSystemPrompts,
+          depth + 1,
+          onContentsUpdated
+        );
+      }
+    }
     throw error;
   }
 };

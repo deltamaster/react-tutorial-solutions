@@ -22,6 +22,7 @@ import {
   ApiError,
   uploadFile,
 } from "../utils/apiUtils";
+import { trackFile, getAllTrackedFiles, setTrackedFiles, removeExpiredFilesFromContents, markFileExpired, extractFileIdFromError } from "../utils/fileTrackingService";
 import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar, getModel, setModel } from "../utils/settingsService";
@@ -415,6 +416,23 @@ function AppContent() {
           role
         );
       } catch (error) {
+        // Handle 403 errors (expired files) - update conversation immediately
+        if (error instanceof ApiError && error.status === 403) {
+          const errorMessage = error.message || "";
+          const fileId = extractFileIdFromError(errorMessage);
+          
+          if (fileId) {
+            console.warn(`File ${fileId} expired (403 error), updating conversation`);
+            markFileExpired(fileId);
+            
+            // Update conversation to remove expired files
+            const currentConversation = conversationRef.current || [];
+            const cleanedConversation = removeExpiredFilesFromContents(currentConversation);
+            setConversation(cleanedConversation);
+            conversationRef.current = cleanedConversation;
+          }
+        }
+        
         handleRoleRequestError(error);
         throw error;
       }
@@ -807,6 +825,8 @@ function AppContent() {
           ? await Promise.all(
               filesToUpload.map(async ({ file, mimeType }) => {
                 const fileUri = await uploadFile(file, subscriptionKey);
+                // Track the uploaded file
+                trackFile(fileUri);
                 return { mimeType, fileUri };
               })
             )
@@ -917,11 +937,15 @@ function AppContent() {
         localStorage.getItem("conversation_summaries") || "[]"
       );
 
-      // Create new format with both conversation and summaries
+      // Get tracked files
+      const trackedFiles = getAllTrackedFiles();
+
+      // Create new format with conversation, summaries, and tracked files
       const exportData = {
-        version: "1.1", // Version marker for future compatibility
+        version: "1.2", // Version marker - updated to include file tracking
         conversation: conversation,
         conversation_summaries: summaries,
+        uploaded_files: trackedFiles,
       };
 
       const dataStr = JSON.stringify(exportData, null, 2);
@@ -940,7 +964,7 @@ function AppContent() {
     }
   };
 
-  // Upload conversation history - compatible with both old and new format
+  // Upload conversation history - compatible with old and new formats
   const uploadConversation = (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -950,9 +974,9 @@ function AppContent() {
       try {
         const uploadedData = JSON.parse(e.target.result);
 
-        // Check if it's the new format with version and summaries
+        // Check if it's the new format with version
         if (uploadedData.version && uploadedData.conversation) {
-          // New format: set both conversation and summaries
+          // New format: set conversation, summaries, and tracked files
           const conversationData = Array.isArray(uploadedData.conversation) 
             ? uploadedData.conversation 
             : [];
@@ -970,16 +994,30 @@ function AppContent() {
               console.error("Error restoring conversation summaries:", error);
             }
           }
+
+          // Restore tracked files if present (version 1.2+)
+          if (uploadedData.uploaded_files) {
+            try {
+              setTrackedFiles(uploadedData.uploaded_files);
+              console.log("Uploaded files tracking restored from upload");
+            } catch (error) {
+              console.error("Error restoring uploaded files tracking:", error);
+            }
+          } else {
+            // If no tracked files in upload, clear existing ones
+            setTrackedFiles({});
+          }
         } else {
           // Old format: just set the conversation (assuming the entire file is conversation data)
           const conversationData = Array.isArray(uploadedData) ? uploadedData : [];
           setConversation(conversationData);
-          // Clear summaries for old format uploads (maintaining previous behavior)
+          // Clear summaries and tracked files for old format uploads
           try {
             localStorage.removeItem("conversation_summaries");
-            console.log("Conversation summaries cleared for old format upload");
+            setTrackedFiles({});
+            console.log("Conversation summaries and file tracking cleared for old format upload");
           } catch (error) {
-            console.error("Error clearing conversation summaries:", error);
+            console.error("Error clearing summaries and file tracking:", error);
           }
         }
 
