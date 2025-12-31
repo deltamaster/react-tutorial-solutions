@@ -22,16 +22,38 @@ export function useLocalStorage(key, initialValue) {
           });
           
           if (key in result && result[key] !== undefined) {
-            setStoredValue(result[key]);
+            const value = result[key];
+            // Check if value is invalid (e.g., string "undefined" or not the expected type)
+            if (value === "undefined" || (key === "conversation" && !Array.isArray(value))) {
+              // Delete corrupted data and use initial value
+              chrome.storage.local.remove([key]);
+              setStoredValue(initialValue);
+            } else {
+              setStoredValue(value);
+            }
           }
         } else {
           // Fallback to localStorage if not in Chrome extension
           const item = localStorage.getItem(key);
           if (item !== null) {
             try {
-              setStoredValue(JSON.parse(item));
+              const parsed = JSON.parse(item);
+              // Check if parsed value is invalid (e.g., string "undefined" or not the expected type)
+              if (parsed === "undefined" || (key === "conversation" && !Array.isArray(parsed))) {
+                // Delete corrupted data and use initial value
+                localStorage.removeItem(key);
+                setStoredValue(initialValue);
+              } else {
+                setStoredValue(parsed);
+              }
             } catch (e) {
-              setStoredValue(item);
+              // If parsing fails or value is invalid, delete corrupted data
+              if (item === "undefined" || (key === "conversation" && item !== null)) {
+                localStorage.removeItem(key);
+                setStoredValue(initialValue);
+              } else {
+                setStoredValue(item);
+              }
             }
           }
         }
@@ -49,8 +71,27 @@ export function useLocalStorage(key, initialValue) {
       let valueToStore;
       setStoredValue((currentStoredValue) => {
         valueToStore = value instanceof Function ? value(currentStoredValue) : value;
+        
+        // Prevent setting undefined values - they get converted to string "undefined"
+        if (valueToStore === undefined) {
+          console.warn(`Attempted to save undefined value for key "${key}". Keeping current value.`);
+          return currentStoredValue; // Return current value instead of undefined
+        }
+        
+        // For conversation key, ensure it's always an array
+        if (key === "conversation" && !Array.isArray(valueToStore)) {
+          console.warn(`Attempted to save non-array value for conversation. Using empty array instead.`);
+          valueToStore = [];
+          return valueToStore;
+        }
+        
         return valueToStore;
       });
+      
+      // If valueToStore is undefined after the functional update, skip saving
+      if (valueToStore === undefined) {
+        return;
+      }
       
       // Save to storage asynchronously after state update
       // Check if we're in a Chrome extension environment
@@ -67,7 +108,14 @@ export function useLocalStorage(key, initialValue) {
         });
       } else {
         // Fallback to localStorage if not in Chrome extension
-        localStorage.setItem(key, JSON.stringify(valueToStore));
+        // JSON.stringify(undefined) returns undefined, which localStorage converts to "undefined"
+        const stringified = JSON.stringify(valueToStore);
+        if (stringified === undefined) {
+          // If stringify returns undefined, remove the item instead
+          localStorage.removeItem(key);
+        } else {
+          localStorage.setItem(key, stringified);
+        }
       }
     } catch (error) {
       console.error('Error saving to storage:', error);

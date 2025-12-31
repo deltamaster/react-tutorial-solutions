@@ -96,9 +96,10 @@ function AppContent() {
 
 
   const [conversation, setConversation] = useLocalStorage("conversation", []);
-  const conversationRef = useRef(conversation);
+  const conversationRef = useRef(conversation || []);
   useEffect(() => {
-    conversationRef.current = conversation;
+    // Ensure conversationRef always has a valid array, never undefined
+    conversationRef.current = Array.isArray(conversation) ? conversation : [];
   }, [conversation]);
   const [activeTypers, setActiveTypers] = useState([]);
   const [followUpQuestions, setFollowUpQuestions] = useState([]);
@@ -952,7 +953,10 @@ function AppContent() {
         // Check if it's the new format with version and summaries
         if (uploadedData.version && uploadedData.conversation) {
           // New format: set both conversation and summaries
-          setConversation(uploadedData.conversation);
+          const conversationData = Array.isArray(uploadedData.conversation) 
+            ? uploadedData.conversation 
+            : [];
+          setConversation(conversationData);
 
           // Restore conversation_summaries if present
           if (uploadedData.conversation_summaries) {
@@ -968,7 +972,8 @@ function AppContent() {
           }
         } else {
           // Old format: just set the conversation (assuming the entire file is conversation data)
-          setConversation(uploadedData);
+          const conversationData = Array.isArray(uploadedData) ? uploadedData : [];
+          setConversation(conversationData);
           // Clear summaries for old format uploads (maintaining previous behavior)
           try {
             localStorage.removeItem("conversation_summaries");
@@ -993,7 +998,10 @@ function AppContent() {
   // Delete a conversation message
   const deleteConversationMessage = useCallback((index) => {
     if (window.confirm("Are you sure you want to delete this message?")) {
-      setConversation((prev) => prev.filter((_, i) => i !== index));
+      setConversation((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        return safePrev.filter((_, i) => i !== index);
+      });
     }
   }, []);
 
@@ -1014,8 +1022,9 @@ function AppContent() {
   // Save edited conversation part
   const saveEditing = useCallback(() => {
     if (editingIndex !== null && editingPartIndex !== null) {
-      setConversation((prev) =>
-        prev.map((message, index) => {
+      setConversation((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        return safePrev.map((message, index) => {
           if (index === editingIndex) {
             return {
               ...message,
@@ -1028,8 +1037,8 @@ function AppContent() {
             };
           }
           return message;
-        })
-      );
+        });
+      });
       cancelEditing();
     }
   }, [editingIndex, editingPartIndex, editingText, cancelEditing]);
