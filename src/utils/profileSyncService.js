@@ -7,119 +7,6 @@ import { getTenantId, getKeypass, getSubscriptionKey } from './settingsService';
 import memoryService from './memoryService';
 
 const API_BASE_URL = 'https://jp-gw2.azure-api.net/profile';
-const DELETED_MEMORIES_KEY = 'deleted_memories';
-
-/**
- * Get the list of deleted memory keys from local storage
- * @returns {Promise<Set<string>>} Set of deleted memory keys
- */
-async function getDeletedMemories() {
-  try {
-    const isChromeExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
-    
-    if (isChromeExtension) {
-      return new Promise((resolve, reject) => {
-        chrome.storage.local.get([DELETED_MEMORIES_KEY], (result) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-            return;
-          }
-          const deleted = result[DELETED_MEMORIES_KEY] || [];
-          resolve(new Set(deleted));
-        });
-      });
-    } else {
-      const deleted = localStorage.getItem(DELETED_MEMORIES_KEY);
-      return new Set(deleted ? JSON.parse(deleted) : []);
-    }
-  } catch (error) {
-    console.error('Error getting deleted memories:', error);
-    return new Set();
-  }
-}
-
-/**
- * Add a memory key to the deleted memories list
- * @param {string} memoryKey - The memory key to mark as deleted
- */
-async function addDeletedMemory(memoryKey) {
-  try {
-    const deleted = await getDeletedMemories();
-    deleted.add(memoryKey);
-    
-    const isChromeExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
-    
-    if (isChromeExtension) {
-      return new Promise((resolve, reject) => {
-        chrome.storage.local.set({ [DELETED_MEMORIES_KEY]: Array.from(deleted) }, () => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-            return;
-          }
-          resolve();
-        });
-      });
-    } else {
-      localStorage.setItem(DELETED_MEMORIES_KEY, JSON.stringify(Array.from(deleted)));
-    }
-  } catch (error) {
-    console.error('Error adding deleted memory:', error);
-  }
-}
-
-/**
- * Remove a memory key from the deleted memories list (when it's restored)
- * @param {string} memoryKey - The memory key to remove from deleted list
- */
-async function removeDeletedMemory(memoryKey) {
-  try {
-    const deleted = await getDeletedMemories();
-    deleted.delete(memoryKey);
-    
-    const isChromeExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
-    
-    if (isChromeExtension) {
-      return new Promise((resolve, reject) => {
-        chrome.storage.local.set({ [DELETED_MEMORIES_KEY]: Array.from(deleted) }, () => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-            return;
-          }
-          resolve();
-        });
-      });
-    } else {
-      localStorage.setItem(DELETED_MEMORIES_KEY, JSON.stringify(Array.from(deleted)));
-    }
-  } catch (error) {
-    console.error('Error removing deleted memory:', error);
-  }
-}
-
-/**
- * Clear all deleted memories from the tracking list
- */
-async function clearDeletedMemories() {
-  try {
-    const isChromeExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
-    
-    if (isChromeExtension) {
-      return new Promise((resolve, reject) => {
-        chrome.storage.local.remove([DELETED_MEMORIES_KEY], () => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-            return;
-          }
-          resolve();
-        });
-      });
-    } else {
-      localStorage.removeItem(DELETED_MEMORIES_KEY);
-    }
-  } catch (error) {
-    console.error('Error clearing deleted memories:', error);
-  }
-}
 
 /**
  * Fetch remote profile from API
@@ -242,32 +129,112 @@ async function createRemoteProfile(profileData) {
 }
 
 /**
+ * Parse memory value - handles both old format (plain string) and new format (JSON with metadata)
+ * @param {string} value - The stored memory value
+ * @returns {Object|null} Parsed memory object with metadata and data, or null if invalid
+ */
+function parseMemoryValue(value) {
+  if (!value) return null;
+  
+  try {
+    const parsed = JSON.parse(value);
+    // New format: { metadata: { lastUpdate, deleted }, data: ... }
+    if (parsed.metadata && parsed.data !== undefined) {
+      return parsed;
+    }
+    // Old format: plain string, treat entire value as data
+    return {
+      metadata: {
+        lastUpdate: Date.now(), // Assign current timestamp for old entries
+        deleted: false
+      },
+      data: value // Entire old value becomes data
+    };
+  } catch (e) {
+    // Not JSON, treat as old format plain string
+    return {
+      metadata: {
+        lastUpdate: Date.now(),
+        deleted: false
+      },
+      data: value
+    };
+  }
+}
+
+/**
+ * Format memory value to JSON string with metadata
+ * @param {any} data - The memory data
+ * @param {number} lastUpdate - Timestamp (defaults to current time)
+ * @param {boolean} deleted - Whether memory is deleted (defaults to false)
+ * @returns {string} JSON string representation
+ */
+function formatMemoryValue(data, lastUpdate = null, deleted = false) {
+  return JSON.stringify({
+    metadata: {
+      lastUpdate: lastUpdate || Date.now(),
+      deleted: deleted
+    },
+    data: data
+  });
+}
+
+/**
  * Convert local memories object to array format for profile_data
- * @param {Object} localMemories - Object with memory keys and values
+ * @param {Object} localMemories - Object with memory keys and values (full format with metadata)
+ * @param {boolean} includeDeleted - Whether to include deleted memories (default: true)
  * @returns {Array} Array of memory objects with key and value
  */
-function memoriesToArray(localMemories) {
-  return Object.entries(localMemories).map(([key, value]) => ({
-    key,
-    value
-  }));
+function memoriesToArray(localMemories, includeDeleted = true) {
+  return Object.entries(localMemories)
+    .filter(([key, value]) => {
+      const parsed = parseMemoryValue(value);
+      if (!parsed) return false;
+      // Include all memories if includeDeleted is true, otherwise only non-deleted
+      return includeDeleted || !parsed.metadata.deleted;
+    })
+    .map(([key, value]) => ({
+      key,
+      value // Store full JSON format (includes deleted flag in metadata)
+    }));
 }
 
 /**
  * Convert memory array from profile_data to object format
  * @param {Array} memoryArray - Array of memory objects with key and value
- * @returns {Object} Object with memory keys and values
+ * @returns {Object} Object with memory keys and values (full format with metadata)
  */
 function memoriesToObject(memoryArray) {
   const result = {};
   if (Array.isArray(memoryArray)) {
     memoryArray.forEach(memory => {
       if (memory && memory.key && memory.value !== undefined) {
-        result[memory.key] = memory.value;
+        result[memory.key] = memory.value; // Store as-is (could be old or new format)
       }
     });
   }
   return result;
+}
+
+/**
+ * Merge two memory values based on lastUpdate timestamp
+ * @param {string} localValue - Local memory value
+ * @param {string} remoteValue - Remote memory value
+ * @returns {string} The value with the later timestamp
+ */
+function mergeMemoryValues(localValue, remoteValue) {
+  const localParsed = parseMemoryValue(localValue);
+  const remoteParsed = parseMemoryValue(remoteValue);
+  
+  if (!localParsed) return remoteValue;
+  if (!remoteParsed) return localValue;
+  
+  // Use the one with the later timestamp
+  if (localParsed.metadata.lastUpdate >= remoteParsed.metadata.lastUpdate) {
+    return localValue;
+  } else {
+    return remoteValue;
+  }
 }
 
 /**
@@ -277,11 +244,8 @@ function memoriesToObject(memoryArray) {
  */
 export async function syncMemories() {
   try {
-    // Get local memories
-    const localMemories = await memoryService.getAllMemories();
-    
-    // Get deleted memories list
-    const deletedMemories = await getDeletedMemories();
+    // Get local memories with full metadata
+    const localMemories = await memoryService.getAllMemoriesWithMetadata();
     
     // Fetch remote profile
     const remoteProfile = await fetchRemoteProfile();
@@ -307,48 +271,142 @@ export async function syncMemories() {
     // Extract remote memories
     const remoteMemoriesObj = memoriesToObject(remoteProfile.profile_data?.memories || []);
     
-    // Merge strategy:
-    // 1. Start with remote memories
-    // 2. Remove any memories that are in the deleted list
-    // 3. Add/update with local memories (local takes precedence)
+    // Merge strategy based on timestamps:
+    // 1. Start with all remote memories
+    // 2. For each local memory:
+    //    - If not in remote, add it
+    //    - If in remote, use the one with later lastUpdate timestamp
+    // 3. Keep deleted memories if they have later timestamps
     const mergedMemories = { ...remoteMemoriesObj };
     
-    // Remove deleted memories from merged set
-    deletedMemories.forEach(key => {
-      delete mergedMemories[key];
-    });
+    // Merge local memories
+    for (const [key, localValue] of Object.entries(localMemories)) {
+      const localParsed = parseMemoryValue(localValue);
+      if (!localParsed) continue;
+      
+      if (mergedMemories[key]) {
+        // Both exist, merge based on timestamp
+        mergedMemories[key] = mergeMemoryValues(localValue, mergedMemories[key]);
+      } else {
+        // Only in local, add it
+        mergedMemories[key] = localValue;
+      }
+    }
     
-    // Add/update with local memories
-    Object.assign(mergedMemories, localMemories);
+    // Filter out deleted memories for display (but keep them in storage for sync)
+    const nonDeletedMerged = {};
+    for (const [key, value] of Object.entries(mergedMemories)) {
+      const parsed = parseMemoryValue(value);
+      if (parsed && !parsed.metadata.deleted) {
+        nonDeletedMerged[key] = value;
+      }
+    }
     
     // Check if there are any differences between merged and remote
-    const mergedArray = memoriesToArray(mergedMemories);
+    // Include deleted memories in comparison and sync
+    const mergedArray = memoriesToArray(mergedMemories, true); // Include deleted memories
     const remoteArray = remoteProfile.profile_data?.memories || [];
     
     // Compare arrays - check if they have the same length and same content
     const hasChanges = JSON.stringify(mergedArray.sort((a, b) => a.key.localeCompare(b.key))) !== 
                        JSON.stringify(remoteArray.sort((a, b) => a.key.localeCompare(b.key)));
     
-    // Update local storage with merged memories
-    // First, clear all local memories
-    await memoryService.clearAllMemories();
+    // Update local storage with merged memories (including deleted ones)
+    // We need to preserve timestamps, so we'll set them directly
+    const memoryPrefix = 'memory-';
+    const isChromeExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
     
-    // Then add merged memories
-    for (const [key, value] of Object.entries(mergedMemories)) {
-      await memoryService.setMemory(key, value);
+    if (isChromeExtension) {
+      // Get all current memory keys to remove ones not in merged set
+      const allCurrentMemories = await new Promise((resolve, reject) => {
+        chrome.storage.local.get(null, (items) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+            return;
+          }
+          const keys = Object.keys(items).filter(key => key.startsWith(memoryPrefix));
+          resolve(keys);
+        });
+      });
+      
+      // Prepare updates and removals
+      const updates = {};
+      const keysToRemove = [];
+      
+      // Add/update merged memories (including deleted ones)
+      for (const [key, value] of Object.entries(mergedMemories)) {
+        const memoryKey = memoryPrefix + key;
+        updates[memoryKey] = value;
+      }
+      
+      // Find keys to remove (in current but not in merged)
+      for (const memoryKey of allCurrentMemories) {
+        const key = memoryKey.substring(memoryPrefix.length);
+        if (!mergedMemories.hasOwnProperty(key)) {
+          keysToRemove.push(memoryKey);
+        }
+      }
+      
+      // Apply updates
+      if (Object.keys(updates).length > 0) {
+        await new Promise((resolve, reject) => {
+          chrome.storage.local.set(updates, () => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
+            }
+            resolve();
+          });
+        });
+      }
+      
+      // Remove keys not in merged set
+      if (keysToRemove.length > 0) {
+        await new Promise((resolve, reject) => {
+          chrome.storage.local.remove(keysToRemove, () => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
+            }
+            resolve();
+          });
+        });
+      }
+    } else {
+      // localStorage fallback
+      // Get all current memory keys
+      const allCurrentKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(memoryPrefix)) {
+          allCurrentKeys.push(key);
+        }
+      }
+      
+      // Update/add merged memories (including deleted ones)
+      for (const [key, value] of Object.entries(mergedMemories)) {
+        const memoryKey = memoryPrefix + key;
+        localStorage.setItem(memoryKey, value);
+      }
+      
+      // Remove keys not in merged set
+      for (const memoryKey of allCurrentKeys) {
+        const key = memoryKey.substring(memoryPrefix.length);
+        if (!mergedMemories.hasOwnProperty(key)) {
+          localStorage.removeItem(memoryKey);
+        }
+      }
     }
     
     // Only update remote profile if there are changes
+    // Always send deleted memories so other devices know they're deleted
     if (hasChanges) {
       const profileData = {
-        memories: mergedArray
+        memories: mergedArray // Includes deleted memories with deleted: true flag
       };
       
       await updateRemoteProfile(profileData);
     }
-    
-    // Clear deleted memories list after successful sync
-    await clearDeletedMemories();
     
     return {
       success: true,
@@ -356,8 +414,8 @@ export async function syncMemories() {
       stats: {
         localCount: Object.keys(localMemories).length,
         remoteCount: Object.keys(remoteMemoriesObj).length,
-        mergedCount: Object.keys(mergedMemories).length,
-        deletedCount: deletedMemories.size,
+        mergedCount: Object.keys(nonDeletedMerged).length,
+        deletedCount: Object.keys(mergedMemories).length - Object.keys(nonDeletedMerged).length,
         hasChanges: hasChanges
       }
     };
@@ -371,14 +429,6 @@ export async function syncMemories() {
   }
 }
 
-/**
- * Track a memory deletion for sync purposes
- * This should be called when a memory is deleted locally
- * @param {string} memoryKey - The memory key that was deleted
- */
-export async function trackMemoryDeletion(memoryKey) {
-  await addDeletedMemory(memoryKey);
-}
 
 /**
  * Check if profile sync is configured
@@ -392,8 +442,6 @@ export function isSyncConfigured() {
 
 export default {
   syncMemories,
-  trackMemoryDeletion,
-  isSyncConfigured,
-  getDeletedMemories
+  isSyncConfigured
 };
 

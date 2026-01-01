@@ -3,17 +3,89 @@
 // Storage prefix
 const MEMORY_PREFIX = 'memory-';
 
-// Lazy import profileSyncService to avoid circular dependencies
-let profileSyncService = null;
-const getProfileSyncService = async () => {
-  if (!profileSyncService) {
-    profileSyncService = await import('./profileSyncService');
-  }
-  return profileSyncService;
-};
-
 // Check if Chrome storage is available (for extension environment)
 const isChromeExtension = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
+
+/**
+ * Parse memory value - handles both old format (plain string) and new format (JSON with metadata)
+ * @param {string} value - The stored memory value
+ * @returns {Object|null} Parsed memory object with metadata and data, or null if invalid
+ */
+function parseMemoryValue(value) {
+  if (!value) return null;
+  
+  try {
+    const parsed = JSON.parse(value);
+    // New format: { metadata: { lastUpdate, deleted }, data: ... }
+    if (parsed.metadata && parsed.data !== undefined) {
+      return parsed;
+    }
+    // Old format: plain string, treat entire value as data
+    return {
+      metadata: {
+        lastUpdate: Date.now(), // Assign current timestamp for old entries
+        deleted: false
+      },
+      data: value // Entire old value becomes data
+    };
+  } catch (e) {
+    // Not JSON, treat as old format plain string
+    return {
+      metadata: {
+        lastUpdate: Date.now(),
+        deleted: false
+      },
+      data: value
+    };
+  }
+}
+
+/**
+ * Format memory value to JSON string with metadata
+ * @param {any} data - The memory data
+ * @param {number} lastUpdate - Timestamp (defaults to current time)
+ * @param {boolean} deleted - Whether memory is deleted (defaults to false)
+ * @returns {string} JSON string representation
+ */
+function formatMemoryValue(data, lastUpdate = null, deleted = false) {
+  return JSON.stringify({
+    metadata: {
+      lastUpdate: lastUpdate || Date.now(),
+      deleted: deleted
+    },
+    data: data
+  });
+}
+
+/**
+ * Get the data portion from a memory value (handles both formats)
+ * @param {string} value - The stored memory value
+ * @returns {string} The memory data
+ */
+function getMemoryData(value) {
+  const parsed = parseMemoryValue(value);
+  return parsed ? parsed.data : value;
+}
+
+/**
+ * Check if a memory is deleted
+ * @param {string} value - The stored memory value
+ * @returns {boolean} True if memory is marked as deleted
+ */
+function isMemoryDeleted(value) {
+  const parsed = parseMemoryValue(value);
+  return parsed ? parsed.metadata.deleted : false;
+}
+
+/**
+ * Get the lastUpdate timestamp from a memory value
+ * @param {string} value - The stored memory value
+ * @returns {number} Timestamp, or 0 if not available
+ */
+function getMemoryLastUpdate(value) {
+  const parsed = parseMemoryValue(value);
+  return parsed ? parsed.metadata.lastUpdate : 0;
+}
 
 // Event bus - Used to notify about memory changes
 const eventBus = {
@@ -40,8 +112,54 @@ const eventBus = {
 
 // Memory service API
 const memoryService = {
-  // Get all memory items
+  // Get all memory items (returns only non-deleted memories, with data extracted)
   getAllMemories: async () => {
+    try {
+      if (isChromeExtension) {
+        return new Promise((resolve, reject) => {
+          chrome.storage.local.get(null, (items) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
+            }
+            const memories = {};
+            for (const key in items) {
+              if (key.startsWith(MEMORY_PREFIX)) {
+                const actualKey = key.substring(MEMORY_PREFIX.length);
+                const value = items[key];
+                // Filter out deleted memories
+                if (!isMemoryDeleted(value)) {
+                  memories[actualKey] = getMemoryData(value);
+                }
+              }
+            }
+            resolve(memories);
+          });
+        });
+      } else {
+        // Fallback to localStorage
+        const memories = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(MEMORY_PREFIX)) {
+            const actualKey = key.substring(MEMORY_PREFIX.length);
+            const value = localStorage.getItem(key);
+            // Filter out deleted memories
+            if (!isMemoryDeleted(value)) {
+              memories[actualKey] = getMemoryData(value);
+            }
+          }
+        }
+        return memories;
+      }
+    } catch (error) {
+      console.error('Error getting all memories:', error);
+      return {};
+    }
+  },
+  
+  // Get all memory items with full metadata (for sync purposes)
+  getAllMemoriesWithMetadata: async () => {
     try {
       if (isChromeExtension) {
         return new Promise((resolve, reject) => {
@@ -73,13 +191,51 @@ const memoryService = {
         return memories;
       }
     } catch (error) {
-      console.error('Error getting all memories:', error);
+      console.error('Error getting all memories with metadata:', error);
       return {};
     }
   },
   
-  // Get a single memory item
+  // Get a single memory item (returns data only, null if deleted)
   getMemory: async (key) => {
+    try {
+      const memoryKey = MEMORY_PREFIX + key;
+      
+      if (isChromeExtension) {
+        return new Promise((resolve, reject) => {
+          chrome.storage.local.get([memoryKey], (result) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
+            }
+            const value = result[memoryKey];
+            if (!value) {
+              resolve(null);
+              return;
+            }
+            // Return null if deleted, otherwise return data
+            if (isMemoryDeleted(value)) {
+              resolve(null);
+            } else {
+              resolve(getMemoryData(value));
+            }
+          });
+        });
+      } else {
+        // Fallback to localStorage
+        const value = localStorage.getItem(memoryKey);
+        if (!value) return null;
+        if (isMemoryDeleted(value)) return null;
+        return getMemoryData(value);
+      }
+    } catch (error) {
+      console.error(`Error getting memory for key ${key}:`, error);
+      return null;
+    }
+  },
+  
+  // Get a single memory item with full metadata (for sync purposes)
+  getMemoryWithMetadata: async (key) => {
     try {
       const memoryKey = MEMORY_PREFIX + key;
       
@@ -98,42 +254,43 @@ const memoryService = {
         return localStorage.getItem(memoryKey);
       }
     } catch (error) {
-      console.error(`Error getting memory for key ${key}:`, error);
+      console.error(`Error getting memory with metadata for key ${key}:`, error);
       return null;
     }
   },
   
-  // Set a memory item
+  // Set a memory item (value can be plain data or full JSON format)
   setMemory: async (key, value) => {
     try {
       console.log('set_memory', key, value);
       const memoryKey = MEMORY_PREFIX + key;
       
+      // Check if value is already in new format
+      let formattedValue;
+      try {
+        const parsed = JSON.parse(value);
+        if (parsed.metadata && parsed.data !== undefined) {
+          // Already in new format, just update timestamp if not deleted
+          formattedValue = formatMemoryValue(
+            parsed.data,
+            Date.now(), // Update timestamp
+            parsed.metadata.deleted
+          );
+        } else {
+          // Not in expected format, treat as data
+          formattedValue = formatMemoryValue(value);
+        }
+      } catch (e) {
+        // Not JSON, treat as plain data
+        formattedValue = formatMemoryValue(value);
+      }
+      
       if (isChromeExtension) {
         return new Promise(async (resolve, reject) => {
-          chrome.storage.local.set({ [memoryKey]: value }, async () => {
+          chrome.storage.local.set({ [memoryKey]: formattedValue }, async () => {
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError);
               return;
-            }
-            // If memory was previously deleted, remove it from deleted list
-            try {
-              const syncService = await getProfileSyncService();
-              if (syncService.default && syncService.default.getDeletedMemories) {
-                const deleted = await syncService.default.getDeletedMemories();
-                if (deleted.has(key)) {
-                  // Memory is being restored, remove from deleted list
-                  const removeDeleted = await import('./profileSyncService');
-                  if (removeDeleted.default && removeDeleted.default.removeDeletedMemory) {
-                    // We need to call the internal function, but it's not exported
-                    // Instead, we'll handle this during sync - if a memory exists locally,
-                    // it will be included in the merged set regardless of deleted list
-                  }
-                }
-              }
-            } catch (syncError) {
-              // Non-critical error, log but don't fail
-              console.warn('Failed to check deleted memories:', syncError);
             }
             eventBus.publish(memoryKey, 'setItem');
             resolve({ status: 'OK', memoryKey: key });
@@ -141,9 +298,7 @@ const memoryService = {
         });
       } else {
         // Fallback to localStorage
-        localStorage.setItem(memoryKey, value);
-        // Note: We don't remove from deleted list here - sync will handle it
-        // because local memories take precedence during merge
+        localStorage.setItem(memoryKey, formattedValue);
         eventBus.publish(memoryKey, 'setItem');
         return { status: 'OK', memoryKey: key };
       }
@@ -153,28 +308,41 @@ const memoryService = {
     }
   },
   
-  // Delete a memory item
+  // Delete a memory item (marks as deleted instead of removing)
   deleteMemory: async (key) => {
     try {
       console.log('delete_memory', key);
       const memoryKey = MEMORY_PREFIX + key;
       
+      // Get current value to preserve data
+      let currentValue = null;
       if (isChromeExtension) {
-        return new Promise(async (resolve, reject) => {
-          chrome.storage.local.remove([memoryKey], async () => {
+        currentValue = await new Promise((resolve, reject) => {
+          chrome.storage.local.get([memoryKey], (result) => {
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError);
               return;
             }
-            // Track deletion for sync purposes
-            try {
-              const syncService = await getProfileSyncService();
-              if (syncService.default && syncService.default.trackMemoryDeletion) {
-                await syncService.default.trackMemoryDeletion(key);
-              }
-            } catch (syncError) {
-              // Non-critical error, log but don't fail
-              console.warn('Failed to track memory deletion for sync:', syncError);
+            resolve(result[memoryKey] || null);
+          });
+        });
+      } else {
+        currentValue = localStorage.getItem(memoryKey);
+      }
+      
+      // Parse current value to get data
+      const parsed = parseMemoryValue(currentValue);
+      const data = parsed ? parsed.data : currentValue || '';
+      
+      // Mark as deleted with current timestamp
+      const deletedValue = formatMemoryValue(data, Date.now(), true);
+      
+      if (isChromeExtension) {
+        return new Promise(async (resolve, reject) => {
+          chrome.storage.local.set({ [memoryKey]: deletedValue }, async () => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
             }
             eventBus.publish(memoryKey, 'removeItem');
             resolve({ status: 'OK', memoryKey: key });
@@ -182,17 +350,7 @@ const memoryService = {
         });
       } else {
         // Fallback to localStorage
-        localStorage.removeItem(memoryKey);
-        // Track deletion for sync purposes
-        try {
-          const syncService = await getProfileSyncService();
-          if (syncService.default && syncService.default.trackMemoryDeletion) {
-            await syncService.default.trackMemoryDeletion(key);
-          }
-        } catch (syncError) {
-          // Non-critical error, log but don't fail
-          console.warn('Failed to track memory deletion for sync:', syncError);
-        }
+        localStorage.setItem(memoryKey, deletedValue);
         eventBus.publish(memoryKey, 'removeItem');
         return { status: 'OK', memoryKey: key };
       }

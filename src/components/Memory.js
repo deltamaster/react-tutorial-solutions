@@ -17,7 +17,6 @@ function Memory() {
   const [syncing, setSyncing] = useState(false);
   const [autoSyncEnabled, setAutoSyncEnabledState] = useState(false);
   const syncIntervalRef = useRef(null);
-  const lastSyncTimeRef = useRef(null);
 
   // Load all memories
   const loadMemories = async () => {
@@ -88,17 +87,6 @@ function Memory() {
       console.log(`Memory component received notification: ${action} for key ${key}`);
       // Reload when memory changes
       loadMemories();
-      
-      // Auto-sync when memory is updated (if enabled)
-      const currentAutoSync = getAutoSyncEnabled();
-      if (currentAutoSync && profileSyncService.isSyncConfigured()) {
-        const now = Date.now();
-        // Debounce: only sync if last sync was more than 2 seconds ago
-        if (!lastSyncTimeRef.current || (now - lastSyncTimeRef.current) > 2000) {
-          lastSyncTimeRef.current = now;
-          handleSyncMemories(true); // true = silent sync
-        }
-      }
     });
     
     // Cleanup function
@@ -108,7 +96,7 @@ function Memory() {
         unsubscribe();
       }
     };
-  }, [handleSyncMemories]);
+  }, []);
 
   // Set up auto-sync interval (every 5 minutes)
   useEffect(() => {

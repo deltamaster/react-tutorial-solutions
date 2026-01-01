@@ -404,11 +404,11 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
             {/* Thinking Toggle */}
             <Form.Check
               type="switch"
-              id="thinking-toggle"
+                id="thinking-toggle"
               label="Thinking"
-              checked={isThinkingEnabled}
-              onChange={toggleThinking}
-              disabled={disabled}
+                checked={isThinkingEnabled}
+                onChange={toggleThinking}
+                disabled={disabled}
               title="Enable thinking mode for more detailed responses"
             />
 
