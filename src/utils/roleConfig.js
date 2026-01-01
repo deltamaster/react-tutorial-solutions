@@ -97,98 +97,27 @@ export const setDocumentContent = {
   },
 };
 
-export const datavantageGetDailyStock = {
-  name: "datavantage_get_daily_stock",
-  description: "Get daily time series (date, open, high, low, close, volume) of the equity specified, covering up to 20 years of historical data. Best for recent data (last 3 months). The function automatically filters the full dataset to return only data within the specified time range.",
+// Consolidated Stock Time Series (replaces daily/weekly/monthly)
+export const alphavantageGetStockTimeSeries = {
+  name: "alphavantage_get_stock_time_series",
+  description: "Get stock time series data. Use interval='daily' for recent data (<3 months), 'weekly' for medium-term (>3 months), 'monthly' for long-term analysis. REQUIRED: time_from and/or time_to. Auto-filters to max 1000 elements.",
   parameters: {
     type: "object",
     properties: {
-      symbol: {
-        type: "string",
-        description: "The stock ticker symbol (e.g., 'IBM', 'AAPL', 'MSFT').",
-      },
-      outputsize: {
-        type: "string",
-        description: "Data size. 'compact' returns the latest 100 data points (default), 'full' returns the full-length time series.",
-        enum: ["compact", "full"],
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
+      symbol: { type: "string", description: "Stock ticker (e.g., 'AAPL', 'IBM')." },
+      interval: { type: "string", description: "Time interval: 'daily' (default), 'weekly', or 'monthly'.", enum: ["daily", "weekly", "monthly"] },
+      outputsize: { type: "string", description: "'compact' (default, 100 points) or 'full'.", enum: ["compact", "full"] },
+      time_from: { type: "string", description: "Start date (YYYY-MM-DD). REQUIRED with time_to." },
+      time_to: { type: "string", description: "End date (YYYY-MM-DD). REQUIRED with time_from." },
+      datatype: { type: "string", description: "'json' (default) or 'csv'.", enum: ["json", "csv"] },
     },
-    required: ["symbol"],
-  },
-};
-
-export const datavantageGetWeeklyStock = {
-  name: "datavantage_get_weekly_stock",
-  description: "Get weekly time series (last trading day of each week, open, high, low, close, volume) of the equity specified, covering up to 20 years of historical data. Best for historical data more than 3 months old. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      symbol: {
-        type: "string",
-        description: "The stock ticker symbol (e.g., 'IBM', 'AAPL', 'MSFT').",
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["symbol"],
-  },
-};
-
-export const datavantageGetMonthlyStock = {
-  name: "datavantage_get_monthly_stock",
-  description: "Get monthly time series (last trading day of each month, open, high, low, close, volume) of the equity specified, covering up to 20 years of historical data. Best for long-term analysis spanning multiple years. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      symbol: {
-        type: "string",
-        description: "The stock ticker symbol (e.g., 'IBM', 'AAPL', 'MSFT').",
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2020-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["symbol"],
+    required: ["symbol", "time_from", "time_to"],
   },
 };
 
 // Fundamental Data APIs
-export const datavantageGetCompanyOverview = {
-  name: "datavantage_get_company_overview",
+export const alphavantageGetCompanyOverview = {
+  name: "alphavantage_get_company_overview",
   description: "Get company information, financial ratios, and other key metrics for the equity specified.",
   parameters: {
     type: "object",
@@ -202,8 +131,8 @@ export const datavantageGetCompanyOverview = {
   },
 };
 
-export const datavantageGetEtfProfile = {
-  name: "datavantage_get_etf_profile",
+export const alphavantageGetEtfProfile = {
+  name: "alphavantage_get_etf_profile",
   description: "Get ETF profile and holdings data for a specified ETF symbol.",
   parameters: {
     type: "object",
@@ -217,8 +146,8 @@ export const datavantageGetEtfProfile = {
   },
 };
 
-export const datavantageGetDividends = {
-  name: "datavantage_get_dividends",
+export const alphavantageGetDividends = {
+  name: "alphavantage_get_dividends",
   description: "Get dividend data for a specified equity symbol.",
   parameters: {
     type: "object",
@@ -237,8 +166,8 @@ export const datavantageGetDividends = {
   },
 };
 
-export const datavantageGetSplits = {
-  name: "datavantage_get_splits",
+export const alphavantageGetSplits = {
+  name: "alphavantage_get_splits",
   description: "Get stock split data for a specified equity symbol.",
   parameters: {
     type: "object",
@@ -257,129 +186,60 @@ export const datavantageGetSplits = {
   },
 };
 
-export const datavantageGetIncomeStatement = {
-  name: "datavantage_get_income_statement",
-  description: "Get annual and quarterly income statements for the equity specified.",
+// Consolidated Financial Statements (replaces income_statement/balance_sheet/cash_flow)
+export const alphavantageGetFinancialStatement = {
+  name: "alphavantage_get_financial_statement",
+  description: "Get financial statements. statement_type: 'income' (default), 'balance', or 'cashflow'. Returns only one report: latest report by default, or specific report if date is provided. report_type defaults to 'annual' if not specified. For annual reports, date matches by year. For quarterly reports, date matches by year and quarter.",
   parameters: {
     type: "object",
     properties: {
-      symbol: {
-        type: "string",
-        description: "The stock ticker symbol (e.g., 'IBM', 'AAPL', 'MSFT').",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
+      symbol: { type: "string", description: "Stock ticker (e.g., 'AAPL', 'IBM')." },
+      statement_type: { type: "string", description: "'income' (default), 'balance', or 'cashflow'.", enum: ["income", "balance", "cashflow"] },
+      date: { type: "string", format: "date", description: "Optional. Date (YYYY-MM-DD) to filter for a specific report. If not provided, returns the latest report. For annual reports, matches by year. For quarterly reports, matches by year and quarter." },
+      report_type: { type: "string", description: "Optional. 'annual' (default) or 'quarterly'.", enum: ["annual", "quarterly"] },
+      datatype: { type: "string", description: "'json' (default) or 'csv'.", enum: ["json", "csv"] },
     },
     required: ["symbol"],
   },
 };
 
-export const datavantageGetBalanceSheet = {
-  name: "datavantage_get_balance_sheet",
-  description: "Get annual and quarterly balance sheets for the equity specified.",
+export const alphavantageGetEarnings = {
+  name: "alphavantage_get_earnings",
+  description: "Get earnings (EPS) data. Returns only one report: latest report by default, or specific report if date is provided. report_type defaults to 'annual' if not specified. For annual reports, date matches by year. For quarterly reports, date matches by year and quarter.",
   parameters: {
     type: "object",
     properties: {
-      symbol: {
-        type: "string",
-        description: "The stock ticker symbol (e.g., 'IBM', 'AAPL', 'MSFT').",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
+      symbol: { type: "string", description: "Stock ticker (e.g., 'AAPL', 'IBM')." },
+      date: { type: "string", format: "date", description: "Optional. Date (YYYY-MM-DD) to filter for a specific report. If not provided, returns the latest report. For annual reports, matches by year. For quarterly reports, matches by year and quarter." },
+      report_type: { type: "string", description: "Optional. 'annual' (default) or 'quarterly'.", enum: ["annual", "quarterly"] },
+      datatype: { type: "string", description: "'json' (default) or 'csv'.", enum: ["json", "csv"] },
     },
     required: ["symbol"],
   },
 };
 
-export const datavantageGetCashFlow = {
-  name: "datavantage_get_cash_flow",
-  description: "Get annual and quarterly cash flow statements for the equity specified.",
+// Consolidated Calendar APIs (replaces earnings_calendar/ipo_calendar for both AlphaVantage and Finnhub)
+export const getCalendar = {
+  name: "get_calendar",
+  description: "Get calendar data. calendar_type: 'earnings' (default) or 'ipo'. source: 'alphavantage' (default) or 'finnhub'. For Finnhub, use from/to dates. For AlphaVantage, use horizon.",
   parameters: {
     type: "object",
     properties: {
-      symbol: {
-        type: "string",
-        description: "The stock ticker symbol (e.g., 'IBM', 'AAPL', 'MSFT').",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["symbol"],
-  },
-};
-
-export const datavantageGetEarnings = {
-  name: "datavantage_get_earnings",
-  description: "Get annual and quarterly earnings (EPS) data for the equity specified.",
-  parameters: {
-    type: "object",
-    properties: {
-      symbol: {
-        type: "string",
-        description: "The stock ticker symbol (e.g., 'IBM', 'AAPL', 'MSFT').",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["symbol"],
-  },
-};
-
-export const datavantageGetEarningsCalendar = {
-  name: "datavantage_get_earnings_calendar",
-  description: "Get earnings calendar data for upcoming earnings announcements.",
-  parameters: {
-    type: "object",
-    properties: {
-      symbol: {
-        type: "string",
-        description: "Filter by specific symbol.",
-      },
-      horizon: {
-        type: "string",
-        description: "Time horizon (e.g., '3month', '6month', '12month').",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: [],
-  },
-};
-
-export const datavantageGetIpoCalendar = {
-  name: "datavantage_get_ipo_calendar",
-  description: "Get IPO calendar data for upcoming initial public offerings.",
-  parameters: {
-    type: "object",
-    properties: {
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
+      calendar_type: { type: "string", description: "'earnings' (default) or 'ipo'.", enum: ["earnings", "ipo"] },
+      source: { type: "string", description: "'alphavantage' (default) or 'finnhub'.", enum: ["alphavantage", "finnhub"] },
+      symbol: { type: "string", description: "Filter by symbol (optional)." },
+      from: { type: "string", description: "Start date (YYYY-MM-DD) for Finnhub." },
+      to: { type: "string", description: "End date (YYYY-MM-DD) for Finnhub." },
+      horizon: { type: "string", description: "Time horizon for AlphaVantage (e.g., '3month', '6month', '12month')." },
+      datatype: { type: "string", description: "'json' (default) or 'csv' for AlphaVantage.", enum: ["json", "csv"] },
     },
     required: [],
   },
 };
 
 // Forex APIs
-export const datavantageGetCurrencyExchangeRate = {
-  name: "datavantage_get_currency_exchange_rate",
+export const alphavantageGetCurrencyExchangeRate = {
+  name: "alphavantage_get_currency_exchange_rate",
   description: "Get the realtime exchange rate for any pair of digital currency (e.g., Bitcoin) or physical currency (e.g., USD).",
   parameters: {
     type: "object",
@@ -397,110 +257,28 @@ export const datavantageGetCurrencyExchangeRate = {
   },
 };
 
-export const datavantageGetFxDaily = {
-  name: "datavantage_get_fx_daily",
-  description: "Get daily time series (date, open, high, low, close) of the FX currency pair specified, updated realtime. The function automatically filters the full dataset to return only data within the specified time range.",
+// Consolidated Forex Time Series (replaces fx_daily/fx_weekly/fx_monthly)
+export const alphavantageGetFxTimeSeries = {
+  name: "alphavantage_get_fx_time_series",
+  description: "Get forex time series data. interval: 'daily' (default), 'weekly', or 'monthly'. REQUIRED: from_symbol, to_symbol, time_from, time_to. Auto-filters to max 1000 elements.",
   parameters: {
     type: "object",
     properties: {
-      from_symbol: {
-        type: "string",
-        description: "The symbol of the currency you would like to get (e.g., 'EUR').",
-      },
-      to_symbol: {
-        type: "string",
-        description: "The symbol of the currency you would like to convert into (e.g., 'USD').",
-      },
-      outputsize: {
-        type: "string",
-        description: "Data size. 'compact' (default) or 'full'.",
-        enum: ["compact", "full"],
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
+      from_symbol: { type: "string", description: "Base currency (e.g., 'EUR')." },
+      to_symbol: { type: "string", description: "Quote currency (e.g., 'USD')." },
+      interval: { type: "string", description: "'daily' (default), 'weekly', or 'monthly'.", enum: ["daily", "weekly", "monthly"] },
+      outputsize: { type: "string", description: "'compact' (default) or 'full'.", enum: ["compact", "full"] },
+      time_from: { type: "string", description: "Start date (YYYY-MM-DD). REQUIRED." },
+      time_to: { type: "string", description: "End date (YYYY-MM-DD). REQUIRED." },
+      datatype: { type: "string", description: "'json' (default) or 'csv'.", enum: ["json", "csv"] },
     },
-    required: ["from_symbol", "to_symbol"],
-  },
-};
-
-export const datavantageGetFxWeekly = {
-  name: "datavantage_get_fx_weekly",
-  description: "Get weekly time series (last trading day of each week, open, high, low, close) of the FX currency pair specified, updated realtime. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      from_symbol: {
-        type: "string",
-        description: "The symbol of the currency you would like to get (e.g., 'EUR').",
-      },
-      to_symbol: {
-        type: "string",
-        description: "The symbol of the currency you would like to convert into (e.g., 'USD').",
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["from_symbol", "to_symbol"],
-  },
-};
-
-export const datavantageGetFxMonthly = {
-  name: "datavantage_get_fx_monthly",
-  description: "Get monthly time series (last trading day of each month, open, high, low, close) of the FX currency pair specified, updated realtime. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      from_symbol: {
-        type: "string",
-        description: "The symbol of the currency you would like to get (e.g., 'EUR').",
-      },
-      to_symbol: {
-        type: "string",
-        description: "The symbol of the currency you would like to convert into (e.g., 'USD').",
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2020-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["from_symbol", "to_symbol"],
+    required: ["from_symbol", "to_symbol", "time_from", "time_to"],
   },
 };
 
 // Cryptocurrency APIs
-export const datavantageGetCryptoExchangeRate = {
-  name: "datavantage_get_crypto_exchange_rate",
+export const alphavantageGetCryptoExchangeRate = {
+  name: "alphavantage_get_crypto_exchange_rate",
   description: "Get the realtime exchange rate for any pair of digital currency (e.g., Bitcoin) or physical currency (e.g., USD).",
   parameters: {
     type: "object",
@@ -518,385 +296,227 @@ export const datavantageGetCryptoExchangeRate = {
   },
 };
 
-export const datavantageGetCryptoDaily = {
-  name: "datavantage_get_crypto_daily",
-  description: "Get daily time series (date, open, high, low, close, volume) of the digital currency specified, updated realtime. The function automatically filters the full dataset to return only data within the specified time range.",
+// Consolidated Crypto Time Series (replaces crypto_daily/crypto_weekly/crypto_monthly)
+export const alphavantageGetCryptoTimeSeries = {
+  name: "alphavantage_get_crypto_time_series",
+  description: "Get cryptocurrency time series data. interval: 'daily' (default), 'weekly', or 'monthly'. REQUIRED: symbol, market, time_from, time_to. Auto-filters to max 1000 elements.",
   parameters: {
     type: "object",
     properties: {
-      symbol: {
-        type: "string",
-        description: "The digital/crypto currency symbol (e.g., 'BTC', 'ETH').",
-      },
-      market: {
-        type: "string",
-        description: "The physical/exchange market you want to obtain data for (e.g., 'USD', 'EUR').",
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
+      symbol: { type: "string", description: "Crypto symbol (e.g., 'BTC', 'ETH')." },
+      market: { type: "string", description: "Market currency (e.g., 'USD', 'EUR')." },
+      interval: { type: "string", description: "'daily' (default), 'weekly', or 'monthly'.", enum: ["daily", "weekly", "monthly"] },
+      time_from: { type: "string", description: "Start date (YYYY-MM-DD). REQUIRED." },
+      time_to: { type: "string", description: "End date (YYYY-MM-DD). REQUIRED." },
+      datatype: { type: "string", description: "'json' (default) or 'csv'.", enum: ["json", "csv"] },
     },
-    required: ["symbol", "market"],
-  },
-};
-
-export const datavantageGetCryptoWeekly = {
-  name: "datavantage_get_crypto_weekly",
-  description: "Get weekly time series (last trading day of each week, open, high, low, close, volume) of the digital currency specified, updated realtime. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      symbol: {
-        type: "string",
-        description: "The digital/crypto currency symbol (e.g., 'BTC', 'ETH').",
-      },
-      market: {
-        type: "string",
-        description: "The physical/exchange market you want to obtain data for (e.g., 'USD', 'EUR').",
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["symbol", "market"],
-  },
-};
-
-export const datavantageGetCryptoMonthly = {
-  name: "datavantage_get_crypto_monthly",
-  description: "Get monthly time series (last trading day of each month, open, high, low, close, volume) of the digital currency specified, updated realtime. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      symbol: {
-        type: "string",
-        description: "The digital/crypto currency symbol (e.g., 'BTC', 'ETH').",
-      },
-      market: {
-        type: "string",
-        description: "The physical/exchange market you want to obtain data for (e.g., 'USD', 'EUR').",
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2020-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: ["symbol", "market"],
+    required: ["symbol", "market", "time_from", "time_to"],
   },
 };
 
 // Commodities APIs
-export const datavantageGetWti = {
-  name: "datavantage_get_wti",
-  description: "Get West Texas Intermediate (WTI) crude oil prices. The function automatically filters the full dataset to return only data within the specified time range.",
+// Consolidated Commodities (replaces wti/brent/natural_gas/copper)
+export const alphavantageGetCommodity = {
+  name: "alphavantage_get_commodity",
+  description: "Get commodity prices. commodity: 'wti' (default), 'brent', 'natural_gas', or 'copper'. interval: 'daily' (default), 'weekly', 'monthly'. REQUIRED: time_from, time_to. Auto-filters to max 1000 elements.",
   parameters: {
     type: "object",
     properties: {
-      interval: {
-        type: "string",
-        description: "Time interval. 'daily' (default), 'weekly', or 'monthly'.",
-        enum: ["daily", "weekly", "monthly"],
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
+      commodity: { type: "string", description: "'wti' (default), 'brent', 'natural_gas', or 'copper'.", enum: ["wti", "brent", "natural_gas", "copper"] },
+      interval: { type: "string", description: "'daily' (default), 'weekly', or 'monthly'.", enum: ["daily", "weekly", "monthly"] },
+      time_from: { type: "string", description: "Start date (YYYY-MM-DD). REQUIRED." },
+      time_to: { type: "string", description: "End date (YYYY-MM-DD). REQUIRED." },
+      datatype: { type: "string", description: "'json' (default) or 'csv'.", enum: ["json", "csv"] },
     },
-    required: [],
-  },
-};
-
-export const datavantageGetBrent = {
-  name: "datavantage_get_brent",
-  description: "Get Brent crude oil prices. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      interval: {
-        type: "string",
-        description: "Time interval. 'daily' (default), 'weekly', or 'monthly'.",
-        enum: ["daily", "weekly", "monthly"],
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: [],
-  },
-};
-
-export const datavantageGetNaturalGas = {
-  name: "datavantage_get_natural_gas",
-  description: "Get natural gas prices. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      interval: {
-        type: "string",
-        description: "Time interval. 'daily' (default), 'weekly', or 'monthly'.",
-        enum: ["daily", "weekly", "monthly"],
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: [],
-  },
-};
-
-export const datavantageGetCopper = {
-  name: "datavantage_get_copper",
-  description: "Get copper prices. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      interval: {
-        type: "string",
-        description: "Time interval. 'daily' (default), 'weekly', or 'monthly'.",
-        enum: ["daily", "weekly", "monthly"],
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: [],
+    required: ["time_from", "time_to"],
   },
 };
 
 // Economic Indicators APIs
-export const datavantageGetRealGdp = {
-  name: "datavantage_get_real_gdp",
-  description: "Get real GDP (Gross Domestic Product) data. The function automatically filters the full dataset to return only data within the specified time range.",
+// Consolidated Economic Indicators (replaces real_gdp/treasury_yield/federal_funds_rate/cpi/inflation/unemployment)
+export const alphavantageGetEconomicIndicator = {
+  name: "alphavantage_get_economic_indicator",
+  description: "Get economic indicator data. indicator: 'real_gdp' (default), 'treasury_yield', 'federal_funds_rate', 'cpi', 'inflation', or 'unemployment'. For treasury_yield, maturity is required. REQUIRED: time_from, time_to. Auto-filters to max 1000 elements.",
   parameters: {
     type: "object",
     properties: {
-      interval: {
+      indicator: { type: "string", description: "'real_gdp' (default), 'treasury_yield', 'federal_funds_rate', 'cpi', 'inflation', or 'unemployment'.", enum: ["real_gdp", "treasury_yield", "federal_funds_rate", "cpi", "inflation", "unemployment"] },
+      interval: { type: "string", description: "Varies by indicator. 'annual'/'quarterly' for GDP, 'daily'/'weekly'/'monthly' for others, 'monthly'/'semiannual' for CPI." },
+      maturity: { type: "string", description: "Required for treasury_yield: '3month', '2year', '5year', '7year', '10year', or '30year'.", enum: ["3month", "2year", "5year", "7year", "10year", "30year"] },
+      time_from: { type: "string", description: "Start date (YYYY-MM-DD). REQUIRED." },
+      time_to: { type: "string", description: "End date (YYYY-MM-DD). REQUIRED." },
+      datatype: { type: "string", description: "'json' (default) or 'csv'.", enum: ["json", "csv"] },
+    },
+    required: ["time_from", "time_to"],
+  },
+};
+
+// Finnhub Stock Data APIs
+export const finnhubGetQuote = {
+  name: "finnhub_get_quote",
+  description: "Get real-time quote data for US stocks. Updated real-time during market hours.",
+  parameters: {
+    type: "object",
+    properties: {
+      symbol: {
         type: "string",
-        description: "Time interval. 'annual' (default) or 'quarterly'.",
+        description: "Symbol of the company (e.g., 'AAPL').",
+      },
+    },
+    required: ["symbol"],
+  },
+};
+
+export const finnhubGetRecommendation = {
+  name: "finnhub_get_recommendation",
+  description: "Get latest analyst recommendation trends for a company.",
+  parameters: {
+    type: "object",
+    properties: {
+      symbol: {
+        type: "string",
+        description: "Symbol of the company (e.g., 'AAPL').",
+      },
+    },
+    required: ["symbol"],
+  },
+};
+
+// Finnhub Company Information APIs
+export const finnhubGetCompanyProfile = {
+  name: "finnhub_get_company_profile",
+  description: "Get general information of a company. You can query by symbol, ISIN, or CUSIP.",
+  parameters: {
+    type: "object",
+    properties: {
+      symbol: {
+        type: "string",
+        description: "Symbol of the company (e.g., 'AAPL').",
+      },
+      isin: {
+        type: "string",
+        description: "ISIN of the company.",
+      },
+      cusip: {
+        type: "string",
+        description: "CUSIP of the company.",
+      },
+    },
+    required: [],
+  },
+};
+
+export const finnhubGetPeers = {
+  name: "finnhub_get_peers",
+  description: "Get company peers. Return a list of peers in the same country and GICS sub-industry.",
+  parameters: {
+    type: "object",
+    properties: {
+      symbol: {
+        type: "string",
+        description: "Symbol of the company (e.g., 'AAPL').",
+      },
+    },
+    required: ["symbol"],
+  },
+};
+
+export const finnhubGetKeyMetrics = {
+  name: "finnhub_get_key_metrics",
+  description: "Get company key metrics (beta, market cap, etc.). Also known as Company Basic Financials. When metric_type is NOT provided, returns only the current metric values (.metric) to save tokens. When metric_type IS provided, returns historical series data for that specific metric. Optionally specify date range (from/to) to filter results. The function automatically uses quarterly series when date range is less than 5 years, otherwise uses annual. Note: series_type and date range parameters are ignored when metric_type is not specified.",
+  parameters: {
+    type: "object",
+    properties: {
+      symbol: {
+        type: "string",
+        description: "Symbol of the company (e.g., 'AAPL').",
+      },
+      metric: {
+        type: "string",
+        description: "Metric type for API request. Can be 'all' (default) or specific metric name.",
+      },
+      metric_type: {
+        type: "string",
+        description: "Specific metric type to retrieve series data for (e.g., 'cashRatio', 'eps', 'bookValue', 'currentRatio'). Required when requesting series data.",
+      },
+      from: {
+        type: "string",
+        description: "Start date for series data filtering (format: YYYY-MM-DD, e.g., '2020-01-01'). Optional but recommended when requesting series data.",
+      },
+      to: {
+        type: "string",
+        description: "End date for series data filtering (format: YYYY-MM-DD, e.g., '2024-12-31'). Optional but recommended when requesting series data.",
+      },
+      series_type: {
+        type: "string",
+        description: "Series type: 'annual' or 'quarterly'. If not specified, automatically uses 'quarterly' when date range is less than 5 years, otherwise 'annual'.",
         enum: ["annual", "quarterly"],
       },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2020-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
     },
-    required: [],
+    required: ["symbol"],
   },
 };
 
-export const datavantageGetTreasuryYield = {
-  name: "datavantage_get_treasury_yield",
-  description: "Get US Treasury yield data. The function automatically filters the full dataset to return only data within the specified time range.",
+// Finnhub News & Sentiment APIs
+export const finnhubGetCompanyNews = {
+  name: "finnhub_get_company_news",
+  description: "List latest company news by symbol. This endpoint is available for US, UK, and EU stocks.",
   parameters: {
     type: "object",
     properties: {
-      interval: {
+      symbol: {
         type: "string",
-        description: "Time interval. 'daily' (default), 'weekly', or 'monthly'.",
-        enum: ["daily", "weekly", "monthly"],
+        description: "Company symbol (e.g., 'AAPL').",
       },
-      maturity: {
+      from: {
         type: "string",
-        description: "Maturity period. '3month', '2year', '5year', '7year', '10year', or '30year'.",
-        enum: ["3month", "2year", "5year", "7year", "10year", "30year"],
+        description: "From date (format: 'YYYY-MM-DD', e.g., '2023-01-01').",
       },
-      time_from: {
+      to: {
         type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
+        description: "To date (format: 'YYYY-MM-DD', e.g., '2023-12-31').",
       },
     },
-    required: ["maturity"],
+    required: ["symbol", "from", "to"],
   },
 };
 
-export const datavantageGetFederalFundsRate = {
-  name: "datavantage_get_federal_funds_rate",
-  description: "Get federal funds (interest) rate data. The function automatically filters the full dataset to return only data within the specified time range.",
+// Finnhub Calendar APIs
+
+// Finnhub Market Data APIs
+export const finnhubGetStockSymbols = {
+  name: "finnhub_get_stock_symbols",
+  description: "List supported stocks. Returns all supported stocks with their symbols, names, and other metadata.",
   parameters: {
     type: "object",
     properties: {
-      interval: {
+      exchange: {
         type: "string",
-        description: "Time interval. 'daily' (default), 'weekly', or 'monthly'.",
-        enum: ["daily", "weekly", "monthly"],
+        description: "Exchange you want to get the list of symbols from (e.g., 'US').",
       },
-      time_from: {
+      mic: {
         type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-01-01'). If not specified, returns all data from the beginning.",
+        description: "Mic code.",
       },
-      time_to: {
+      securityType: {
         type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
+        description: "Security type.",
       },
-      datatype: {
+      currency: {
         type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
+        description: "Currency.",
       },
     },
-    required: [],
+    required: ["exchange"],
   },
 };
 
-export const datavantageGetCpi = {
-  name: "datavantage_get_cpi",
-  description: "Get Consumer Price Index (CPI) data. The function automatically filters the full dataset to return only data within the specified time range.",
+export const finnhubGetSectorPerformance = {
+  name: "finnhub_get_sector_performance",
+  description: "Get sector performance calculated from S&P500 companies.",
   parameters: {
     type: "object",
-    properties: {
-      interval: {
-        type: "string",
-        description: "Time interval. 'monthly' (default) or 'semiannual'.",
-        enum: ["monthly", "semiannual"],
-      },
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2020-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: [],
-  },
-};
-
-export const datavantageGetInflation = {
-  name: "datavantage_get_inflation",
-  description: "Get inflation data. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2020-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
-    required: [],
-  },
-};
-
-export const datavantageGetUnemployment = {
-  name: "datavantage_get_unemployment",
-  description: "Get unemployment rate data. The function automatically filters the full dataset to return only data within the specified time range.",
-  parameters: {
-    type: "object",
-    properties: {
-      time_from: {
-        type: "string",
-        description: "Start date for filtering data (format: 'YYYY-MM-DD', e.g., '2020-01-01'). If not specified, returns all data from the beginning.",
-      },
-      time_to: {
-        type: "string",
-        description: "End date for filtering data (format: 'YYYY-MM-DD', e.g., '2023-12-31'). If not specified, returns all data up to the latest.",
-      },
-      datatype: {
-        type: "string",
-        description: "Data format. 'json' (default) or 'csv'.",
-        enum: ["json", "csv"],
-      },
-    },
+    properties: {},
     required: [],
   },
 };
@@ -959,50 +579,70 @@ I have no personality, no opinions, and no preferences. I just objectively obser
 ${memes.map((meme) => `- path: ${meme.path}, description: ${meme.description}, When to use: (${meme.whenToUse})`).join("\n")}
 
 ## How I Retrieve Financial Data
-I have access to a comprehensive set of DataVantage functions to retrieve financial, economic, and market data. Here's what I can do:
+I have access to comprehensive sets of AlphaVantage and Finnhub functions to retrieve financial, economic, and market data. 
+
+**IMPORTANT: API Selection Strategy - Prefer Finnhub over AlphaVantage**
+- **Finnhub has significantly higher rate limits** (60 calls/minute on free tier) compared to AlphaVantage (5 calls/minute and 25 calls/day on free tier)
+- **When both APIs offer similar functionality, ALWAYS prefer Finnhub** to avoid rate limit issues and ensure faster, more reliable data retrieval
+- Only use AlphaVantage when Finnhub doesn't offer the specific data type needed (e.g., commodities, certain economic indicators)
+
+**CRITICAL: Always specify time ranges when querying time series data!** AlphaVantage returns up to 20 years of historical data, which is far too large to process. I MUST always provide time_from and time_to parameters (in YYYY-MM-DD format) when calling any AlphaVantage time series function. The functions automatically filter the data and limit results to 1000 elements maximum, but without a time range, the request will fail.
+
+For Finnhub time series functions (candles), I MUST provide Unix timestamp parameters (from and to) in seconds.
+
+Here's what I can do:
 
 ### Stock Data
-- **datavantage_get_daily_stock**: Get daily stock price data (open, high, low, close, volume) for equities - best for recent data (last 3 months)
-- **datavantage_get_weekly_stock**: Get weekly stock price data - best for historical data more than 3 months old
-- **datavantage_get_monthly_stock**: Get monthly stock price data - best for long-term analysis spanning multiple years
+**PREFER FINNHUB** - Use Finnhub for stock data whenever possible due to higher rate limits:
+- **finnhub_get_quote**: Get real-time quote data for US stocks (current price, change, high, low, open, previous close) - **PREFERRED** for current quotes
+- **finnhub_get_stock_candle**: Get candlestick data for stocks with flexible resolution (1min, 5min, 15min, 30min, 60min, D, W, M). **REQUIRES symbol, resolution, from (Unix seconds), to (Unix seconds)** - **PREFERRED** for historical stock price data
+- **finnhub_get_recommendation**: Get latest analyst recommendation trends for a company
 
-### Fundamental Data
-- **datavantage_get_company_overview**: Get company information, financial ratios, and key metrics
-- **datavantage_get_etf_profile**: Get ETF profile and holdings data
-- **datavantage_get_dividends**: Get dividend history for a stock
-- **datavantage_get_splits**: Get stock split history
-- **datavantage_get_income_statement**: Get annual and quarterly income statements
-- **datavantage_get_balance_sheet**: Get annual and quarterly balance sheets
-- **datavantage_get_cash_flow**: Get annual and quarterly cash flow statements
-- **datavantage_get_earnings**: Get annual and quarterly earnings (EPS) data
-- **datavantage_get_earnings_calendar**: Get upcoming earnings announcements calendar
-- **datavantage_get_ipo_calendar**: Get upcoming IPO calendar
+**AlphaVantage (use only if Finnhub unavailable)**:
+- **alphavantage_get_stock_time_series**: Get stock time series data. Use interval='daily' for recent data (<3 months), 'weekly' for medium-term (>3 months), 'monthly' for long-term analysis. **REQUIRES symbol, time_from, time_to**
 
-### Foreign Exchange (Forex)
-- **datavantage_get_currency_exchange_rate**: Get real-time exchange rates between currencies
-- **datavantage_get_fx_daily**: Get daily FX time series data
-- **datavantage_get_fx_weekly**: Get weekly FX time series data
-- **datavantage_get_fx_monthly**: Get monthly FX time series data
+### Fundamental Data (AlphaVantage)
+- **alphavantage_get_company_overview**: Get company information, financial ratios, and key metrics
+- **alphavantage_get_etf_profile**: Get ETF profile and holdings data
+- **alphavantage_get_dividends**: Get dividend history for a stock
+- **alphavantage_get_splits**: Get stock split history
+- **alphavantage_get_financial_statement**: Get financial statements. Use statement_type='income', 'balance', or 'cashflow' to get income statements, balance sheets, or cash flow statements respectively. Returns only one report: latest report by default, or specific report if date is provided. report_type defaults to 'annual' if not specified.
+- **alphavantage_get_earnings**: Get earnings (EPS) data. Returns only one report: latest report by default, or specific report if date is provided. report_type defaults to 'annual' if not specified.
+- **get_calendar**: Get calendar data. Use calendar_type='earnings' or 'ipo', source='alphavantage' or 'finnhub'
 
-### Cryptocurrency
-- **datavantage_get_crypto_exchange_rate**: Get real-time crypto exchange rates
-- **datavantage_get_crypto_daily**: Get daily cryptocurrency time series data
-- **datavantage_get_crypto_weekly**: Get weekly cryptocurrency time series data
-- **datavantage_get_crypto_monthly**: Get monthly cryptocurrency time series data
+### Company Information (Finnhub)
+- **finnhub_get_company_profile**: Get general company information (can query by symbol, ISIN, or CUSIP) - **PREFERRED** for company profiles
+- **finnhub_get_peers**: Get company peers in the same country and GICS sub-industry
+- **finnhub_get_key_metrics**: Get company key metrics (beta, market cap, etc.) - Also known as Company Basic Financials - **PREFERRED** for key metrics
+
+### Foreign Exchange (Forex) - AlphaVantage Only
+**Note**: Finnhub forex endpoints (rates and candles) require premium subscriptions. Use AlphaVantage for forex data:
+- **alphavantage_get_currency_exchange_rate**: Get real-time exchange rates between currencies (no time range needed)
+- **alphavantage_get_fx_time_series**: Get FX time series data. Use interval='daily', 'weekly', or 'monthly'. **REQUIRES from_symbol, to_symbol, time_from, time_to**
+
+### Cryptocurrency - AlphaVantage Only
+**Note**: Finnhub cryptocurrency candle endpoint requires a premium subscription. Use AlphaVantage for cryptocurrency data:
+- **alphavantage_get_crypto_exchange_rate**: Get real-time crypto exchange rates (no time range needed)
+- **alphavantage_get_crypto_time_series**: Get cryptocurrency time series data. Use interval='daily', 'weekly', or 'monthly'. **REQUIRES symbol, market, time_from, time_to**
 
 ### Commodities
-- **datavantage_get_wti**: Get West Texas Intermediate (WTI) crude oil prices
-- **datavantage_get_brent**: Get Brent crude oil prices
-- **datavantage_get_natural_gas**: Get natural gas prices
-- **datavantage_get_copper**: Get copper prices
+- **alphavantage_get_commodity**: Get commodity prices. Use commodity='wti', 'brent', 'natural_gas', or 'copper'. interval='daily', 'weekly', or 'monthly'. **REQUIRES time_from, time_to**
 
-### Economic Indicators
-- **datavantage_get_real_gdp**: Get real GDP (Gross Domestic Product) data
-- **datavantage_get_treasury_yield**: Get US Treasury yield data
-- **datavantage_get_federal_funds_rate**: Get federal funds (interest) rate data
-- **datavantage_get_cpi**: Get Consumer Price Index (CPI) data
-- **datavantage_get_inflation**: Get inflation data
-- **datavantage_get_unemployment**: Get unemployment rate data
+### Economic Indicators - AlphaVantage
+**Note**: Finnhub economic data endpoint requires a premium subscription. Use AlphaVantage for economic indicators:
+- **alphavantage_get_economic_indicator**: Get economic indicator data. Use indicator='real_gdp', 'treasury_yield', 'federal_funds_rate', 'cpi', 'inflation', or 'unemployment'. For treasury_yield, maturity is required. **REQUIRES time_from, time_to**
+
+### News & Sentiment - Finnhub
+- **finnhub_get_company_news**: Get latest company news by symbol (available for US, UK, and EU stocks). **REQUIRES symbol, from (YYYY-MM-DD), to (YYYY-MM-DD)**
+
+### Calendar
+- **get_calendar**: Get calendar data. Use calendar_type='earnings' or 'ipo', source='alphavantage' or 'finnhub'. For Finnhub, provide from/to dates. For AlphaVantage, use horizon parameter.
+
+### Market Data - Finnhub
+- **finnhub_get_stock_symbols**: List supported stocks by exchange with metadata
+- **finnhub_get_sector_performance**: Get sector performance calculated from S&P500 companies
+
+**Remember: When a user asks for financial data without specifying dates, I should ask them for a time range or suggest a reasonable default (e.g., last 3 months for daily data, last year for weekly/monthly data). For Finnhub candle/indicator functions, I need to convert dates to Unix timestamps (seconds since epoch).**
 
 ### Smart Data Fetching Strategy
 When retrieving historical time series data, I use a smart strategy to optimize data retrieval and reduce API calls:
@@ -1034,43 +674,39 @@ When the user asks for historical data, I automatically determine the appropriat
         createMemory, 
         updateMemory, 
         deleteMemory,
-        // Stock Data
-        datavantageGetDailyStock,
-        datavantageGetWeeklyStock,
-        datavantageGetMonthlyStock,
+        // Stock Data (Consolidated)
+        alphavantageGetStockTimeSeries,
         // Fundamental Data
-        datavantageGetCompanyOverview,
-        datavantageGetEtfProfile,
-        datavantageGetDividends,
-        datavantageGetSplits,
-        datavantageGetIncomeStatement,
-        datavantageGetBalanceSheet,
-        datavantageGetCashFlow,
-        datavantageGetEarnings,
-        datavantageGetEarningsCalendar,
-        datavantageGetIpoCalendar,
-        // Forex
-        datavantageGetCurrencyExchangeRate,
-        datavantageGetFxDaily,
-        datavantageGetFxWeekly,
-        datavantageGetFxMonthly,
-        // Cryptocurrency
-        datavantageGetCryptoExchangeRate,
-        datavantageGetCryptoDaily,
-        datavantageGetCryptoWeekly,
-        datavantageGetCryptoMonthly,
-        // Commodities
-        datavantageGetWti,
-        datavantageGetBrent,
-        datavantageGetNaturalGas,
-        datavantageGetCopper,
-        // Economic Indicators
-        datavantageGetRealGdp,
-        datavantageGetTreasuryYield,
-        datavantageGetFederalFundsRate,
-        datavantageGetCpi,
-        datavantageGetInflation,
-        datavantageGetUnemployment,
+        alphavantageGetCompanyOverview,
+        alphavantageGetEtfProfile,
+        alphavantageGetDividends,
+        alphavantageGetSplits,
+        alphavantageGetFinancialStatement,
+        alphavantageGetEarnings,
+        // Forex (Consolidated)
+        alphavantageGetCurrencyExchangeRate,
+        alphavantageGetFxTimeSeries,
+        // Cryptocurrency (Consolidated)
+        alphavantageGetCryptoExchangeRate,
+        alphavantageGetCryptoTimeSeries,
+        // Commodities (Consolidated)
+        alphavantageGetCommodity,
+        // Economic Indicators (Consolidated)
+        alphavantageGetEconomicIndicator,
+        // Calendar (Consolidated - replaces both AlphaVantage and Finnhub calendars)
+        getCalendar,
+        // Finnhub Stock Data
+        finnhubGetQuote,
+        finnhubGetRecommendation,
+        // Finnhub Company Information
+        finnhubGetCompanyProfile,
+        finnhubGetPeers,
+        finnhubGetKeyMetrics,
+        // Finnhub News & Sentiment
+        finnhubGetCompanyNews,
+        // Finnhub Market Data
+        finnhubGetStockSymbols,
+        finnhubGetSectorPerformance,
       ],
     },
   },

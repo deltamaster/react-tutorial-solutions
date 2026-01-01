@@ -85,7 +85,7 @@ https://jp-gw2.azure-api.net/alphavantage/query?function=TIME_SERIES_DAILY&symbo
 
 **Description**: Returns daily time series (date, open, high, low, close, adjusted close, volume, dividend amount, split coefficient) of the equity specified, covering up to 20 years of historical data.
 
-**Premium**: ❌ **No** (Free)
+**Premium**: ✅ **Yes** (Premium)
 
 **Parameters**:
 - **Required**:
@@ -195,20 +195,22 @@ https://jp-gw2.azure-api.net/alphavantage/query?function=GLOBAL_QUOTE&symbol=IBM
 
 ---
 
-### BATCH_STOCK_QUOTES
+### REALTIME_BULK_QUOTES
 
-**Description**: Returns realtime price and volume information for up to 100 symbols in a single request.
+**Description**: Returns realtime quotes for US-traded symbols in bulk, accepting up to 100 symbols per API request and covering both regular and extended (pre-market and post-market) trading hours.
 
 **Premium**: ✅ **Yes** (Premium)
 
 **Parameters**:
 - **Required**:
-  - `function`: `BATCH_STOCK_QUOTES`
-  - `symbols`: Comma-separated list of stock ticker symbols (e.g., `IBM,MSFT,AAPL`)
+  - `function`: `REALTIME_BULK_QUOTES`
+  - `symbol`: Comma-separated list of up to 100 stock ticker symbols (e.g., `IBM,MSFT,AAPL`)
+- **Optional**:
+  - `datatype`: `json` (default) or `csv`
 
 **Example**:
 ```
-https://jp-gw2.azure-api.net/alphavantage/query?function=BATCH_STOCK_QUOTES&symbols=IBM,MSFT,AAPL```
+https://jp-gw2.azure-api.net/alphavantage/query?function=REALTIME_BULK_QUOTES&symbol=IBM,MSFT,AAPL```
 
 ---
 
@@ -641,7 +643,7 @@ https://jp-gw2.azure-api.net/alphavantage/query?function=LISTING_STATUS```
 
 ### CURRENCY_EXCHANGE_RATE
 
-**Description**: Returns the realtime exchange rate for any pair of digital currency (e.g., Bitcoin) or physical currency (e.g., USD).
+**Description**: Returns the realtime exchange rate for any pair of cryptocurrency (e.g., Bitcoin) or physical currency (e.g., USD). This function handles both crypto-to-fiat and fiat-to-fiat conversions.
 
 **Premium**: ❌ **No** (Free)
 
@@ -742,23 +744,7 @@ https://jp-gw2.azure-api.net/alphavantage/query?function=FX_MONTHLY&from_symbol=
 
 ## Cryptocurrencies APIs
 
-### CRYPTO_CURRENCY_EXCHANGE_RATE
-
-**Description**: Returns the realtime exchange rate for any pair of digital currency (e.g., Bitcoin) or physical currency (e.g., USD).
-
-**Premium**: ❌ **No** (Free)
-
-**Parameters**:
-- **Required**:
-  - `function`: `CRYPTO_CURRENCY_EXCHANGE_RATE`
-  - `from_currency`: The digital or physical currency you would like to get (e.g., `BTC`)
-  - `to_currency`: The digital or physical currency you would like to convert into (e.g., `USD`)
-
-**Example**:
-```
-https://jp-gw2.azure-api.net/alphavantage/query?function=CRYPTO_CURRENCY_EXCHANGE_RATE&from_currency=BTC&to_currency=USD```
-
----
+**Note**: The `CURRENCY_EXCHANGE_RATE` function (documented in the Forex section) handles both cryptocurrency and physical currency exchange rates. Use `from_currency=BTC` and `to_currency=USD` for crypto-to-fiat conversions.
 
 ### CRYPTO_INTRADAY
 
@@ -1187,21 +1173,21 @@ https://jp-gw2.azure-api.net/alphavantage/query?function=RETAIL_SALES```
 
 ---
 
-### DURABLE_GOODS_ORDERS
+### DURABLES
 
-**Description**: Returns the durable goods orders data.
+**Description**: Returns the monthly manufacturers' new orders of durable goods in the United States.
 
 **Premium**: ❌ **No** (Free)
 
 **Parameters**:
 - **Required**:
-  - `function`: `DURABLE_GOODS_ORDERS`
+  - `function`: `DURABLES`
 - **Optional**:
   - `datatype`: `json` (default) or `csv`
 
 **Example**:
 ```
-https://jp-gw2.azure-api.net/alphavantage/query?function=DURABLE_GOODS_ORDERS```
+https://jp-gw2.azure-api.net/alphavantage/query?function=DURABLES```
 
 ---
 
@@ -2124,7 +2110,8 @@ The following endpoints require a premium subscription:
 
 1. **Core Stock APIs**:
    - `TIME_SERIES_INTRADAY`
-   - `BATCH_STOCK_QUOTES`
+   - `TIME_SERIES_DAILY_ADJUSTED`
+   - `REALTIME_BULK_QUOTES`
 
 2. **Options Data APIs**:
    - `REALTIME_OPTIONS`
@@ -2143,6 +2130,8 @@ The following endpoints require a premium subscription:
 
 5. **Cryptocurrencies APIs**:
    - `CRYPTO_INTRADAY`
+   
+**Note**: `CURRENCY_EXCHANGE_RATE` (in Forex section) handles both crypto and physical currency exchange rates.
 
 6. **Technical Indicators**:
    - `VWAP`

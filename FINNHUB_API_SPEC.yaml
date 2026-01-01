@@ -1,0 +1,1013 @@
+openapi: 3.0.3
+info:
+  title: Finnhub API
+  description: |
+    Comprehensive financial market data API providing real-time and historical stock quotes, 
+    company profiles, news, earnings calendars, financial statements, and more.
+    
+    This API specification is designed for Azure API Management Gateway integration.
+    All requests are routed through the gateway, which handles authentication.
+  version: 1.0.0
+  contact:
+    name: Finnhub API Support
+    url: https://finnhub.io
+    email: support@finnhub.io
+  license:
+    name: Proprietary
+    url: https://finnhub.io/terms
+
+servers:
+  - url: https://jp-gw2.azure-api.net/finnhub
+    description: Azure API Management Gateway
+  - url: https://finnhub.io/api/v1
+    description: Finnhub Production API (for reference)
+
+tags:
+  - name: Stock Data
+    description: Real-time and historical stock market data
+  - name: Company Information
+    description: Company profiles, financials, and fundamentals
+  - name: News & Sentiment
+    description: Financial news and market sentiment
+  - name: Calendar
+    description: Earnings, IPO, and economic calendars
+  - name: Market Data
+    description: Market-wide data including indices, sectors, and exchanges
+  - name: Cryptocurrency
+    description: Cryptocurrency market data
+  - name: Forex
+    description: Foreign exchange rates and data
+  - name: Economic Data
+    description: Economic indicators and macro data
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Ocp-Apim-Subscription-Key
+      description: Azure API Management subscription key
+    FinnhubApiKey:
+      type: apiKey
+      in: query
+      name: token
+      description: Finnhub API token (used by backend, not exposed to clients)
+
+  schemas:
+    Quote:
+      type: object
+      properties:
+        c:
+          type: number
+          description: Current price
+          example: 150.25
+        d:
+          type: number
+          description: Change
+          example: 2.5
+        dp:
+          type: number
+          description: Percent change
+          example: 1.69
+        h:
+          type: number
+          description: High price of the day
+          example: 152.00
+        l:
+          type: number
+          description: Low price of the day
+          example: 148.50
+        o:
+          type: number
+          description: Open price of the day
+          example: 149.00
+        pc:
+          type: number
+          description: Previous close price
+          example: 147.75
+        t:
+          type: integer
+          description: Unix timestamp
+          example: 1609459200
+
+    CompanyProfile:
+      type: object
+      properties:
+        country:
+          type: string
+          example: "US"
+        currency:
+          type: string
+          example: "USD"
+        exchange:
+          type: string
+          example: "NASDAQ"
+        finnhubIndustry:
+          type: string
+          example: "Technology"
+        ipo:
+          type: string
+          format: date
+          example: "1980-12-12"
+        logo:
+          type: string
+          format: uri
+          example: "https://static.finnhub.io/logo/87cb30d8-80df-11ea-8951-00000000092a.png"
+        marketCapitalization:
+          type: number
+          example: 2500000000000
+        name:
+          type: string
+          example: "Apple Inc"
+        phone:
+          type: string
+          example: "14089961010"
+        shareOutstanding:
+          type: number
+          example: 16000000000
+        ticker:
+          type: string
+          example: "AAPL"
+        weburl:
+          type: string
+          format: uri
+          example: "https://www.apple.com/"
+
+    News:
+      type: object
+      properties:
+        category:
+          type: string
+          example: "company"
+        datetime:
+          type: integer
+          description: Unix timestamp
+          example: 1609459200
+        headline:
+          type: string
+          example: "Apple announces new product line"
+        id:
+          type: integer
+          example: 123456
+        image:
+          type: string
+          format: uri
+          example: "https://example.com/image.jpg"
+        related:
+          type: string
+          example: "AAPL"
+        source:
+          type: string
+          example: "Reuters"
+        summary:
+          type: string
+          example: "Apple Inc announced..."
+        url:
+          type: string
+          format: uri
+          example: "https://example.com/news/article"
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid symbol"
+
+paths:
+  /quote:
+    get:
+      tags:
+        - Stock Data
+      summary: Get quote
+      description: Get real-time quote data for US stocks. Updated real-time during market hours.
+      operationId: getQuote
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Symbol of the company
+          schema:
+            type: string
+            example: "AAPL"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+        '429':
+          description: Rate limit exceeded
+
+  /stock/profile2:
+    get:
+      tags:
+        - Company Information
+      summary: Get company profile 2
+      description: Get general information of a company. You can query by symbol, ISIN, or CUSIP.
+      operationId: getCompanyProfile2
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Symbol of the company
+          schema:
+            type: string
+            example: "AAPL"
+        - name: isin
+          in: query
+          required: false
+          description: ISIN
+          schema:
+            type: string
+        - name: cusip
+          in: query
+          required: false
+          description: CUSIP
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyProfile'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /company-news:
+    get:
+      tags:
+        - News & Sentiment
+      summary: Get company news
+      description: List latest company news by symbol. This endpoint is available for US, UK, and EU stocks.
+      operationId: getCompanyNews
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Company symbol
+          schema:
+            type: string
+            example: "AAPL"
+        - name: from
+          in: query
+          required: true
+          description: From date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: "2023-01-01"
+        - name: to
+          in: query
+          required: true
+          description: To date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: "2023-12-31"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/News'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stock/candle:
+    get:
+      tags:
+        - Stock Data
+      summary: Get stock candles
+      description: "Get candlestick data for stocks. Support resolution: 1, 5, 15, 30, 60, D, W, M"
+      operationId: getStockCandle
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Symbol
+          schema:
+            type: string
+            example: "AAPL"
+        - name: resolution
+          in: query
+          required: true
+          description: "Resolution supported values: 1, 5, 15, 30, 60, D, W, M"
+          schema:
+            type: string
+            enum: ["1", "5", "15", "30", "60", "D", "W", "M"]
+            example: "D"
+        - name: from
+          in: query
+          required: true
+          description: From timestamp (Unix seconds)
+          schema:
+            type: integer
+            example: 1609459200
+        - name: to
+          in: query
+          required: true
+          description: To timestamp (Unix seconds)
+          schema:
+            type: integer
+            example: 1640995200
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  c:
+                    type: array
+                    items:
+                      type: number
+                    description: Close prices
+                  h:
+                    type: array
+                    items:
+                      type: number
+                    description: High prices
+                  l:
+                    type: array
+                    items:
+                      type: number
+                    description: Low prices
+                  o:
+                    type: array
+                    items:
+                      type: number
+                    description: Open prices
+                  s:
+                    type: string
+                    description: Status
+                    example: "ok"
+                  t:
+                    type: array
+                    items:
+                      type: integer
+                    description: Timestamps
+                  v:
+                    type: array
+                    items:
+                      type: number
+                    description: Volumes
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stock/recommendation:
+    get:
+      tags:
+        - Stock Data
+      summary: Get recommendation trends
+      description: Get latest analyst recommendation trends for a company
+      operationId: getRecommendationTrends
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Symbol of the company
+          schema:
+            type: string
+            example: "AAPL"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    buy:
+                      type: integer
+                      example: 10
+                    hold:
+                      type: integer
+                      example: 5
+                    period:
+                      type: string
+                      example: "2023-01-01"
+                    sell:
+                      type: integer
+                      example: 2
+                    strongBuy:
+                      type: integer
+                      example: 8
+                    strongSell:
+                      type: integer
+                      example: 0
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stock/peers:
+    get:
+      tags:
+        - Company Information
+      summary: Get peers
+      description: Get company peers. Return a list of peers in the same country and GICS sub-industry
+      operationId: getPeers
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Symbol of the company
+          schema:
+            type: string
+            example: "AAPL"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["MSFT", "GOOGL", "AMZN"]
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stock/metric:
+    get:
+      tags:
+        - Company Information
+      summary: Get key metrics
+      description: Get company key metrics (beta, market cap, etc.)
+      operationId: getKeyMetrics
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Symbol of the company
+          schema:
+            type: string
+            example: "AAPL"
+        - name: metric
+          in: query
+          required: false
+          description: Metric type. Can be 'all' or specific metric
+          schema:
+            type: string
+            default: "all"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metric:
+                    type: object
+                    description: Key metrics data
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stock/financials:
+    get:
+      tags:
+        - Company Information
+      summary: Get financials
+      description: Get company financials. This endpoint provides access to company financial statements including income statement, balance sheet, and cash flow.
+      operationId: getFinancials
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Symbol of the company
+          schema:
+            type: string
+            example: "AAPL"
+        - name: statement
+          in: query
+          required: true
+          description: Statement type
+          schema:
+            type: string
+            enum: ["bs", "ic", "cf"]
+            example: "bs"
+        - name: freq
+          in: query
+          required: true
+          description: Frequency
+          schema:
+            type: string
+            enum: ["annual", "quarterly"]
+            example: "annual"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol:
+                    type: string
+                  cik:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /calendar/earnings:
+    get:
+      tags:
+        - Calendar
+      summary: Get earnings calendar
+      description: Get earnings calendar. Earnings data is updated daily at 9am EST with the latest data available from the previous trading day.
+      operationId: getEarningsCalendar
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: From date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: "2023-01-01"
+        - name: to
+          in: query
+          required: false
+          description: To date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: "2023-12-31"
+        - name: symbol
+          in: query
+          required: false
+          description: Filter by symbol
+          schema:
+            type: string
+            example: "AAPL"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    date:
+                      type: string
+                      format: date
+                    epsActual:
+                      type: number
+                    epsEstimate:
+                      type: number
+                    hour:
+                      type: string
+                    quarter:
+                      type: integer
+                    revenueActual:
+                      type: number
+                    revenueEstimate:
+                      type: number
+                    symbol:
+                      type: string
+                    year:
+                      type: integer
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /calendar/ipo:
+    get:
+      tags:
+        - Calendar
+      summary: Get IPO calendar
+      description: Get IPO calendar. Upcoming and historical IPO dates published in the past 3 months.
+      operationId: getIpoCalendar
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: From date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: "2023-01-01"
+        - name: to
+          in: query
+          required: false
+          description: To date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+            example: "2023-12-31"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ipoCalendar:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                        exchange:
+                          type: string
+                        name:
+                          type: string
+                        numberOfShares:
+                          type: number
+                        price:
+                          type: string
+                        status:
+                          type: string
+                        symbol:
+                          type: string
+                        totalSharesValue:
+                          type: number
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stock/symbol:
+    get:
+      tags:
+        - Market Data
+      summary: Get stock symbols
+      description: List supported stocks. Returns all supported stocks with their symbols, names, and other metadata.
+      operationId: getStockSymbols
+      parameters:
+        - name: exchange
+          in: query
+          required: true
+          description: Exchange you want to get the list of symbols from
+          schema:
+            type: string
+            example: "US"
+        - name: mic
+          in: query
+          required: false
+          description: Mic code
+          schema:
+            type: string
+        - name: securityType
+          in: query
+          required: false
+          description: Security type
+          schema:
+            type: string
+        - name: currency
+          in: query
+          required: false
+          description: Currency
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    currency:
+                      type: string
+                    description:
+                      type: string
+                    displaySymbol:
+                      type: string
+                    figi:
+                      type: string
+                    mic:
+                      type: string
+                    symbol:
+                      type: string
+                    type:
+                      type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stock/sectors:
+    get:
+      tags:
+        - Market Data
+      summary: Get sector performance
+      description: Get sector performance calculated from S&P500 companies
+      operationId: getSectorPerformance
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    changesPercentage:
+                      type: number
+                    sector:
+                      type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /crypto/candle:
+    get:
+      tags:
+        - Cryptocurrency
+      summary: Get crypto candles
+      description: Get candlestick data for crypto symbols
+      operationId: getCryptoCandle
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Crypto symbol
+          schema:
+            type: string
+            example: "BINANCE:BTCUSDT"
+        - name: resolution
+          in: query
+          required: true
+          description: "Resolution supported values: 1, 5, 15, 30, 60, D, W, M"
+          schema:
+            type: string
+            enum: ["1", "5", "15", "30", "60", "D", "W", "M"]
+            example: "D"
+        - name: from
+          in: query
+          required: true
+          description: From timestamp (Unix seconds)
+          schema:
+            type: integer
+            example: 1609459200
+        - name: to
+          in: query
+          required: true
+          description: To timestamp (Unix seconds)
+          schema:
+            type: integer
+            example: 1640995200
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  c:
+                    type: array
+                    items:
+                      type: number
+                  h:
+                    type: array
+                    items:
+                      type: number
+                  l:
+                    type: array
+                    items:
+                      type: number
+                  o:
+                    type: array
+                    items:
+                      type: number
+                  s:
+                    type: string
+                  t:
+                    type: array
+                    items:
+                      type: integer
+                  v:
+                    type: array
+                    items:
+                      type: number
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /forex/rates:
+    get:
+      tags:
+        - Forex
+      summary: Get forex rates
+      description: Get rates for all forex pairs. Ideal for currency conversion, currency strength, FX analysis and more.
+      operationId: getForexRates
+      parameters:
+        - name: base
+          in: query
+          required: true
+          description: Base currency
+          schema:
+            type: string
+            example: "USD"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  base:
+                    type: string
+                  quote:
+                    type: object
+                    additionalProperties:
+                      type: number
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /forex/candle:
+    get:
+      tags:
+        - Forex
+      summary: Get forex candles
+      description: Get candlestick data for forex symbols
+      operationId: getForexCandle
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          description: Forex symbol
+          schema:
+            type: string
+            example: "OANDA:EUR_USD"
+        - name: resolution
+          in: query
+          required: true
+          description: "Resolution supported values: 1, 5, 15, 30, 60, D, W, M"
+          schema:
+            type: string
+            enum: ["1", "5", "15", "30", "60", "D", "W", "M"]
+            example: "D"
+        - name: from
+          in: query
+          required: true
+          description: From timestamp (Unix seconds)
+          schema:
+            type: integer
+            example: 1609459200
+        - name: to
+          in: query
+          required: true
+          description: To timestamp (Unix seconds)
+          schema:
+            type: integer
+            example: 1640995200
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  c:
+                    type: array
+                    items:
+                      type: number
+                  h:
+                    type: array
+                    items:
+                      type: number
+                  l:
+                    type: array
+                    items:
+                      type: number
+                  o:
+                    type: array
+                    items:
+                      type: number
+                  s:
+                    type: string
+                  t:
+                    type: array
+                    items:
+                      type: integer
+                  v:
+                    type: array
+                    items:
+                      type: number
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /economic:
+    get:
+      tags:
+        - Economic Data
+      summary: Get economic data
+      description: Get economic data for major countries
+      operationId: getEconomicData
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Economic code
+          schema:
+            type: string
+            example: "MAUSA"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    date:
+                      type: string
+                      format: date
+                    value:
+                      type: number
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+

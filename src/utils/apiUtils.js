@@ -577,10 +577,6 @@ export const uploadFile = async (file, subscriptionKey) => {
 
 // Helper function to filter time series data by date range
 function filterTimeSeriesData(data, timeFrom, timeTo) {
-  if (!timeFrom && !timeTo) {
-    return data; // No filtering needed
-  }
-  
   // Deep clone the data to avoid mutating the original
   const filteredData = JSON.parse(JSON.stringify(data));
   
@@ -618,13 +614,16 @@ function filterTimeSeriesData(data, timeFrom, timeTo) {
     if (!timeSeries || typeof timeSeries !== 'object') return;
     
     const filteredSeries = {};
+    const entries = [];
+    
+    // Collect and filter entries
     Object.keys(timeSeries).forEach(dateStr => {
       const date = new Date(dateStr);
       
       // Skip if date parsing failed
       if (isNaN(date.getTime())) {
         // Keep the entry if we can't parse the date (might be a different format)
-        filteredSeries[dateStr] = timeSeries[dateStr];
+        entries.push({ dateStr, data: timeSeries[dateStr] });
         return;
       }
       
@@ -634,8 +633,24 @@ function filterTimeSeriesData(data, timeFrom, timeTo) {
       if (toDate && date > toDate) include = false;
       
       if (include) {
-        filteredSeries[dateStr] = timeSeries[dateStr];
+        entries.push({ dateStr, data: timeSeries[dateStr] });
       }
+    });
+    
+    // Sort entries by date (newest first, as Alpha Vantage typically returns them)
+    entries.sort((a, b) => {
+      const dateA = new Date(a.dateStr);
+      const dateB = new Date(b.dateStr);
+      if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) return 0;
+      return dateB - dateA; // Descending order (newest first)
+    });
+    
+    // Limit to 1000 elements maximum
+    const limitedEntries = entries.slice(0, 1000);
+    
+    // Reconstruct the filtered series
+    limitedEntries.forEach(({ dateStr, data }) => {
+      filteredSeries[dateStr] = data;
     });
     
     filteredData[key] = filteredSeries;
@@ -644,8 +659,60 @@ function filterTimeSeriesData(data, timeFrom, timeTo) {
   return filteredData;
 }
 
-// Helper function for DataVantage API calls
-async function callDataVantageAPI(functionName, params, requiredParams = [], filterTimeSeries = false) {
+// Helper function for Finnhub API calls
+async function callFinnhubAPI(endpoint, params, requiredParams = []) {
+  const validationError = validateRequiredParams(params, requiredParams);
+  if (validationError) return validationError;
+  
+  const subscriptionKey = getSubscriptionKey();
+  if (!subscriptionKey) {
+    return {
+      success: false,
+      error: 'Subscription key is required. Please configure your subscription key in settings.',
+    };
+  }
+  
+  try {
+    // Filter out undefined/null values to avoid adding them to query string
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([_, value]) => value !== undefined && value !== null)
+    );
+    
+    const queryParams = new URLSearchParams(cleanParams);
+    
+    const apiUrl = `https://jp-gw2.azure-api.net/finnhub/${endpoint}?${queryParams.toString()}`;
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Ocp-Apim-Subscription-Key': subscriptionKey,
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `API request failed with status ${response.status}: ${errorText}`,
+      };
+    }
+    
+    const data = await response.json();
+    
+    return {
+      success: true,
+      data: data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to fetch data: ${error.message}`,
+    };
+  }
+}
+
+// Helper function for AlphaVantage API calls
+async function callAlphaVantageAPI(functionName, params, requiredParams = [], filterTimeSeries = false) {
   const validationError = validateRequiredParams(params, requiredParams);
   if (validationError) return validationError;
   
@@ -757,8 +824,8 @@ export const toolbox = {
     return coEditService.setDocumentContent(documentContent);
   },
   
-  datavantage_get_daily_stock: async (args) => {
-    return callDataVantageAPI('TIME_SERIES_DAILY', {
+  alphavantage_get_daily_stock: async (args) => {
+    return callAlphaVantageAPI('TIME_SERIES_DAILY', {
       symbol: args.symbol,
       outputsize: args.outputsize || 'compact',
       datatype: args.datatype || 'json',
@@ -767,8 +834,8 @@ export const toolbox = {
     }, ['symbol'], true);
   },
   
-  datavantage_get_weekly_stock: async (args) => {
-    return callDataVantageAPI('TIME_SERIES_WEEKLY', {
+  alphavantage_get_weekly_stock: async (args) => {
+    return callAlphaVantageAPI('TIME_SERIES_WEEKLY', {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -776,8 +843,8 @@ export const toolbox = {
     }, ['symbol'], true);
   },
   
-  datavantage_get_monthly_stock: async (args) => {
-    return callDataVantageAPI('TIME_SERIES_MONTHLY', {
+  alphavantage_get_monthly_stock: async (args) => {
+    return callAlphaVantageAPI('TIME_SERIES_MONTHLY', {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -786,84 +853,154 @@ export const toolbox = {
   },
   
   // Fundamental Data APIs
-  datavantage_get_company_overview: async (args) => {
-    return callDataVantageAPI('OVERVIEW', {
+  alphavantage_get_company_overview: async (args) => {
+    return callAlphaVantageAPI('OVERVIEW', {
       symbol: args.symbol,
     }, ['symbol']);
   },
   
-  datavantage_get_etf_profile: async (args) => {
-    return callDataVantageAPI('ETF_PROFILE', {
+  alphavantage_get_etf_profile: async (args) => {
+    return callAlphaVantageAPI('ETF_PROFILE', {
       symbol: args.symbol,
     }, ['symbol']);
   },
   
-  datavantage_get_dividends: async (args) => {
-    return callDataVantageAPI('DIVIDENDS', {
-      symbol: args.symbol,
-      datatype: args.datatype || 'json',
-    }, ['symbol']);
-  },
-  
-  datavantage_get_splits: async (args) => {
-    return callDataVantageAPI('SPLITS', {
+  alphavantage_get_dividends: async (args) => {
+    return callAlphaVantageAPI('DIVIDENDS', {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
     }, ['symbol']);
   },
   
-  datavantage_get_income_statement: async (args) => {
-    return callDataVantageAPI('INCOME_STATEMENT', {
+  alphavantage_get_splits: async (args) => {
+    return callAlphaVantageAPI('SPLITS', {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
     }, ['symbol']);
   },
   
-  datavantage_get_balance_sheet: async (args) => {
-    return callDataVantageAPI('BALANCE_SHEET', {
+  alphavantage_get_income_statement: async (args) => {
+    return callAlphaVantageAPI('INCOME_STATEMENT', {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
     }, ['symbol']);
   },
   
-  datavantage_get_cash_flow: async (args) => {
-    return callDataVantageAPI('CASH_FLOW', {
+  alphavantage_get_balance_sheet: async (args) => {
+    return callAlphaVantageAPI('BALANCE_SHEET', {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
     }, ['symbol']);
   },
   
-  datavantage_get_earnings: async (args) => {
-    return callDataVantageAPI('EARNINGS', {
+  alphavantage_get_cash_flow: async (args) => {
+    return callAlphaVantageAPI('CASH_FLOW', {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
     }, ['symbol']);
   },
   
-  datavantage_get_earnings_calendar: async (args) => {
-    return callDataVantageAPI('EARNINGS_CALENDAR', {
+  alphavantage_get_earnings: async (args) => {
+    const result = await callAlphaVantageAPI('EARNINGS', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+    
+    if (!result.success || !result.data) {
+      return result;
+    }
+    
+    // Default to annual if report_type not specified
+    const reportType = (args.report_type || 'annual').toLowerCase();
+    
+    // Determine which reports array to use
+    const reportsKey = reportType === 'annual' ? 'annualEarnings' : 'quarterlyEarnings';
+    const reports = result.data[reportsKey];
+    
+    if (!reports || !Array.isArray(reports) || reports.length === 0) {
+      return {
+        success: false,
+        error: `No ${reportType} earnings reports found in the response.`,
+      };
+    }
+    
+    let matchingReport = null;
+    
+    if (args.date) {
+      // If date is provided, find matching report
+      const targetDate = new Date(args.date);
+      
+      if (isNaN(targetDate.getTime())) {
+        return {
+          success: false,
+          error: `Invalid date format: ${args.date}. Please use YYYY-MM-DD format.`,
+        };
+      }
+      
+      const targetYear = targetDate.getFullYear();
+      const targetQuarter = Math.floor(targetDate.getMonth() / 3) + 1;
+      
+      if (reportType === 'annual') {
+        // Match by year
+        matchingReport = reports.find(report => {
+          const reportDate = new Date(report.fiscalDateEnding);
+          return reportDate.getFullYear() === targetYear;
+        });
+      } else {
+        // Match by year and quarter
+        matchingReport = reports.find(report => {
+          const reportDate = new Date(report.fiscalDateEnding);
+          const reportYear = reportDate.getFullYear();
+          const reportQuarter = Math.floor(reportDate.getMonth() / 3) + 1;
+          return reportYear === targetYear && reportQuarter === targetQuarter;
+        });
+      }
+      
+      if (!matchingReport) {
+        return {
+          success: false,
+          error: `No ${reportType} earnings report found for ${args.date}. Available dates: ${reports.slice(0, 5).map(r => r.fiscalDateEnding).join(', ')}...`,
+        };
+      }
+    } else {
+      // If date is not provided, return the latest report (first in array, as AlphaVantage returns newest first)
+      matchingReport = reports[0];
+    }
+    
+    // Return filtered response with only the matching report
+    return {
+      success: true,
+      data: {
+        symbol: result.data.symbol,
+        [reportsKey]: [matchingReport],
+      },
+    };
+  },
+  
+  alphavantage_get_earnings_calendar: async (args) => {
+    return callAlphaVantageAPI('EARNINGS_CALENDAR', {
       symbol: args.symbol,
       horizon: args.horizon,
       datatype: args.datatype || 'json',
     }, []);
   },
   
-  datavantage_get_ipo_calendar: async (args) => {
-    return callDataVantageAPI('IPO_CALENDAR', {
+  alphavantage_get_ipo_calendar: async (args) => {
+    return callAlphaVantageAPI('IPO_CALENDAR', {
       datatype: args.datatype || 'json',
     }, []);
   },
   
   // Forex APIs
-  datavantage_get_currency_exchange_rate: async (args) => {
-    return callDataVantageAPI('CURRENCY_EXCHANGE_RATE', {
+  alphavantage_get_currency_exchange_rate: async (args) => {
+    return callAlphaVantageAPI('CURRENCY_EXCHANGE_RATE', {
       from_currency: args.from_currency,
       to_currency: args.to_currency,
     }, ['from_currency', 'to_currency']);
   },
   
-  datavantage_get_fx_daily: async (args) => {
-    return callDataVantageAPI('FX_DAILY', {
+  alphavantage_get_fx_daily: async (args) => {
+    return callAlphaVantageAPI('FX_DAILY', {
       from_symbol: args.from_symbol,
       to_symbol: args.to_symbol,
       outputsize: args.outputsize || 'compact',
@@ -873,8 +1010,8 @@ export const toolbox = {
     }, ['from_symbol', 'to_symbol'], true);
   },
   
-  datavantage_get_fx_weekly: async (args) => {
-    return callDataVantageAPI('FX_WEEKLY', {
+  alphavantage_get_fx_weekly: async (args) => {
+    return callAlphaVantageAPI('FX_WEEKLY', {
       from_symbol: args.from_symbol,
       to_symbol: args.to_symbol,
       datatype: args.datatype || 'json',
@@ -883,8 +1020,8 @@ export const toolbox = {
     }, ['from_symbol', 'to_symbol'], true);
   },
   
-  datavantage_get_fx_monthly: async (args) => {
-    return callDataVantageAPI('FX_MONTHLY', {
+  alphavantage_get_fx_monthly: async (args) => {
+    return callAlphaVantageAPI('FX_MONTHLY', {
       from_symbol: args.from_symbol,
       to_symbol: args.to_symbol,
       datatype: args.datatype || 'json',
@@ -894,15 +1031,16 @@ export const toolbox = {
   },
   
   // Cryptocurrency APIs
-  datavantage_get_crypto_exchange_rate: async (args) => {
-    return callDataVantageAPI('CRYPTO_CURRENCY_EXCHANGE_RATE', {
+  // Note: Uses CURRENCY_EXCHANGE_RATE which handles both crypto and physical currencies
+  alphavantage_get_crypto_exchange_rate: async (args) => {
+    return callAlphaVantageAPI('CURRENCY_EXCHANGE_RATE', {
       from_currency: args.from_currency,
       to_currency: args.to_currency,
     }, ['from_currency', 'to_currency']);
   },
   
-  datavantage_get_crypto_daily: async (args) => {
-    return callDataVantageAPI('DIGITAL_CURRENCY_DAILY', {
+  alphavantage_get_crypto_daily: async (args) => {
+    return callAlphaVantageAPI('DIGITAL_CURRENCY_DAILY', {
       symbol: args.symbol,
       market: args.market,
       datatype: args.datatype || 'json',
@@ -911,8 +1049,8 @@ export const toolbox = {
     }, ['symbol', 'market'], true);
   },
   
-  datavantage_get_crypto_weekly: async (args) => {
-    return callDataVantageAPI('DIGITAL_CURRENCY_WEEKLY', {
+  alphavantage_get_crypto_weekly: async (args) => {
+    return callAlphaVantageAPI('DIGITAL_CURRENCY_WEEKLY', {
       symbol: args.symbol,
       market: args.market,
       datatype: args.datatype || 'json',
@@ -921,8 +1059,8 @@ export const toolbox = {
     }, ['symbol', 'market'], true);
   },
   
-  datavantage_get_crypto_monthly: async (args) => {
-    return callDataVantageAPI('DIGITAL_CURRENCY_MONTHLY', {
+  alphavantage_get_crypto_monthly: async (args) => {
+    return callAlphaVantageAPI('DIGITAL_CURRENCY_MONTHLY', {
       symbol: args.symbol,
       market: args.market,
       datatype: args.datatype || 'json',
@@ -932,8 +1070,8 @@ export const toolbox = {
   },
   
   // Commodities APIs
-  datavantage_get_wti: async (args) => {
-    return callDataVantageAPI('WTI', {
+  alphavantage_get_wti: async (args) => {
+    return callAlphaVantageAPI('WTI', {
       interval: args.interval || 'daily',
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -941,8 +1079,8 @@ export const toolbox = {
     }, [], true);
   },
   
-  datavantage_get_brent: async (args) => {
-    return callDataVantageAPI('BRENT', {
+  alphavantage_get_brent: async (args) => {
+    return callAlphaVantageAPI('BRENT', {
       interval: args.interval || 'daily',
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -950,8 +1088,8 @@ export const toolbox = {
     }, [], true);
   },
   
-  datavantage_get_natural_gas: async (args) => {
-    return callDataVantageAPI('NATURAL_GAS', {
+  alphavantage_get_natural_gas: async (args) => {
+    return callAlphaVantageAPI('NATURAL_GAS', {
       interval: args.interval || 'daily',
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -959,8 +1097,8 @@ export const toolbox = {
     }, [], true);
   },
   
-  datavantage_get_copper: async (args) => {
-    return callDataVantageAPI('COPPER', {
+  alphavantage_get_copper: async (args) => {
+    return callAlphaVantageAPI('COPPER', {
       interval: args.interval || 'daily',
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -969,8 +1107,8 @@ export const toolbox = {
   },
   
   // Economic Indicators APIs
-  datavantage_get_real_gdp: async (args) => {
-    return callDataVantageAPI('REAL_GDP', {
+  alphavantage_get_real_gdp: async (args) => {
+    return callAlphaVantageAPI('REAL_GDP', {
       interval: args.interval || 'annual',
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -978,8 +1116,8 @@ export const toolbox = {
     }, [], true);
   },
   
-  datavantage_get_treasury_yield: async (args) => {
-    return callDataVantageAPI('TREASURY_YIELD', {
+  alphavantage_get_treasury_yield: async (args) => {
+    return callAlphaVantageAPI('TREASURY_YIELD', {
       interval: args.interval || 'daily',
       maturity: args.maturity,
       datatype: args.datatype || 'json',
@@ -988,8 +1126,8 @@ export const toolbox = {
     }, ['maturity'], true);
   },
   
-  datavantage_get_federal_funds_rate: async (args) => {
-    return callDataVantageAPI('FEDERAL_FUNDS_RATE', {
+  alphavantage_get_federal_funds_rate: async (args) => {
+    return callAlphaVantageAPI('FEDERAL_FUNDS_RATE', {
       interval: args.interval || 'daily',
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -997,8 +1135,8 @@ export const toolbox = {
     }, [], true);
   },
   
-  datavantage_get_cpi: async (args) => {
-    return callDataVantageAPI('CPI', {
+  alphavantage_get_cpi: async (args) => {
+    return callAlphaVantageAPI('CPI', {
       interval: args.interval || 'monthly',
       datatype: args.datatype || 'json',
       time_from: args.time_from,
@@ -1006,20 +1144,442 @@ export const toolbox = {
     }, [], true);
   },
   
-  datavantage_get_inflation: async (args) => {
-    return callDataVantageAPI('INFLATION', {
+  alphavantage_get_inflation: async (args) => {
+    return callAlphaVantageAPI('INFLATION', {
       datatype: args.datatype || 'json',
       time_from: args.time_from,
       time_to: args.time_to,
     }, [], true);
   },
   
-  datavantage_get_unemployment: async (args) => {
-    return callDataVantageAPI('UNEMPLOYMENT', {
+  alphavantage_get_unemployment: async (args) => {
+    return callAlphaVantageAPI('UNEMPLOYMENT', {
       datatype: args.datatype || 'json',
       time_from: args.time_from,
       time_to: args.time_to,
     }, [], true);
+  },
+  
+  // Finnhub Stock Data APIs
+  finnhub_get_quote: async (args) => {
+    return callFinnhubAPI('quote', {
+      symbol: args.symbol,
+    }, ['symbol']);
+  },
+  
+  finnhub_get_recommendation: async (args) => {
+    return callFinnhubAPI('stock/recommendation', {
+      symbol: args.symbol,
+    }, ['symbol']);
+  },
+  
+  // Finnhub Company Information APIs
+  finnhub_get_company_profile: async (args) => {
+    if (!args.symbol && !args.isin && !args.cusip) {
+      return {
+        success: false,
+        error: 'At least one of symbol, isin, or cusip must be provided.',
+      };
+    }
+    return callFinnhubAPI('stock/profile2', {
+      symbol: args.symbol,
+      isin: args.isin,
+      cusip: args.cusip,
+    }, []);
+  },
+  
+  finnhub_get_peers: async (args) => {
+    return callFinnhubAPI('stock/peers', {
+      symbol: args.symbol,
+    }, ['symbol']);
+  },
+  
+  finnhub_get_key_metrics: async (args) => {
+    // Call the API to get the full response
+    const result = await callFinnhubAPI('stock/metric', {
+      symbol: args.symbol,
+      metric: args.metric || 'all',
+    }, ['symbol']);
+    
+    // If there's an error, return it
+    if (!result.success || result.error) {
+      return result;
+    }
+    
+    const data = result.data;
+    
+    // If metric_type is NOT provided, return only .metric (like jq .metric)
+    // series_type and date range are ignored when metric_type is not specified
+    if (!args.metric_type) {
+      return {
+        success: true,
+        data: data.metric,
+      };
+    }
+    
+    // If metric_type IS provided, return series data
+    // Determine series type: use quarterly if date range < 5 years
+    let seriesType = args.series_type || 'annual';
+    if (!args.series_type && args.from && args.to) {
+      const fromDate = new Date(args.from);
+      const toDate = new Date(args.to);
+      const yearsDiff = (toDate - fromDate) / (1000 * 60 * 60 * 24 * 365.25);
+      if (yearsDiff < 5) {
+        seriesType = 'quarterly';
+      }
+    }
+    
+    // Get the series data
+    if (!data.series || !data.series[seriesType] || !data.series[seriesType][args.metric_type]) {
+      return {
+        success: false,
+        error: `Metric type '${args.metric_type}' not found in ${seriesType} series data.`,
+      };
+    }
+    
+    let seriesData = data.series[seriesType][args.metric_type];
+    
+    // Filter by date range if provided
+    if (args.from || args.to) {
+      const fromDate = args.from ? new Date(args.from) : null;
+      const toDate = args.to ? new Date(args.to) : null;
+      
+      seriesData = seriesData.filter(item => {
+        const itemDate = new Date(item.period);
+        if (fromDate && itemDate < fromDate) return false;
+        if (toDate && itemDate > toDate) return false;
+        return true;
+      });
+    }
+    
+    // Return filtered series data
+    return {
+      success: true,
+      data: {
+        symbol: data.symbol,
+        metricType: args.metric_type,
+        seriesType: seriesType,
+        series: seriesData,
+      },
+    };
+  },
+  
+  // Finnhub News & Sentiment APIs
+  finnhub_get_company_news: async (args) => {
+    return callFinnhubAPI('company-news', {
+      symbol: args.symbol,
+      from: args.from,
+      to: args.to,
+    }, ['symbol', 'from', 'to']);
+  },
+  
+  // Finnhub Calendar APIs
+  finnhub_get_earnings_calendar: async (args) => {
+    return callFinnhubAPI('calendar/earnings', {
+      from: args.from,
+      to: args.to,
+      symbol: args.symbol,
+    }, []);
+  },
+  
+  finnhub_get_ipo_calendar: async (args) => {
+    return callFinnhubAPI('calendar/ipo', {
+      from: args.from,
+      to: args.to,
+    }, []);
+  },
+  
+  // Finnhub Market Data APIs
+  finnhub_get_stock_symbols: async (args) => {
+    return callFinnhubAPI('stock/symbol', {
+      exchange: args.exchange,
+      mic: args.mic,
+      securityType: args.securityType,
+      currency: args.currency,
+    }, ['exchange']);
+  },
+  
+  finnhub_get_sector_performance: async (args) => {
+    return callFinnhubAPI('stock/sectors', {}, []);
+  },
+  
+  // ===== CONSOLIDATED FUNCTIONS =====
+  // These consolidate multiple similar functions to reduce token usage
+  
+  // Consolidated Stock Time Series (replaces daily/weekly/monthly)
+  alphavantage_get_stock_time_series: async (args) => {
+    const interval = args.interval || 'daily';
+    const functionMap = {
+      'daily': 'TIME_SERIES_DAILY',
+      'weekly': 'TIME_SERIES_WEEKLY',
+      'monthly': 'TIME_SERIES_MONTHLY',
+    };
+    const functionName = functionMap[interval];
+    if (!functionName) {
+      return {
+        success: false,
+        error: `Invalid interval: ${interval}. Must be 'daily', 'weekly', or 'monthly'.`,
+      };
+    }
+    return callAlphaVantageAPI(functionName, {
+      symbol: args.symbol,
+      outputsize: args.outputsize,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol'], true);
+  },
+  
+  // Consolidated Forex Time Series (replaces fx_daily/fx_weekly/fx_monthly)
+  alphavantage_get_fx_time_series: async (args) => {
+    const interval = args.interval || 'daily';
+    const functionMap = {
+      'daily': 'FX_DAILY',
+      'weekly': 'FX_WEEKLY',
+      'monthly': 'FX_MONTHLY',
+    };
+    const functionName = functionMap[interval];
+    if (!functionName) {
+      return {
+        success: false,
+        error: `Invalid interval: ${interval}. Must be 'daily', 'weekly', or 'monthly'.`,
+      };
+    }
+    return callAlphaVantageAPI(functionName, {
+      from_symbol: args.from_symbol,
+      to_symbol: args.to_symbol,
+      outputsize: args.outputsize,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['from_symbol', 'to_symbol'], true);
+  },
+  
+  // Consolidated Crypto Time Series (replaces crypto_daily/crypto_weekly/crypto_monthly)
+  alphavantage_get_crypto_time_series: async (args) => {
+    const interval = args.interval || 'daily';
+    const functionMap = {
+      'daily': 'DIGITAL_CURRENCY_DAILY',
+      'weekly': 'DIGITAL_CURRENCY_WEEKLY',
+      'monthly': 'DIGITAL_CURRENCY_MONTHLY',
+    };
+    const functionName = functionMap[interval];
+    if (!functionName) {
+      return {
+        success: false,
+        error: `Invalid interval: ${interval}. Must be 'daily', 'weekly', or 'monthly'.`,
+      };
+    }
+    return callAlphaVantageAPI(functionName, {
+      symbol: args.symbol,
+      market: args.market,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol', 'market'], true);
+  },
+  
+  // Consolidated Financial Statements (replaces income_statement/balance_sheet/cash_flow)
+  alphavantage_get_financial_statement: async (args) => {
+    const statementType = args.statement_type || 'income';
+    const functionMap = {
+      'income': 'INCOME_STATEMENT',
+      'balance': 'BALANCE_SHEET',
+      'cashflow': 'CASH_FLOW',
+    };
+    const functionName = functionMap[statementType];
+    if (!functionName) {
+      return {
+        success: false,
+        error: `Invalid statement_type: ${statementType}. Must be 'income', 'balance', or 'cashflow'.`,
+      };
+    }
+    
+    const result = await callAlphaVantageAPI(functionName, {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+    
+    if (!result.success || !result.data) {
+      return result;
+    }
+    
+    // Default to annual if report_type not specified
+    const reportType = (args.report_type || 'annual').toLowerCase();
+    
+    // Determine which reports array to use
+    const reportsKey = reportType === 'annual' ? 'annualReports' : 'quarterlyReports';
+    const reports = result.data[reportsKey];
+    
+    if (!reports || !Array.isArray(reports) || reports.length === 0) {
+      return {
+        success: false,
+        error: `No ${reportType} reports found in the response.`,
+      };
+    }
+    
+    let matchingReport = null;
+    
+    if (args.date) {
+      // If date is provided, find matching report
+      const targetDate = new Date(args.date);
+      
+      if (isNaN(targetDate.getTime())) {
+        return {
+          success: false,
+          error: `Invalid date format: ${args.date}. Please use YYYY-MM-DD format.`,
+        };
+      }
+      
+      const targetYear = targetDate.getFullYear();
+      const targetQuarter = Math.floor(targetDate.getMonth() / 3) + 1;
+      
+      if (reportType === 'annual') {
+        // Match by year
+        matchingReport = reports.find(report => {
+          const reportDate = new Date(report.fiscalDateEnding);
+          return reportDate.getFullYear() === targetYear;
+        });
+      } else {
+        // Match by year and quarter
+        matchingReport = reports.find(report => {
+          const reportDate = new Date(report.fiscalDateEnding);
+          const reportYear = reportDate.getFullYear();
+          const reportQuarter = Math.floor(reportDate.getMonth() / 3) + 1;
+          return reportYear === targetYear && reportQuarter === targetQuarter;
+        });
+      }
+      
+      if (!matchingReport) {
+        return {
+          success: false,
+          error: `No ${reportType} report found for ${args.date}. Available dates: ${reports.slice(0, 5).map(r => r.fiscalDateEnding).join(', ')}...`,
+        };
+      }
+    } else {
+      // If date is not provided, return the latest report (first in array, as AlphaVantage returns newest first)
+      matchingReport = reports[0];
+    }
+    
+    // Return filtered response with only the matching report
+    return {
+      success: true,
+      data: {
+        symbol: result.data.symbol,
+        [reportsKey]: [matchingReport],
+      },
+    };
+  },
+  
+  // Consolidated Commodities (replaces wti/brent/natural_gas/copper)
+  alphavantage_get_commodity: async (args) => {
+    const commodity = args.commodity || 'wti';
+    const functionMap = {
+      'wti': 'WTI',
+      'brent': 'BRENT',
+      'natural_gas': 'NATURAL_GAS',
+      'copper': 'COPPER',
+    };
+    const functionName = functionMap[commodity];
+    if (!functionName) {
+      return {
+        success: false,
+        error: `Invalid commodity: ${commodity}. Must be 'wti', 'brent', 'natural_gas', or 'copper'.`,
+      };
+    }
+    return callAlphaVantageAPI(functionName, {
+      interval: args.interval || 'daily',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  // Consolidated Economic Indicators (replaces real_gdp/treasury_yield/federal_funds_rate/cpi/inflation/unemployment)
+  alphavantage_get_economic_indicator: async (args) => {
+    const indicator = args.indicator || 'real_gdp';
+    const functionMap = {
+      'real_gdp': 'REAL_GDP',
+      'treasury_yield': 'TREASURY_YIELD',
+      'federal_funds_rate': 'FEDERAL_FUNDS_RATE',
+      'cpi': 'CPI',
+      'inflation': 'INFLATION',
+      'unemployment': 'UNEMPLOYMENT',
+    };
+    const functionName = functionMap[indicator];
+    if (!functionName) {
+      return {
+        success: false,
+        error: `Invalid indicator: ${indicator}. Must be 'real_gdp', 'treasury_yield', 'federal_funds_rate', 'cpi', 'inflation', or 'unemployment'.`,
+      };
+    }
+    
+    const params = {
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    };
+    
+    // Add interval for indicators that support it
+    if (['real_gdp', 'treasury_yield', 'federal_funds_rate', 'cpi'].includes(indicator)) {
+      params.interval = args.interval || (indicator === 'real_gdp' ? 'annual' : indicator === 'cpi' ? 'monthly' : 'daily');
+    }
+    
+    // Add maturity for treasury_yield
+    if (indicator === 'treasury_yield') {
+      params.maturity = args.maturity;
+    }
+    
+    const requiredParams = indicator === 'treasury_yield' ? ['maturity'] : [];
+    
+    return callAlphaVantageAPI(functionName, params, requiredParams, true);
+  },
+  
+  // Consolidated Calendar APIs (replaces earnings_calendar/ipo_calendar for both AlphaVantage and Finnhub)
+  get_calendar: async (args) => {
+    const calendarType = args.calendar_type || 'earnings';
+    const source = args.source || 'alphavantage';
+    
+    if (source === 'alphavantage') {
+      const functionMap = {
+        'earnings': 'EARNINGS_CALENDAR',
+        'ipo': 'IPO_CALENDAR',
+      };
+      const functionName = functionMap[calendarType];
+      if (!functionName) {
+        return {
+          success: false,
+          error: `Invalid calendar_type: ${calendarType}. Must be 'earnings' or 'ipo'.`,
+        };
+      }
+      return callAlphaVantageAPI(functionName, {
+        symbol: args.symbol,
+        horizon: args.horizon,
+        datatype: args.datatype || 'json',
+      }, []);
+    } else if (source === 'finnhub') {
+      const endpointMap = {
+        'earnings': 'calendar/earnings',
+        'ipo': 'calendar/ipo',
+      };
+      const endpoint = endpointMap[calendarType];
+      if (!endpoint) {
+        return {
+          success: false,
+          error: `Invalid calendar_type: ${calendarType}. Must be 'earnings' or 'ipo'.`,
+        };
+      }
+      return callFinnhubAPI(endpoint, {
+        from: args.from,
+        to: args.to,
+        symbol: args.symbol,
+      }, []);
+    } else {
+      return {
+        success: false,
+        error: `Invalid source: ${source}. Must be 'alphavantage' or 'finnhub'.`,
+      };
+    }
   },
 };
 
