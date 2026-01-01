@@ -51,6 +51,7 @@ const VOICE_MAP = {
   Adrien: "Ethan",
   Belinda: "Cherry",
   Charlie: "Nofish",
+  Diana: "Cherry",
   userMale: "Ryan",
   userFemale: "Katerina",
 };
@@ -633,8 +634,8 @@ const replaceMentions = (text) => {
   if (!text) return text;
 
   // Regular expression to match valid @mentions (case insensitive)
-  // This matches @adrien, @belinda, @charlie with word boundaries
-  return text.replace(/@(adrien|belinda|charlie)\b/gi, "[@$1](##)");
+  // This matches @adrien, @belinda, @charlie, @diana with word boundaries
+  return text.replace(/@(adrien|belinda|charlie|diana)\b/gi, "[@$1](##)");
 };
 
 // Unified function for rendering text content - supports mixed content
@@ -919,6 +920,8 @@ function ConversationHistory({
           ? "/avatar-belinda.jpg"
           : content.name === "Charlie"
           ? "/avatar-charlie.jpg"
+          : content.name === "Diana"
+          ? "/avatar-diana.jpg"
           : "/avator-adrien.jpg";
 
         const speakerVoice = isUserMessage

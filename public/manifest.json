@@ -35,7 +35,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["favicon-16x16.png", "favicon-32x32.png", "avatar-belinda.jpg", "avatar-user-female.jpg", "avatar-user-male.jpg", "avator-adrien.jpg", "avatar-charlie.jpg"],
+      "resources": ["favicon-16x16.png", "favicon-32x32.png", "avatar-belinda.jpg", "avatar-user-female.jpg", "avatar-user-male.jpg", "avator-adrien.jpg", "avatar-charlie.jpg", "avatar-diana.jpg"],
       "matches": ["<all_urls>"]
     }
   ]

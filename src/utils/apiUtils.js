@@ -580,13 +580,14 @@ function filterTimeSeriesData(data, timeFrom, timeTo) {
   // Deep clone the data to avoid mutating the original
   const filteredData = JSON.parse(JSON.stringify(data));
   
-  // Find time series keys (they vary by function: "Time Series (Daily)", "Weekly Time Series", etc.)
+  // Find time series keys (they vary by function: "Time Series (Daily)", "Weekly Time Series", "data", etc.)
   const timeSeriesKeys = Object.keys(data).filter(key => 
     key.toLowerCase().includes('time series') || 
     key.toLowerCase().includes('weekly') ||
     key.toLowerCase().includes('monthly') ||
     key.toLowerCase().includes('fx') ||
-    key.toLowerCase().includes('digital currency')
+    key.toLowerCase().includes('digital currency') ||
+    key.toLowerCase() === 'data' // Economic indicators often use "data" key
   );
   
   if (timeSeriesKeys.length === 0) {
@@ -613,12 +614,42 @@ function filterTimeSeriesData(data, timeFrom, timeTo) {
     const timeSeries = filteredData[key];
     if (!timeSeries || typeof timeSeries !== 'object') return;
     
+    // Handle both object format (date keys) and array format (for some economic indicators)
+    if (Array.isArray(timeSeries)) {
+      // If it's an array, filter array elements
+      const filteredArray = timeSeries.filter(item => {
+        if (!item || typeof item !== 'object') return true; // Keep non-object items
+        
+        // Look for date fields (common: 'date', 'time', 'timestamp')
+        const dateStr = item.date || item.time || item.timestamp;
+        if (!dateStr) return true; // Keep items without date fields
+        
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return true; // Keep items with unparseable dates
+        
+        // Check if date is within range
+        if (fromDate && date < fromDate) return false;
+        if (toDate && date > toDate) return false;
+        return true;
+      }).slice(0, 1000); // Limit to 1000 elements
+      
+      filteredData[key] = filteredArray;
+      return;
+    }
+    
+    // Handle object format (date keys)
     const filteredSeries = {};
     const entries = [];
     
     // Collect and filter entries
     Object.keys(timeSeries).forEach(dateStr => {
-      const date = new Date(dateStr);
+      // Try multiple date parsing strategies
+      let date = new Date(dateStr);
+      
+      // If standard parsing fails, try YYYY-MM-DD format explicitly
+      if (isNaN(date.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+        date = new Date(dateStr + 'T00:00:00');
+      }
       
       // Skip if date parsing failed
       if (isNaN(date.getTime())) {
@@ -639,8 +670,17 @@ function filterTimeSeriesData(data, timeFrom, timeTo) {
     
     // Sort entries by date (newest first, as Alpha Vantage typically returns them)
     entries.sort((a, b) => {
-      const dateA = new Date(a.dateStr);
-      const dateB = new Date(b.dateStr);
+      let dateA = new Date(a.dateStr);
+      let dateB = new Date(b.dateStr);
+      
+      // Try YYYY-MM-DD format if standard parsing fails
+      if (isNaN(dateA.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(a.dateStr)) {
+        dateA = new Date(a.dateStr + 'T00:00:00');
+      }
+      if (isNaN(dateB.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(b.dateStr)) {
+        dateB = new Date(b.dateStr + 'T00:00:00');
+      }
+      
       if (isNaN(dateA.getTime()) || isNaN(dateB.getTime())) return 0;
       return dateB - dateA; // Descending order (newest first)
     });
@@ -659,6 +699,154 @@ function filterTimeSeriesData(data, timeFrom, timeTo) {
   return filteredData;
 }
 
+// Request queue managers for rate limiting (1 request/second per API)
+class RequestQueue {
+  constructor(name) {
+    this.name = name;
+    this.queue = [];
+    this.processing = false;
+    this.lastRequestTime = 0;
+    this.minInterval = 1000; // 1 second in milliseconds
+  }
+
+  async enqueue(requestFn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({
+        requestFn,
+        resolve,
+        reject,
+      });
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    if (this.processing || this.queue.length === 0) {
+      return;
+    }
+
+    this.processing = true;
+
+    while (this.queue.length > 0) {
+      const now = Date.now();
+      const timeSinceLastRequest = now - this.lastRequestTime;
+
+      // Wait if needed to maintain 1 request/second rate
+      if (timeSinceLastRequest < this.minInterval) {
+        const waitTime = this.minInterval - timeSinceLastRequest;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+
+      const { requestFn, resolve, reject } = this.queue.shift();
+      this.lastRequestTime = Date.now();
+
+      const timeStr = new Date().toLocaleString();
+      console.log(
+        `[apiUtils] [${this.name} queue] Request at ${timeStr}`
+      );
+
+      try {
+        const result = await requestFn();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    }
+
+    this.processing = false;
+  }
+}
+
+// Create separate queue instances for each API
+const alphavantageQueue = new RequestQueue('alphavantage');
+const finnhubQueue = new RequestQueue('finnhub');
+
+// Commodity symbols that are NOT valid for currency endpoints
+// These should use commodity endpoints instead
+const COMMODITY_SYMBOLS = new Set([
+  'XAU', // Gold
+  'XAG', // Silver
+  'XPT', // Platinum
+  'XPD', // Palladium
+]);
+
+// Cryptocurrency symbols that are NOT valid for FX endpoints (but ARE valid for exchange_rate)
+const CRYPTO_SYMBOLS = new Set([
+  'BTC', // Bitcoin
+  'ETH', // Ethereum
+]);
+
+/**
+ * Validate currency symbols based on endpoint type
+ * @param {string} symbol - The currency symbol to validate
+ * @param {string} endpointType - 'fx' for FX endpoints (only real currencies), 'exchange_rate' for exchange rate endpoint (real currencies + crypto, but NOT commodities)
+ * @returns {object|null} Error object if invalid, null if valid
+ */
+function validateCurrencySymbol(symbol, endpointType = 'fx') {
+  if (!symbol) return null;
+  
+  const upperSymbol = symbol.toUpperCase();
+  
+  // Commodities are invalid for both FX and exchange_rate endpoints
+  if (COMMODITY_SYMBOLS.has(upperSymbol)) {
+    const commodityName = upperSymbol === 'XAU' ? 'Gold' : 
+                          upperSymbol === 'XAG' ? 'Silver' : 
+                          upperSymbol === 'XPT' ? 'Platinum' : 
+                          upperSymbol === 'XPD' ? 'Palladium' : upperSymbol;
+    
+    return {
+      success: false,
+      error: `Invalid currency symbol '${symbol}'. ${endpointType === 'fx' ? 'FX endpoints' : 'Exchange rate endpoint'} only accept real currencies (e.g., USD, EUR, GBP, JPY)${endpointType === 'exchange_rate' ? ' or cryptocurrencies (e.g., BTC, ETH)' : ''}. For ${commodityName}, use the commodity endpoints instead.`,
+    };
+  }
+  
+  // Cryptocurrencies are invalid for FX endpoints (but valid for exchange_rate)
+  if (endpointType === 'fx' && CRYPTO_SYMBOLS.has(upperSymbol)) {
+    return {
+      success: false,
+      error: `Invalid currency symbol '${symbol}'. FX endpoints only accept real currencies (e.g., USD, EUR, GBP, JPY). For ${upperSymbol}, use the cryptocurrency time series endpoints instead.`,
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Legacy alias for backward compatibility
+ * @deprecated Use validateCurrencySymbol instead
+ */
+function validateFxCurrency(symbol) {
+  return validateCurrencySymbol(symbol, 'fx');
+}
+
+// API response cache - key: cache key string, value: cached response
+const apiCache = new Map();
+
+/**
+ * Generate a cache key from API endpoint/function and parameters
+ * @param {string} apiType - 'alphavantage' or 'finnhub'
+ * @param {string} endpoint - API endpoint or function name
+ * @param {object} params - API parameters
+ * @returns {string} Cache key
+ */
+function generateCacheKey(apiType, endpoint, params) {
+  // Sort parameters to ensure consistent cache keys regardless of parameter order
+  const sortedParams = Object.keys(params)
+    .sort()
+    .reduce((acc, key) => {
+      const value = params[key];
+      // Only include defined values in cache key
+      if (value !== undefined && value !== null) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+  
+  // Create a deterministic string representation
+  const paramsString = JSON.stringify(sortedParams);
+  return `${apiType}:${endpoint}:${paramsString}`;
+}
+
 // Helper function for Finnhub API calls
 async function callFinnhubAPI(endpoint, params, requiredParams = []) {
   const validationError = validateRequiredParams(params, requiredParams);
@@ -672,43 +860,63 @@ async function callFinnhubAPI(endpoint, params, requiredParams = []) {
     };
   }
   
-  try {
-    // Filter out undefined/null values to avoid adding them to query string
-    const cleanParams = Object.fromEntries(
-      Object.entries(params).filter(([_, value]) => value !== undefined && value !== null)
-    );
-    
-    const queryParams = new URLSearchParams(cleanParams);
-    
-    const apiUrl = `https://jp-gw2.azure-api.net/finnhub/${endpoint}?${queryParams.toString()}`;
-    
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Ocp-Apim-Subscription-Key': subscriptionKey,
-      },
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `API request failed with status ${response.status}: ${errorText}`,
-      };
-    }
-    
-    const data = await response.json();
-    
-    return {
-      success: true,
-      data: data,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to fetch data: ${error.message}`,
-    };
+  // Generate cache key
+  const cacheKey = generateCacheKey('finnhub', endpoint, params);
+  
+  // Check cache first
+  if (apiCache.has(cacheKey)) {
+    return apiCache.get(cacheKey);
   }
+  
+  // Enqueue the request to maintain rate limiting
+  return finnhubQueue.enqueue(async () => {
+    try {
+      // Filter out undefined/null values to avoid adding them to query string
+      const cleanParams = Object.fromEntries(
+        Object.entries(params).filter(([_, value]) => value !== undefined && value !== null)
+      );
+      
+      const queryParams = new URLSearchParams(cleanParams);
+      
+      const apiUrl = `https://jp-gw2.azure-api.net/finnhub/${endpoint}?${queryParams.toString()}`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Ocp-Apim-Subscription-Key': subscriptionKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        const errorResult = {
+          success: false,
+          error: `API request failed with status ${response.status}: ${errorText}`,
+        };
+        // Don't cache errors
+        return errorResult;
+      }
+      
+      const data = await response.json();
+      
+      const result = {
+        success: true,
+        data: data,
+      };
+      
+      // Cache successful responses
+      apiCache.set(cacheKey, result);
+      
+      return result;
+    } catch (error) {
+      const errorResult = {
+        success: false,
+        error: `Failed to fetch data: ${error.message}`,
+      };
+      // Don't cache errors
+      return errorResult;
+    }
+  });
 }
 
 // Helper function for AlphaVantage API calls
@@ -724,54 +932,90 @@ async function callAlphaVantageAPI(functionName, params, requiredParams = [], fi
     };
   }
   
-  try {
-    // Extract time range parameters for filtering (don't send to API)
-    const { time_from, time_to, ...apiParams } = params;
-    
-    // Filter out undefined/null values to avoid adding them to query string
-    const cleanParams = Object.fromEntries(
-      Object.entries(apiParams).filter(([_, value]) => value !== undefined && value !== null)
-    );
-    
-    const queryParams = new URLSearchParams({
-      function: functionName,
-      ...cleanParams,
-    });
-    
-    const apiUrl = `https://jp-gw2.azure-api.net/alphavantage/query?${queryParams.toString()}`;
-    
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Ocp-Apim-Subscription-Key': subscriptionKey,
-      },
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      return {
-        success: false,
-        error: `API request failed with status ${response.status}: ${errorText}`,
-      };
-    }
-    
-    let data = await response.json();
-    
-    // Filter time series data if time range is specified
-    if (filterTimeSeries && (time_from || time_to)) {
-      data = filterTimeSeriesData(data, time_from, time_to);
-    }
-    
-    return {
-      success: true,
-      data: data,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: `Failed to fetch data: ${error.message}`,
-    };
+  // Generate cache key - include all params including time_from/time_to for filtering
+  // This ensures different time ranges are cached separately
+  const cacheKey = generateCacheKey('alphavantage', functionName, params);
+  
+  // Check cache first
+  if (apiCache.has(cacheKey)) {
+    return apiCache.get(cacheKey);
   }
+  
+  // Enqueue the request to maintain rate limiting
+  return alphavantageQueue.enqueue(async () => {
+    try {
+      // Extract time range parameters for filtering (don't send to API)
+      const { time_from, time_to, ...apiParams } = params;
+      
+      // Filter out undefined/null values to avoid adding them to query string
+      const cleanParams = Object.fromEntries(
+        Object.entries(apiParams).filter(([_, value]) => value !== undefined && value !== null)
+      );
+      
+      const queryParams = new URLSearchParams({
+        function: functionName,
+        ...cleanParams,
+      });
+      
+      const apiUrl = `https://jp-gw2.azure-api.net/alphavantage/query?${queryParams.toString()}`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Ocp-Apim-Subscription-Key': subscriptionKey,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        const errorResult = {
+          success: false,
+          error: `API request failed with status ${response.status}: ${errorText}`,
+        };
+        // Don't cache errors
+        return errorResult;
+      }
+      
+      let data = await response.json();
+      
+      // Check for rate limit error message in response
+      // AlphaVantage returns rate limit errors as successful HTTP responses with an "Information" field
+      if (data && data.Information && typeof data.Information === 'string') {
+        const infoMessage = data.Information.toLowerCase();
+        if (infoMessage.includes('rate limit') || 
+            infoMessage.includes('25 requests per day') || 
+            infoMessage.includes('spreading out your free api requests') ||
+            infoMessage.includes('premium plans')) {
+          return {
+            success: false,
+            error: data.Information,
+          };
+        }
+      }
+      
+      // Filter time series data if time range is specified
+      if (filterTimeSeries && (time_from || time_to)) {
+        data = filterTimeSeriesData(data, time_from, time_to);
+      }
+      
+      const result = {
+        success: true,
+        data: data,
+      };
+      
+      // Cache successful responses
+      apiCache.set(cacheKey, result);
+      
+      return result;
+    } catch (error) {
+      const errorResult = {
+        success: false,
+        error: `Failed to fetch data: ${error.message}`,
+      };
+      // Don't cache errors
+      return errorResult;
+    }
+  });
 }
 
 // Toolbox implementation for API function calls
@@ -827,7 +1071,7 @@ export const toolbox = {
   alphavantage_get_daily_stock: async (args) => {
     return callAlphaVantageAPI('TIME_SERIES_DAILY', {
       symbol: args.symbol,
-      outputsize: args.outputsize || 'compact',
+      outputsize: 'compact', // Always use compact (full requires premium)
       datatype: args.datatype || 'json',
       time_from: args.time_from,
       time_to: args.time_to,
@@ -900,81 +1144,12 @@ export const toolbox = {
     }, ['symbol']);
   },
   
+  // Legacy alias - redirects to consolidated financial_data
   alphavantage_get_earnings: async (args) => {
-    const result = await callAlphaVantageAPI('EARNINGS', {
-      symbol: args.symbol,
-      datatype: args.datatype || 'json',
-    }, ['symbol']);
-    
-    if (!result.success || !result.data) {
-      return result;
-    }
-    
-    // Default to annual if report_type not specified
-    const reportType = (args.report_type || 'annual').toLowerCase();
-    
-    // Determine which reports array to use
-    const reportsKey = reportType === 'annual' ? 'annualEarnings' : 'quarterlyEarnings';
-    const reports = result.data[reportsKey];
-    
-    if (!reports || !Array.isArray(reports) || reports.length === 0) {
-      return {
-        success: false,
-        error: `No ${reportType} earnings reports found in the response.`,
-      };
-    }
-    
-    let matchingReport = null;
-    
-    if (args.date) {
-      // If date is provided, find matching report
-      const targetDate = new Date(args.date);
-      
-      if (isNaN(targetDate.getTime())) {
-        return {
-          success: false,
-          error: `Invalid date format: ${args.date}. Please use YYYY-MM-DD format.`,
-        };
-      }
-      
-      const targetYear = targetDate.getFullYear();
-      const targetQuarter = Math.floor(targetDate.getMonth() / 3) + 1;
-      
-      if (reportType === 'annual') {
-        // Match by year
-        matchingReport = reports.find(report => {
-          const reportDate = new Date(report.fiscalDateEnding);
-          return reportDate.getFullYear() === targetYear;
-        });
-      } else {
-        // Match by year and quarter
-        matchingReport = reports.find(report => {
-          const reportDate = new Date(report.fiscalDateEnding);
-          const reportYear = reportDate.getFullYear();
-          const reportQuarter = Math.floor(reportDate.getMonth() / 3) + 1;
-          return reportYear === targetYear && reportQuarter === targetQuarter;
-        });
-      }
-      
-      if (!matchingReport) {
-        return {
-          success: false,
-          error: `No ${reportType} earnings report found for ${args.date}. Available dates: ${reports.slice(0, 5).map(r => r.fiscalDateEnding).join(', ')}...`,
-        };
-      }
-    } else {
-      // If date is not provided, return the latest report (first in array, as AlphaVantage returns newest first)
-      matchingReport = reports[0];
-    }
-    
-    // Return filtered response with only the matching report
-    return {
-      success: true,
-      data: {
-        symbol: result.data.symbol,
-        [reportsKey]: [matchingReport],
-      },
-    };
+    return toolbox.alphavantage_get_financial_data({
+      ...args,
+      data_type: 'earnings',
+    });
   },
   
   alphavantage_get_earnings_calendar: async (args) => {
@@ -993,6 +1168,13 @@ export const toolbox = {
   
   // Forex APIs
   alphavantage_get_currency_exchange_rate: async (args) => {
+    // Validate that symbols are not commodities (XAU, XAG, etc.)
+    const fromValidation = validateCurrencySymbol(args.from_currency, 'exchange_rate');
+    if (fromValidation) return fromValidation;
+    
+    const toValidation = validateCurrencySymbol(args.to_currency, 'exchange_rate');
+    if (toValidation) return toValidation;
+    
     return callAlphaVantageAPI('CURRENCY_EXCHANGE_RATE', {
       from_currency: args.from_currency,
       to_currency: args.to_currency,
@@ -1000,10 +1182,17 @@ export const toolbox = {
   },
   
   alphavantage_get_fx_daily: async (args) => {
+    // Validate that FX symbols are real currencies, not commodities
+    const fromValidation = validateFxCurrency(args.from_symbol);
+    if (fromValidation) return fromValidation;
+    
+    const toValidation = validateFxCurrency(args.to_symbol);
+    if (toValidation) return toValidation;
+    
     return callAlphaVantageAPI('FX_DAILY', {
       from_symbol: args.from_symbol,
       to_symbol: args.to_symbol,
-      outputsize: args.outputsize || 'compact',
+      outputsize: 'compact', // Always use compact (full requires premium)
       datatype: args.datatype || 'json',
       time_from: args.time_from,
       time_to: args.time_to,
@@ -1011,6 +1200,13 @@ export const toolbox = {
   },
   
   alphavantage_get_fx_weekly: async (args) => {
+    // Validate that FX symbols are real currencies, not commodities
+    const fromValidation = validateFxCurrency(args.from_symbol);
+    if (fromValidation) return fromValidation;
+    
+    const toValidation = validateFxCurrency(args.to_symbol);
+    if (toValidation) return toValidation;
+    
     return callAlphaVantageAPI('FX_WEEKLY', {
       from_symbol: args.from_symbol,
       to_symbol: args.to_symbol,
@@ -1021,6 +1217,13 @@ export const toolbox = {
   },
   
   alphavantage_get_fx_monthly: async (args) => {
+    // Validate that FX symbols are real currencies, not commodities
+    const fromValidation = validateFxCurrency(args.from_symbol);
+    if (fromValidation) return fromValidation;
+    
+    const toValidation = validateFxCurrency(args.to_symbol);
+    if (toValidation) return toValidation;
+    
     return callAlphaVantageAPI('FX_MONTHLY', {
       from_symbol: args.from_symbol,
       to_symbol: args.to_symbol,
@@ -1033,6 +1236,13 @@ export const toolbox = {
   // Cryptocurrency APIs
   // Note: Uses CURRENCY_EXCHANGE_RATE which handles both crypto and physical currencies
   alphavantage_get_crypto_exchange_rate: async (args) => {
+    // Validate that symbols are not commodities (XAU, XAG, etc.)
+    const fromValidation = validateCurrencySymbol(args.from_currency, 'exchange_rate');
+    if (fromValidation) return fromValidation;
+    
+    const toValidation = validateCurrencySymbol(args.to_currency, 'exchange_rate');
+    if (toValidation) return toValidation;
+    
     return callAlphaVantageAPI('CURRENCY_EXCHANGE_RATE', {
       from_currency: args.from_currency,
       to_currency: args.to_currency,
@@ -1306,169 +1516,347 @@ export const toolbox = {
   // ===== CONSOLIDATED FUNCTIONS =====
   // These consolidate multiple similar functions to reduce token usage
   
-  // Consolidated Stock Time Series (replaces daily/weekly/monthly)
-  alphavantage_get_stock_time_series: async (args) => {
-    const interval = args.interval || 'daily';
+  // Consolidated AlphaVantage Fundamental Data (replaces company_overview/etf_profile/dividends/splits)
+  alphavantage_get_fundamental_data: async (args) => {
+    const dataType = args.data_type || 'company_overview';
     const functionMap = {
-      'daily': 'TIME_SERIES_DAILY',
-      'weekly': 'TIME_SERIES_WEEKLY',
-      'monthly': 'TIME_SERIES_MONTHLY',
+      'company_overview': 'OVERVIEW',
+      'etf_profile': 'ETF_PROFILE',
+      'dividends': 'DIVIDENDS',
+      'splits': 'SPLITS',
     };
-    const functionName = functionMap[interval];
+    const functionName = functionMap[dataType];
     if (!functionName) {
       return {
         success: false,
-        error: `Invalid interval: ${interval}. Must be 'daily', 'weekly', or 'monthly'.`,
+        error: `Invalid data_type: ${dataType}. Must be 'company_overview', 'etf_profile', 'dividends', or 'splits'.`,
       };
     }
     return callAlphaVantageAPI(functionName, {
-      symbol: args.symbol,
-      outputsize: args.outputsize,
-      datatype: args.datatype || 'json',
-      time_from: args.time_from,
-      time_to: args.time_to,
-    }, ['symbol'], true);
-  },
-  
-  // Consolidated Forex Time Series (replaces fx_daily/fx_weekly/fx_monthly)
-  alphavantage_get_fx_time_series: async (args) => {
-    const interval = args.interval || 'daily';
-    const functionMap = {
-      'daily': 'FX_DAILY',
-      'weekly': 'FX_WEEKLY',
-      'monthly': 'FX_MONTHLY',
-    };
-    const functionName = functionMap[interval];
-    if (!functionName) {
-      return {
-        success: false,
-        error: `Invalid interval: ${interval}. Must be 'daily', 'weekly', or 'monthly'.`,
-      };
-    }
-    return callAlphaVantageAPI(functionName, {
-      from_symbol: args.from_symbol,
-      to_symbol: args.to_symbol,
-      outputsize: args.outputsize,
-      datatype: args.datatype || 'json',
-      time_from: args.time_from,
-      time_to: args.time_to,
-    }, ['from_symbol', 'to_symbol'], true);
-  },
-  
-  // Consolidated Crypto Time Series (replaces crypto_daily/crypto_weekly/crypto_monthly)
-  alphavantage_get_crypto_time_series: async (args) => {
-    const interval = args.interval || 'daily';
-    const functionMap = {
-      'daily': 'DIGITAL_CURRENCY_DAILY',
-      'weekly': 'DIGITAL_CURRENCY_WEEKLY',
-      'monthly': 'DIGITAL_CURRENCY_MONTHLY',
-    };
-    const functionName = functionMap[interval];
-    if (!functionName) {
-      return {
-        success: false,
-        error: `Invalid interval: ${interval}. Must be 'daily', 'weekly', or 'monthly'.`,
-      };
-    }
-    return callAlphaVantageAPI(functionName, {
-      symbol: args.symbol,
-      market: args.market,
-      datatype: args.datatype || 'json',
-      time_from: args.time_from,
-      time_to: args.time_to,
-    }, ['symbol', 'market'], true);
-  },
-  
-  // Consolidated Financial Statements (replaces income_statement/balance_sheet/cash_flow)
-  alphavantage_get_financial_statement: async (args) => {
-    const statementType = args.statement_type || 'income';
-    const functionMap = {
-      'income': 'INCOME_STATEMENT',
-      'balance': 'BALANCE_SHEET',
-      'cashflow': 'CASH_FLOW',
-    };
-    const functionName = functionMap[statementType];
-    if (!functionName) {
-      return {
-        success: false,
-        error: `Invalid statement_type: ${statementType}. Must be 'income', 'balance', or 'cashflow'.`,
-      };
-    }
-    
-    const result = await callAlphaVantageAPI(functionName, {
       symbol: args.symbol,
       datatype: args.datatype || 'json',
     }, ['symbol']);
+  },
+  
+  // Consolidated Exchange Rate (replaces currency_exchange_rate and crypto_exchange_rate - same endpoint)
+  alphavantage_get_exchange_rate: async (args) => {
+    // Validate that symbols are not commodities (XAU, XAG, etc.)
+    const fromValidation = validateCurrencySymbol(args.from_currency, 'exchange_rate');
+    if (fromValidation) return fromValidation;
     
-    if (!result.success || !result.data) {
-      return result;
-    }
+    const toValidation = validateCurrencySymbol(args.to_currency, 'exchange_rate');
+    if (toValidation) return toValidation;
     
-    // Default to annual if report_type not specified
-    const reportType = (args.report_type || 'annual').toLowerCase();
-    
-    // Determine which reports array to use
-    const reportsKey = reportType === 'annual' ? 'annualReports' : 'quarterlyReports';
-    const reports = result.data[reportsKey];
-    
-    if (!reports || !Array.isArray(reports) || reports.length === 0) {
+    return callAlphaVantageAPI('CURRENCY_EXCHANGE_RATE', {
+      from_currency: args.from_currency,
+      to_currency: args.to_currency,
+    }, ['from_currency', 'to_currency']);
+  },
+  
+  // Consolidated Finnhub Stock Data (replaces quote and recommendation)
+  finnhub_get_stock_data: async (args) => {
+    const dataType = args.data_type || 'quote';
+    if (dataType === 'quote') {
+      return callFinnhubAPI('quote', {
+        symbol: args.symbol,
+      }, ['symbol']);
+    } else if (dataType === 'recommendation') {
+      return callFinnhubAPI('stock/recommendation', {
+        symbol: args.symbol,
+      }, ['symbol']);
+    } else {
       return {
         success: false,
-        error: `No ${reportType} reports found in the response.`,
+        error: `Invalid data_type: ${dataType}. Must be 'quote' or 'recommendation'.`,
+      };
+    }
+  },
+  
+  // Consolidated Finnhub Company Info (replaces company_profile and peers)
+  finnhub_get_company_info: async (args) => {
+    const infoType = args.info_type || 'profile';
+    if (infoType === 'profile') {
+      if (!args.symbol && !args.isin && !args.cusip) {
+        return {
+          success: false,
+          error: 'At least one of symbol, isin, or cusip must be provided.',
+        };
+      }
+      return callFinnhubAPI('stock/profile2', {
+        symbol: args.symbol,
+        isin: args.isin,
+        cusip: args.cusip,
+      }, []);
+    } else if (infoType === 'peers') {
+      return callFinnhubAPI('stock/peers', {
+        symbol: args.symbol,
+      }, ['symbol']);
+    } else {
+      return {
+        success: false,
+        error: `Invalid info_type: ${infoType}. Must be 'profile' or 'peers'.`,
+      };
+    }
+  },
+  
+  // Consolidated Finnhub Market Data (replaces stock_symbols and sector_performance)
+  finnhub_get_market_data: async (args) => {
+    const dataType = args.data_type || 'symbols';
+    if (dataType === 'symbols') {
+      return callFinnhubAPI('stock/symbol', {
+        exchange: args.exchange,
+        mic: args.mic,
+        securityType: args.securityType,
+        currency: args.currency,
+      }, ['exchange']);
+    } else if (dataType === 'sector_performance') {
+      return callFinnhubAPI('stock/sectors', {}, []);
+    } else {
+      return {
+        success: false,
+        error: `Invalid data_type: ${dataType}. Must be 'symbols' or 'sector_performance'.`,
+      };
+    }
+  },
+  
+  // Consolidated Time Series (replaces stock/fx/crypto time series)
+  alphavantage_get_time_series: async (args) => {
+    const seriesType = args.series_type || 'stock';
+    const interval = args.interval || 'daily';
+    
+    let functionName, params, requiredParams;
+    
+    if (seriesType === 'stock') {
+      const functionMap = {
+        'daily': 'TIME_SERIES_DAILY',
+        'weekly': 'TIME_SERIES_WEEKLY',
+        'monthly': 'TIME_SERIES_MONTHLY',
+      };
+      functionName = functionMap[interval];
+      params = {
+        symbol: args.symbol,
+        outputsize: 'compact', // Always use compact (full requires premium)
+        datatype: args.datatype || 'json',
+        time_from: args.time_from,
+        time_to: args.time_to,
+      };
+      requiredParams = ['symbol'];
+    } else if (seriesType === 'fx') {
+      // Validate that FX symbols are real currencies, not commodities
+      const fromValidation = validateFxCurrency(args.from_symbol);
+      if (fromValidation) return fromValidation;
+      
+      const toValidation = validateFxCurrency(args.to_symbol);
+      if (toValidation) return toValidation;
+      
+      const functionMap = {
+        'daily': 'FX_DAILY',
+        'weekly': 'FX_WEEKLY',
+        'monthly': 'FX_MONTHLY',
+      };
+      functionName = functionMap[interval];
+      params = {
+        from_symbol: args.from_symbol,
+        to_symbol: args.to_symbol,
+        outputsize: 'compact', // Always use compact (full requires premium)
+        datatype: args.datatype || 'json',
+        time_from: args.time_from,
+        time_to: args.time_to,
+      };
+      requiredParams = ['from_symbol', 'to_symbol'];
+    } else if (seriesType === 'crypto') {
+      const functionMap = {
+        'daily': 'DIGITAL_CURRENCY_DAILY',
+        'weekly': 'DIGITAL_CURRENCY_WEEKLY',
+        'monthly': 'DIGITAL_CURRENCY_MONTHLY',
+      };
+      functionName = functionMap[interval];
+      params = {
+        symbol: args.symbol,
+        market: args.market,
+        datatype: args.datatype || 'json',
+        time_from: args.time_from,
+        time_to: args.time_to,
+      };
+      requiredParams = ['symbol', 'market'];
+    } else {
+      return {
+        success: false,
+        error: `Invalid series_type: ${seriesType}. Must be 'stock', 'fx', or 'crypto'.`,
       };
     }
     
-    let matchingReport = null;
-    
-    if (args.date) {
-      // If date is provided, find matching report
-      const targetDate = new Date(args.date);
-      
-      if (isNaN(targetDate.getTime())) {
-        return {
-          success: false,
-          error: `Invalid date format: ${args.date}. Please use YYYY-MM-DD format.`,
-        };
-      }
-      
-      const targetYear = targetDate.getFullYear();
-      const targetQuarter = Math.floor(targetDate.getMonth() / 3) + 1;
-      
-      if (reportType === 'annual') {
-        // Match by year
-        matchingReport = reports.find(report => {
-          const reportDate = new Date(report.fiscalDateEnding);
-          return reportDate.getFullYear() === targetYear;
-        });
-      } else {
-        // Match by year and quarter
-        matchingReport = reports.find(report => {
-          const reportDate = new Date(report.fiscalDateEnding);
-          const reportYear = reportDate.getFullYear();
-          const reportQuarter = Math.floor(reportDate.getMonth() / 3) + 1;
-          return reportYear === targetYear && reportQuarter === targetQuarter;
-        });
-      }
-      
-      if (!matchingReport) {
-        return {
-          success: false,
-          error: `No ${reportType} report found for ${args.date}. Available dates: ${reports.slice(0, 5).map(r => r.fiscalDateEnding).join(', ')}...`,
-        };
-      }
-    } else {
-      // If date is not provided, return the latest report (first in array, as AlphaVantage returns newest first)
-      matchingReport = reports[0];
+    if (!functionName) {
+      return {
+        success: false,
+        error: `Invalid interval: ${interval}. Must be 'daily', 'weekly', or 'monthly'.`,
+      };
     }
     
-    // Return filtered response with only the matching report
-    return {
-      success: true,
-      data: {
-        symbol: result.data.symbol,
-        [reportsKey]: [matchingReport],
-      },
-    };
+    return callAlphaVantageAPI(functionName, params, requiredParams, true);
+  },
+  
+  // Consolidated Financial Data (replaces financial_statement and earnings)
+  alphavantage_get_financial_data: async (args) => {
+    const dataType = args.data_type || 'financial_statement';
+    
+    if (dataType === 'earnings') {
+      // Handle earnings
+      const result = await callAlphaVantageAPI('EARNINGS', {
+        symbol: args.symbol,
+        datatype: args.datatype || 'json',
+      }, ['symbol']);
+      
+      if (!result.success || !result.data) {
+        return result;
+      }
+      
+      const reportType = (args.report_type || 'annual').toLowerCase();
+      const reportsKey = reportType === 'annual' ? 'annualEarnings' : 'quarterlyEarnings';
+      const reports = result.data[reportsKey];
+      
+      if (!reports || !Array.isArray(reports) || reports.length === 0) {
+        return {
+          success: false,
+          error: `No ${reportType} earnings reports found in the response.`,
+        };
+      }
+      
+      let matchingReport = null;
+      
+      if (args.date) {
+        const targetDate = new Date(args.date);
+        if (isNaN(targetDate.getTime())) {
+          return {
+            success: false,
+            error: `Invalid date format: ${args.date}. Please use YYYY-MM-DD format.`,
+          };
+        }
+        
+        const targetYear = targetDate.getFullYear();
+        const targetQuarter = Math.floor(targetDate.getMonth() / 3) + 1;
+        
+        if (reportType === 'annual') {
+          matchingReport = reports.find(report => {
+            const reportDate = new Date(report.fiscalDateEnding);
+            return reportDate.getFullYear() === targetYear;
+          });
+        } else {
+          matchingReport = reports.find(report => {
+            const reportDate = new Date(report.fiscalDateEnding);
+            const reportYear = reportDate.getFullYear();
+            const reportQuarter = Math.floor(reportDate.getMonth() / 3) + 1;
+            return reportYear === targetYear && reportQuarter === targetQuarter;
+          });
+        }
+        
+        if (!matchingReport) {
+          return {
+            success: false,
+            error: `No ${reportType} earnings report found for ${args.date}. Available dates: ${reports.slice(0, 5).map(r => r.fiscalDateEnding).join(', ')}...`,
+          };
+        }
+      } else {
+        matchingReport = reports[0];
+      }
+      
+      return {
+        success: true,
+        data: {
+          symbol: result.data.symbol,
+          [reportsKey]: [matchingReport],
+        },
+      };
+    } else {
+      // Handle financial statements (income/balance/cashflow)
+      const statementType = args.statement_type || 'income';
+      const functionMap = {
+        'income': 'INCOME_STATEMENT',
+        'balance': 'BALANCE_SHEET',
+        'cashflow': 'CASH_FLOW',
+      };
+      const functionName = functionMap[statementType];
+      if (!functionName) {
+        return {
+          success: false,
+          error: `Invalid statement_type: ${statementType}. Must be 'income', 'balance', or 'cashflow'.`,
+        };
+      }
+      
+      const result = await callAlphaVantageAPI(functionName, {
+        symbol: args.symbol,
+        datatype: args.datatype || 'json',
+      }, ['symbol']);
+      
+      if (!result.success || !result.data) {
+        return result;
+      }
+      
+      const reportType = (args.report_type || 'annual').toLowerCase();
+      const reportsKey = reportType === 'annual' ? 'annualReports' : 'quarterlyReports';
+      const reports = result.data[reportsKey];
+      
+      if (!reports || !Array.isArray(reports) || reports.length === 0) {
+        return {
+          success: false,
+          error: `No ${reportType} reports found in the response.`,
+        };
+      }
+      
+      let matchingReport = null;
+      
+      if (args.date) {
+        const targetDate = new Date(args.date);
+        if (isNaN(targetDate.getTime())) {
+          return {
+            success: false,
+            error: `Invalid date format: ${args.date}. Please use YYYY-MM-DD format.`,
+          };
+        }
+        
+        const targetYear = targetDate.getFullYear();
+        const targetQuarter = Math.floor(targetDate.getMonth() / 3) + 1;
+        
+        if (reportType === 'annual') {
+          matchingReport = reports.find(report => {
+            const reportDate = new Date(report.fiscalDateEnding);
+            return reportDate.getFullYear() === targetYear;
+          });
+        } else {
+          matchingReport = reports.find(report => {
+            const reportDate = new Date(report.fiscalDateEnding);
+            const reportYear = reportDate.getFullYear();
+            const reportQuarter = Math.floor(reportDate.getMonth() / 3) + 1;
+            return reportYear === targetYear && reportQuarter === targetQuarter;
+          });
+        }
+        
+        if (!matchingReport) {
+          return {
+            success: false,
+            error: `No ${reportType} report found for ${args.date}. Available dates: ${reports.slice(0, 5).map(r => r.fiscalDateEnding).join(', ')}...`,
+          };
+        }
+      } else {
+        matchingReport = reports[0];
+      }
+      
+      return {
+        success: true,
+        data: {
+          symbol: result.data.symbol,
+          [reportsKey]: [matchingReport],
+        },
+      };
+    }
+  },
+  
+  // Legacy alias - redirects to consolidated financial_data
+  alphavantage_get_financial_statement: async (args) => {
+    return toolbox.alphavantage_get_financial_data({
+      ...args,
+      data_type: 'financial_statement',
+    });
   },
   
   // Consolidated Commodities (replaces wti/brent/natural_gas/copper)
@@ -1511,6 +1899,14 @@ export const toolbox = {
       return {
         success: false,
         error: `Invalid indicator: ${indicator}. Must be 'real_gdp', 'treasury_yield', 'federal_funds_rate', 'cpi', 'inflation', or 'unemployment'.`,
+      };
+    }
+    
+    // Require time range for economic indicators to avoid returning massive datasets
+    if (!args.time_from && !args.time_to) {
+      return {
+        success: false,
+        error: 'Time range is required. Please specify either time_from or time_to (or both) to filter the economic indicator data.',
       };
     }
     

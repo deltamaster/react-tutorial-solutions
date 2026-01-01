@@ -521,9 +521,25 @@ function AppContent() {
               functionResults.push({ name, result });
             } catch (error) {
               console.error(`Error executing function ${name}:`, error);
+              // Return error response to LLM
+              functionResults.push({
+                name,
+                result: {
+                  success: false,
+                  error: `Error executing function ${name}: ${error.message || error}`,
+                },
+              });
             }
           } else {
             console.error(`Function ${name} not found in toolbox`);
+            // Return standard error response to LLM when function is not found
+            functionResults.push({
+              name,
+              result: {
+                success: false,
+                error: `Function '${name}' not found in toolbox. This function may be unavailable or require a premium subscription.`,
+              },
+            });
           }
         }
 
