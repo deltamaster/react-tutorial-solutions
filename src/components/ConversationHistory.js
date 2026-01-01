@@ -612,6 +612,22 @@ const TextPart = ({
   );
 };
 
+// Function to escape currency dollar signs before math processing
+// This prevents currency symbols like $884.10 from being interpreted as LaTeX math
+const escapeCurrencyDollars = (text) => {
+  if (!text) return text;
+  
+  // Escape dollar signs that are followed by digits (currency pattern)
+  // Pattern: $ followed by one or more digits, optionally with decimal point and more digits
+  // We use a negative lookbehind to avoid escaping already-escaped dollar signs
+  // The pattern matches: $ followed by digits (with optional decimal/comma separators)
+  // This will match $884.10, $879.00, $100, etc., but not $x$ (math expressions)
+  return text.replace(
+    /(?<!\\)\$(?=\d[\d.,]*)/g,
+    "\\$"
+  );
+};
+
 // Function to replace @mentions with [@mention]() format
 const replaceMentions = (text) => {
   if (!text) return text;
@@ -630,6 +646,9 @@ const renderTextContent = (text) => {
     /^\s*\$\$\$\s+[^\$]+\s+BEGIN\s+\$\$\$\s*\n/,
     ""
   );
+
+  // Escape currency dollar signs to prevent them from being interpreted as LaTeX math
+  filteredText = escapeCurrencyDollars(filteredText);
 
   // Process mixed content: Split text by code blocks and render separately
   // Use regular expressions to match all code blocks (including mermaid and regular code blocks)

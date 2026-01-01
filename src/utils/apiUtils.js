@@ -575,6 +575,138 @@ export const uploadFile = async (file, subscriptionKey) => {
 
 // The function declarations have been moved to roleConfig.js
 
+// Helper function to filter time series data by date range
+function filterTimeSeriesData(data, timeFrom, timeTo) {
+  if (!timeFrom && !timeTo) {
+    return data; // No filtering needed
+  }
+  
+  // Deep clone the data to avoid mutating the original
+  const filteredData = JSON.parse(JSON.stringify(data));
+  
+  // Find time series keys (they vary by function: "Time Series (Daily)", "Weekly Time Series", etc.)
+  const timeSeriesKeys = Object.keys(data).filter(key => 
+    key.toLowerCase().includes('time series') || 
+    key.toLowerCase().includes('weekly') ||
+    key.toLowerCase().includes('monthly') ||
+    key.toLowerCase().includes('fx') ||
+    key.toLowerCase().includes('digital currency')
+  );
+  
+  if (timeSeriesKeys.length === 0) {
+    return data; // No time series data found, return as-is
+  }
+  
+  // Parse date strings to Date objects for comparison
+  // Use start of day for fromDate and end of day for toDate to include full days
+  const fromDate = timeFrom ? new Date(timeFrom + 'T00:00:00') : null;
+  const toDate = timeTo ? new Date(timeTo + 'T23:59:59') : null;
+  
+  // Validate dates
+  if (fromDate && isNaN(fromDate.getTime())) {
+    console.warn(`Invalid time_from date: ${timeFrom}, skipping filter`);
+    return data;
+  }
+  if (toDate && isNaN(toDate.getTime())) {
+    console.warn(`Invalid time_to date: ${timeTo}, skipping filter`);
+    return data;
+  }
+  
+  // Filter each time series
+  timeSeriesKeys.forEach(key => {
+    const timeSeries = filteredData[key];
+    if (!timeSeries || typeof timeSeries !== 'object') return;
+    
+    const filteredSeries = {};
+    Object.keys(timeSeries).forEach(dateStr => {
+      const date = new Date(dateStr);
+      
+      // Skip if date parsing failed
+      if (isNaN(date.getTime())) {
+        // Keep the entry if we can't parse the date (might be a different format)
+        filteredSeries[dateStr] = timeSeries[dateStr];
+        return;
+      }
+      
+      // Check if date is within range
+      let include = true;
+      if (fromDate && date < fromDate) include = false;
+      if (toDate && date > toDate) include = false;
+      
+      if (include) {
+        filteredSeries[dateStr] = timeSeries[dateStr];
+      }
+    });
+    
+    filteredData[key] = filteredSeries;
+  });
+  
+  return filteredData;
+}
+
+// Helper function for DataVantage API calls
+async function callDataVantageAPI(functionName, params, requiredParams = [], filterTimeSeries = false) {
+  const validationError = validateRequiredParams(params, requiredParams);
+  if (validationError) return validationError;
+  
+  const subscriptionKey = getSubscriptionKey();
+  if (!subscriptionKey) {
+    return {
+      success: false,
+      error: 'Subscription key is required. Please configure your subscription key in settings.',
+    };
+  }
+  
+  try {
+    // Extract time range parameters for filtering (don't send to API)
+    const { time_from, time_to, ...apiParams } = params;
+    
+    // Filter out undefined/null values to avoid adding them to query string
+    const cleanParams = Object.fromEntries(
+      Object.entries(apiParams).filter(([_, value]) => value !== undefined && value !== null)
+    );
+    
+    const queryParams = new URLSearchParams({
+      function: functionName,
+      ...cleanParams,
+    });
+    
+    const apiUrl = `https://jp-gw2.azure-api.net/alphavantage/query?${queryParams.toString()}`;
+    
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Ocp-Apim-Subscription-Key': subscriptionKey,
+      },
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `API request failed with status ${response.status}: ${errorText}`,
+      };
+    }
+    
+    let data = await response.json();
+    
+    // Filter time series data if time range is specified
+    if (filterTimeSeries && (time_from || time_to)) {
+      data = filterTimeSeriesData(data, time_from, time_to);
+    }
+    
+    return {
+      success: true,
+      data: data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to fetch data: ${error.message}`,
+    };
+  }
+}
+
 // Toolbox implementation for API function calls
 export const toolbox = {
   get_memory: (args) => {
@@ -623,6 +755,271 @@ export const toolbox = {
     const documentContent = args.documentContent;
     console.log("Setting document content");
     return coEditService.setDocumentContent(documentContent);
+  },
+  
+  datavantage_get_daily_stock: async (args) => {
+    return callDataVantageAPI('TIME_SERIES_DAILY', {
+      symbol: args.symbol,
+      outputsize: args.outputsize || 'compact',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol'], true);
+  },
+  
+  datavantage_get_weekly_stock: async (args) => {
+    return callDataVantageAPI('TIME_SERIES_WEEKLY', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol'], true);
+  },
+  
+  datavantage_get_monthly_stock: async (args) => {
+    return callDataVantageAPI('TIME_SERIES_MONTHLY', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol'], true);
+  },
+  
+  // Fundamental Data APIs
+  datavantage_get_company_overview: async (args) => {
+    return callDataVantageAPI('OVERVIEW', {
+      symbol: args.symbol,
+    }, ['symbol']);
+  },
+  
+  datavantage_get_etf_profile: async (args) => {
+    return callDataVantageAPI('ETF_PROFILE', {
+      symbol: args.symbol,
+    }, ['symbol']);
+  },
+  
+  datavantage_get_dividends: async (args) => {
+    return callDataVantageAPI('DIVIDENDS', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+  },
+  
+  datavantage_get_splits: async (args) => {
+    return callDataVantageAPI('SPLITS', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+  },
+  
+  datavantage_get_income_statement: async (args) => {
+    return callDataVantageAPI('INCOME_STATEMENT', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+  },
+  
+  datavantage_get_balance_sheet: async (args) => {
+    return callDataVantageAPI('BALANCE_SHEET', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+  },
+  
+  datavantage_get_cash_flow: async (args) => {
+    return callDataVantageAPI('CASH_FLOW', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+  },
+  
+  datavantage_get_earnings: async (args) => {
+    return callDataVantageAPI('EARNINGS', {
+      symbol: args.symbol,
+      datatype: args.datatype || 'json',
+    }, ['symbol']);
+  },
+  
+  datavantage_get_earnings_calendar: async (args) => {
+    return callDataVantageAPI('EARNINGS_CALENDAR', {
+      symbol: args.symbol,
+      horizon: args.horizon,
+      datatype: args.datatype || 'json',
+    }, []);
+  },
+  
+  datavantage_get_ipo_calendar: async (args) => {
+    return callDataVantageAPI('IPO_CALENDAR', {
+      datatype: args.datatype || 'json',
+    }, []);
+  },
+  
+  // Forex APIs
+  datavantage_get_currency_exchange_rate: async (args) => {
+    return callDataVantageAPI('CURRENCY_EXCHANGE_RATE', {
+      from_currency: args.from_currency,
+      to_currency: args.to_currency,
+    }, ['from_currency', 'to_currency']);
+  },
+  
+  datavantage_get_fx_daily: async (args) => {
+    return callDataVantageAPI('FX_DAILY', {
+      from_symbol: args.from_symbol,
+      to_symbol: args.to_symbol,
+      outputsize: args.outputsize || 'compact',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['from_symbol', 'to_symbol'], true);
+  },
+  
+  datavantage_get_fx_weekly: async (args) => {
+    return callDataVantageAPI('FX_WEEKLY', {
+      from_symbol: args.from_symbol,
+      to_symbol: args.to_symbol,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['from_symbol', 'to_symbol'], true);
+  },
+  
+  datavantage_get_fx_monthly: async (args) => {
+    return callDataVantageAPI('FX_MONTHLY', {
+      from_symbol: args.from_symbol,
+      to_symbol: args.to_symbol,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['from_symbol', 'to_symbol'], true);
+  },
+  
+  // Cryptocurrency APIs
+  datavantage_get_crypto_exchange_rate: async (args) => {
+    return callDataVantageAPI('CRYPTO_CURRENCY_EXCHANGE_RATE', {
+      from_currency: args.from_currency,
+      to_currency: args.to_currency,
+    }, ['from_currency', 'to_currency']);
+  },
+  
+  datavantage_get_crypto_daily: async (args) => {
+    return callDataVantageAPI('DIGITAL_CURRENCY_DAILY', {
+      symbol: args.symbol,
+      market: args.market,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol', 'market'], true);
+  },
+  
+  datavantage_get_crypto_weekly: async (args) => {
+    return callDataVantageAPI('DIGITAL_CURRENCY_WEEKLY', {
+      symbol: args.symbol,
+      market: args.market,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol', 'market'], true);
+  },
+  
+  datavantage_get_crypto_monthly: async (args) => {
+    return callDataVantageAPI('DIGITAL_CURRENCY_MONTHLY', {
+      symbol: args.symbol,
+      market: args.market,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['symbol', 'market'], true);
+  },
+  
+  // Commodities APIs
+  datavantage_get_wti: async (args) => {
+    return callDataVantageAPI('WTI', {
+      interval: args.interval || 'daily',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  datavantage_get_brent: async (args) => {
+    return callDataVantageAPI('BRENT', {
+      interval: args.interval || 'daily',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  datavantage_get_natural_gas: async (args) => {
+    return callDataVantageAPI('NATURAL_GAS', {
+      interval: args.interval || 'daily',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  datavantage_get_copper: async (args) => {
+    return callDataVantageAPI('COPPER', {
+      interval: args.interval || 'daily',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  // Economic Indicators APIs
+  datavantage_get_real_gdp: async (args) => {
+    return callDataVantageAPI('REAL_GDP', {
+      interval: args.interval || 'annual',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  datavantage_get_treasury_yield: async (args) => {
+    return callDataVantageAPI('TREASURY_YIELD', {
+      interval: args.interval || 'daily',
+      maturity: args.maturity,
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, ['maturity'], true);
+  },
+  
+  datavantage_get_federal_funds_rate: async (args) => {
+    return callDataVantageAPI('FEDERAL_FUNDS_RATE', {
+      interval: args.interval || 'daily',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  datavantage_get_cpi: async (args) => {
+    return callDataVantageAPI('CPI', {
+      interval: args.interval || 'monthly',
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  datavantage_get_inflation: async (args) => {
+    return callDataVantageAPI('INFLATION', {
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
+  },
+  
+  datavantage_get_unemployment: async (args) => {
+    return callDataVantageAPI('UNEMPLOYMENT', {
+      datatype: args.datatype || 'json',
+      time_from: args.time_from,
+      time_to: args.time_to,
+    }, [], true);
   },
 };
 

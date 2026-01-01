@@ -899,6 +899,35 @@ textarea:focus {
   overflow-y: hidden;
 }
 
+/* Markdown Table Styles */
+.markdown-content table,
+.markdown-preview table {
+  border-collapse: collapse;
+  margin: 16px 0;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.markdown-content table th,
+.markdown-content table td,
+.markdown-preview table th,
+.markdown-preview table td {
+  padding: 12px 16px;
+  border: 1px solid #e1e4e8;
+  text-align: left;
+}
+
+.markdown-content table th,
+.markdown-preview table th {
+  background-color: #f6f8fa;
+  font-weight: 600;
+}
+
+.markdown-content table tr:nth-child(even),
+.markdown-preview table tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
 /* Markdown Editor and Preview Styles */
 .markdown-editor textarea {
   font-family: 'Courier New', Courier, monospace;
