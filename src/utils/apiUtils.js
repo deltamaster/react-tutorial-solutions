@@ -706,7 +706,7 @@ class RequestQueue {
     this.queue = [];
     this.processing = false;
     this.lastRequestTime = 0;
-    this.minInterval = 1000; // 1 second in milliseconds
+    this.minInterval = 2000; // 2 second in milliseconds
   }
 
   async enqueue(requestFn) {
