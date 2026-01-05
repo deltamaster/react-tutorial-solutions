@@ -35,15 +35,76 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
         // Use requestAnimationFrame to batch DOM updates
         requestAnimationFrame(() => {
           if (textareaRef.current) {
+            // Check cursor position BEFORE making any DOM changes
+            const cursorPosition = textareaRef.current.selectionStart;
+            const textLength = textareaRef.current.value.length;
+            const isCursorAtEnd = cursorPosition === textLength;
+            
+            // Save window scroll position BEFORE any DOM manipulation
+            // This prevents browser from scrolling when we manipulate the textarea
+            const savedWindowScrollY = window.scrollY || window.pageYOffset;
+            
+            // Calculate max height as 80% of viewport height
+            const maxHeight = window.innerHeight * 0.8;
+            
+            // Preserve the textarea's scroll position to prevent jumping to top
+            const scrollTop = textareaRef.current.scrollTop;
+            
             textareaRef.current.style.height = "";
             // Get the accurate scrollHeight without forcing a full layout recalculation
             const scrollHeight = textareaRef.current.scrollHeight;
-            const newHeight = scrollHeight + "px";
-            textareaRef.current.style.height = newHeight;
-            window.scrollTo({ 
-              top: document.body.scrollHeight, 
-              behavior: 'instant' 
-            });
+            
+            // Set max-height and overflow-y
+            textareaRef.current.style.maxHeight = maxHeight + "px";
+            textareaRef.current.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
+            
+            // Set height: use scrollHeight if less than maxHeight, otherwise use maxHeight to keep it at 80% of screen
+            const newHeight = scrollHeight <= maxHeight ? scrollHeight : maxHeight;
+            textareaRef.current.style.height = newHeight + "px";
+            
+            // Restore the textarea's scroll position to prevent jumping to top
+            textareaRef.current.scrollTop = scrollTop;
+            
+            // CRITICAL: If cursor is NOT at the end, NEVER scroll the window
+            // Restore window scroll position to prevent any unwanted scrolling
+            if (!isCursorAtEnd) {
+              // Immediately restore scroll position to prevent browser's default behavior
+              window.scrollTo({ 
+                top: savedWindowScrollY, 
+                behavior: 'instant' 
+              });
+              // Also restore in next frame to catch any delayed browser scroll behavior
+              requestAnimationFrame(() => {
+                window.scrollTo({ 
+                  top: savedWindowScrollY, 
+                  behavior: 'instant' 
+                });
+              });
+            } else {
+              // Smart scrolling: only scroll if necessary to keep the textarea in view
+              // Only scroll if:
+              // 1. Cursor is at the end (user is typing at the end)
+              // 2. Textarea would go out of view
+              const textareaRect = textareaRef.current.getBoundingClientRect();
+              const viewportHeight = window.innerHeight;
+              const textareaBottom = textareaRect.bottom;
+              
+              // Check if textarea bottom is below viewport (would be hidden)
+              // Add some padding to account for virtual keyboard on mobile
+              const padding = 100; // Extra padding for mobile keyboard
+              if (textareaBottom > viewportHeight - padding) {
+                // Calculate how much we need to scroll to keep textarea visible
+                const scrollAmount = textareaBottom - (viewportHeight - padding);
+                
+                // Only scroll if we need to
+                if (scrollAmount > 0) {
+                  window.scrollTo({ 
+                    top: savedWindowScrollY + scrollAmount, 
+                    behavior: 'instant' 
+                  });
+                }
+              }
+            }
           }
         });
       }
@@ -72,6 +133,22 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
   useEffect(() => {
     adjustHeight();
   }, []);
+
+  // Handle window resize to update max-height
+  useEffect(() => {
+    const handleResize = () => {
+      if (textareaRef.current) {
+        const maxHeight = window.innerHeight * 0.8;
+        textareaRef.current.style.maxHeight = maxHeight + "px";
+        adjustHeight();
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [adjustHeight]);
 
   const processImageFile = (file) => {
     if (!file) return false;
@@ -391,8 +468,9 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
               style={{
                 resize: "none",
                 minHeight: "60px",
-                overflow: "hidden",
+                overflowY: "hidden",
                 height: "auto",
+                maxHeight: `${window.innerHeight * 0.8}px`,
               }}
               // onInput={adjustHeight}
               // onKeyDown={adjustHeight}
