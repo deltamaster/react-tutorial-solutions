@@ -197,10 +197,13 @@ function AppContent() {
   };
 
   const appendMessageToConversation = (message) => {
-    const latestConversation = conversationRef.current || [];
-    const updatedConversation = [...latestConversation, message];
-    setConversation(updatedConversation);
-    conversationRef.current = updatedConversation;
+    setConversation((prevConversation) => {
+      const latestConversation = prevConversation || [];
+      const updatedConversation = [...latestConversation, message];
+      // Update ref to keep it in sync with state
+      conversationRef.current = updatedConversation;
+      return updatedConversation;
+    });
   };
 
   const extractMentionedRolesFromParts = (parts) => {
@@ -426,10 +429,12 @@ function AppContent() {
             markFileExpired(fileId);
             
             // Update conversation to remove expired files
-            const currentConversation = conversationRef.current || [];
-            const cleanedConversation = removeExpiredFilesFromContents(currentConversation);
-            setConversation(cleanedConversation);
-            conversationRef.current = cleanedConversation;
+            setConversation((prevConversation) => {
+              const currentConversation = prevConversation || [];
+              const cleanedConversation = removeExpiredFilesFromContents(currentConversation);
+              conversationRef.current = cleanedConversation;
+              return cleanedConversation;
+            });
           }
         }
         
@@ -863,19 +868,22 @@ function AppContent() {
         });
 
         // Update the user message in conversation with file_data
-        const latestConversation = conversationRef.current || [];
-        const messageIndex = latestConversation.findIndex(
-          msg => msg.timestamp === newUserMessage.timestamp
-        );
-        if (messageIndex >= 0) {
-          const updatedConversation = [...latestConversation];
-          updatedConversation[messageIndex] = {
-            ...updatedConversation[messageIndex],
-            parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...updatedParts],
-          };
-          setConversation(updatedConversation);
-          conversationRef.current = updatedConversation;
-        }
+        setConversation((prevConversation) => {
+          const latestConversation = prevConversation || [];
+          const messageIndex = latestConversation.findIndex(
+            msg => msg.timestamp === newUserMessage.timestamp
+          );
+          if (messageIndex >= 0) {
+            const updatedConversation = [...latestConversation];
+            updatedConversation[messageIndex] = {
+              ...updatedConversation[messageIndex],
+              parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...updatedParts],
+            };
+            conversationRef.current = updatedConversation;
+            return updatedConversation;
+          }
+          return latestConversation;
+        });
 
         // Remove temporary typing indicators
         if (filesToUpload.length > 0) {
@@ -911,12 +919,14 @@ function AppContent() {
         
         alert("Failed to upload file. Please try again.");
         // Remove the user message on error
-        const latestConversation = conversationRef.current || [];
-        const filteredConversation = latestConversation.filter(
-          msg => msg.timestamp !== newUserMessage.timestamp
-        );
-        setConversation(filteredConversation);
-        conversationRef.current = filteredConversation;
+        setConversation((prevConversation) => {
+          const latestConversation = prevConversation || [];
+          const filteredConversation = latestConversation.filter(
+            msg => msg.timestamp !== newUserMessage.timestamp
+          );
+          conversationRef.current = filteredConversation;
+          return filteredConversation;
+        });
       }
     })();
   }, [subscriptionKey, conversationRef, mentionRoleMap]);
