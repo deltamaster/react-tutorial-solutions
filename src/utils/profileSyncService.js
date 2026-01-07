@@ -145,7 +145,7 @@ function parseMemoryValue(value) {
     // Old format: plain string, treat entire value as data
     return {
       metadata: {
-        lastUpdate: Date.now(), // Assign current timestamp for old entries
+        lastUpdate: 0, // Use timestamp 0 for old entries (no real timestamp available)
         deleted: false
       },
       data: value // Entire old value becomes data
@@ -154,7 +154,7 @@ function parseMemoryValue(value) {
     // Not JSON, treat as old format plain string
     return {
       metadata: {
-        lastUpdate: Date.now(),
+        lastUpdate: 0, // Use timestamp 0 for old entries (no real timestamp available)
         deleted: false
       },
       data: value
@@ -202,14 +202,26 @@ function memoriesToArray(localMemories, includeDeleted = true) {
 /**
  * Convert memory array from profile_data to object format
  * @param {Array} memoryArray - Array of memory objects with key and value
- * @returns {Object} Object with memory keys and values (full format with metadata)
+ * @returns {Object} Object with memory keys and values (always in new format with metadata)
  */
 function memoriesToObject(memoryArray) {
   const result = {};
   if (Array.isArray(memoryArray)) {
     memoryArray.forEach(memory => {
       if (memory && memory.key && memory.value !== undefined) {
-        result[memory.key] = memory.value; // Store as-is (could be old or new format)
+        // Parse the value to ensure it's in new format
+        const parsed = parseMemoryValue(memory.value);
+        if (parsed) {
+          // Convert to new format string
+          result[memory.key] = formatMemoryValue(
+            parsed.data,
+            parsed.metadata.lastUpdate,
+            parsed.metadata.deleted
+          );
+        } else {
+          // Fallback: treat as old format and convert
+          result[memory.key] = formatMemoryValue(memory.value, 0, false);
+        }
       }
     });
   }

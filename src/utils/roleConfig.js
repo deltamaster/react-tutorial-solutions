@@ -12,7 +12,7 @@ export const getMemory = {
     properties: {
       memoryKey: {
         type: "string",
-        description: "The key of the memory to retrieve.",
+        description: "The key of the memory to retrieve in UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
       },
     },
     required: ["memoryKey"],
@@ -37,7 +37,7 @@ export const updateMemory = {
     properties: {
       memoryKey: {
         type: "string",
-        description: "The key of the memory to set.",
+        description: "The key of the memory to set in UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
       },
       memoryValue: {
         type: "string",
@@ -74,7 +74,7 @@ export const deleteMemory = {
     properties: {
       memoryKey: {
         type: "string",
-        description: "The key of the memory to delete.",
+        description: "The key of the memory to delete in UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
       },
     },
     required: ["memoryKey"],
