@@ -411,7 +411,9 @@ function AppContent() {
       let responseData;
 
       try {
-        const conversationSnapshot = conversationRef.current || [];
+        // Use conversation snapshot from task if available, otherwise fall back to ref
+        // This ensures parallel requests see consistent conversation state
+        const conversationSnapshot = task.conversationSnapshot || conversationRef.current || [];
         responseData = await fetchFromApi(
           conversationSnapshot,
           "default",
@@ -666,6 +668,10 @@ function AppContent() {
       return;
     }
 
+    // Capture conversation snapshot synchronously to avoid race conditions
+    // This ensures all parallel requests see the same conversation state
+    const conversationSnapshot = conversationRef.current || [];
+
     let tasksAdded = false;
 
     uniqueRoles.forEach((role) => {
@@ -700,6 +706,7 @@ function AppContent() {
         context,
         dedupeKey,
         cancelled: false,
+        conversationSnapshot, // Pass snapshot to avoid race conditions
       });
       tasksAdded = true;
     });
@@ -815,6 +822,10 @@ function AppContent() {
       timestamp: Date.now(),
     };
 
+    // Update conversation synchronously to ensure it's available for parallel requests
+    const latestConversation = conversationRef.current || [];
+    const updatedConversation = [...latestConversation, newUserMessage];
+    conversationRef.current = updatedConversation;
     appendMessageToConversation(newUserMessage);
 
     // Step 3: Extract roles and prepare for API request

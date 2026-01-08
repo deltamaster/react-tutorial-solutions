@@ -2073,8 +2073,8 @@ const generateWorldFact = (role) => { return `$$$ FACT of the real world for ref
 - Never explicitly state your own traits to the user. For example, instead of saying "I'm curious," simply demonstrate curiosity through your responses and behavior.
 - To display mathematical expressions, use LaTeX math syntax. For inline math, enclose the expression with \`$ ... $\`, and for block math, use \`$$ ... $$\`. Be sure to add a space after the opening \`$\` and before the closing \`$\` to prevent confusion with the dollar sign used for currency. (Example: \`$ 2 + 2 = 4 $\` or \`$$ 2 + 2 = 4 $$\`. PAY ATTENTION TO THE SPACES!) All math expressions will be rendered using KaTeX on the client side for proper display.
 - Do not explain or mention KaTeX explicitly to the user; just use standard LaTeX syntax for mathematical formatting in your responses.
-- Put a SPACE before and after the opening and closing \* or \*\* for bold and italic formatting to be rendered correctly.
-  - (CORRECT EXAMPLE: \`<SPACE>\*<NO SPACE>italic text<NO SPACE>\*<SPACE>\` or \`<SPACE>\*\*<NO SPACE>bold text<NO SPACE>\*\*<SPACE>\`. PAY ATTENTION TO THE SPACES!)
+- Put a SPACE before the opening \*\* and after the closing \*\* for bold and italic formatting to be rendered correctly.
+  - (CORRECT EXAMPLE: \`<SPACE>\*italic text\*<SPACE>\` or \`<SPACE>\*\*bold text\*\*<SPACE>\`. PAY ATTENTION TO THE SPACES!)
 
 **Format of Response:**
 - Start the response with "$$$ ${roleDefinition[role].name} BEGIN $$$\n"
@@ -2376,24 +2376,63 @@ export const fetchFromApi = async (
   };
   // For the contents, update "role" to "user" for all except for the contents from the role
   const finalContents = await prepareContentsForRequest(processedContents, role);
+  
   // Prepare the conversation contents (without system prompt)
-  const conversationContents = [
-    ...finalContents,
-    // Only add user message when the last element of finalContents is not from the "user" role
-    ...(finalContents.length === 0 ||
-    finalContents[finalContents.length - 1].role !== "user"
-      ? [
-          {
+  // Ensure we always have at least one content item for the API
+  let conversationContents = [...finalContents];
+  
+  // If finalContents is empty, check if there's a user message in processedContents that got filtered out
+  // This can happen if the user's message only had parts that were filtered (e.g., only hidden parts)
+  if (conversationContents.length === 0) {
+    // Find the most recent user message in processedContents
+    const lastUserMessage = [...processedContents].reverse().find(msg => msg.role === "user");
+    if (lastUserMessage && lastUserMessage.parts && lastUserMessage.parts.length > 0) {
+      // Include the user's message even if it was filtered out
+      // Filter out hidden parts but keep at least one part
+      const visibleParts = lastUserMessage.parts.filter(part => !part.hide && !part.thought);
+      if (visibleParts.length > 0) {
+        conversationContents = [{
+          role: "user",
+          parts: visibleParts.map(part => {
+            const { hide, ...rest } = part;
+            return rest;
+          }),
+        }];
+      } else {
+        // If all parts were hidden, include at least the first non-thought part
+        const firstPart = lastUserMessage.parts.find(part => !part.thought);
+        if (firstPart) {
+          const { hide, thought, ...rest } = firstPart;
+          conversationContents = [{
             role: "user",
-            parts: [
-              {
-                text: "$$$Read the previous dialog and continue.$$$",
-              },
-            ],
-          },
-        ]
-      : []),
-  ];
+            parts: [rest],
+          }];
+        }
+      }
+    }
+  }
+  
+  // If still empty, this is an error condition
+  if (conversationContents.length === 0) {
+    throw new ApiError("No conversation contents available. User message must be added to conversation before making API request.", {
+      errorType: "validation_error",
+      details: { parameter: "contents", processedContents },
+    });
+  }
+  
+  // Only add continuation message when there's existing conversation AND the last message is not from the user
+  // This ensures the user's actual question is preserved when it's the first message
+  if (conversationContents.length > 0 &&
+      conversationContents[conversationContents.length - 1].role !== "user") {
+    conversationContents.push({
+      role: "user",
+      parts: [
+        {
+          text: "$$$Read the previous dialog and continue.$$$",
+        },
+      ],
+    });
+  }
 
   // Use the proper systemInstruction field instead of embedding in contents
   const requestBody = {
