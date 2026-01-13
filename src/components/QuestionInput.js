@@ -492,7 +492,7 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
           </Col>
         </Row>
         <Row>
-          <Col className="d-flex justify-content-end gap-2">
+          <Col className="d-flex justify-content-end align-items-center gap-2">
             {/* Thinking Toggle */}
             <Form.Check
               type="switch"
