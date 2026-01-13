@@ -455,6 +455,20 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
           </Col>
         </Row>
         <Row>
+          <Col className="d-flex justify-content-end">
+            <img
+              src="/horse-mini.png"
+              alt="Year of Horse"
+              style={{
+                height: "60px",
+                width: "auto",
+                objectFit: "contain",
+                marginBottom: "0",
+              }}
+            />
+          </Col>
+        </Row>
+        <Row style={{ marginTop: "-10px" }}>
           <Col>
             <textarea
               ref={textareaRef}
