@@ -1,4 +1,4 @@
-# React QnA Assistant
+# ChatSphere
 
 An AI-first chat workspace built with React 18. The app pairs a conversational assistant with multi-role routing, memory tooling, collaborative editing, and a Chrome extension. Recent updates include KaTeX-rendered math, paste-to-upload images, fully parallel role handling, profile sync for memories, file tracking with expiration, consolidated financial APIs, thinking mode, text-to-speech, memory compression, and model selection.
 

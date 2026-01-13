@@ -3,7 +3,7 @@ import AppContent from './components/AppContent';
 import Snowfall from './components/Snowfall';
 
 // Main application component
-function QnAApp() {
+function ChatSphereApp() {
   return (
     <div className="App">
       <Snowfall />
@@ -12,4 +12,4 @@ function QnAApp() {
   );
 }
 
-export default QnAApp;
+export default ChatSphereApp;

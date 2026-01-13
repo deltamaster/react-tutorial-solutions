@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "QnA Assistant",
+  "name": "ChatSphere",
   "version": "1.0",
-  "description": "A Q&A assistant with conversation history and role switching",
+  "description": "An AI-first chat workspace with conversation history and role switching",
   "action": {
-    "default_title": "QnA Assistant",
+    "default_title": "ChatSphere",
     "default_icon": {
       "16": "favicon-16x16.png",
       "32": "favicon-32x32.png",

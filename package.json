@@ -1,7 +1,7 @@
 {
   "name": "react.dev",
   "version": "1.0.0",
-  "description": "QnA App - A React-based Electron application",
+  "description": "ChatSphere - A React-based Electron application",
   "author": "Your Name",
     "main": "build/electron.js",
   "homepage": "./",
@@ -58,7 +58,7 @@
   },
   "build": {
     "appId": "com.reactdev.app",
-    "productName": "QnA App",
+    "productName": "ChatSphere",
     "extends": null,
     "directories": {
       "buildResources": "build",
