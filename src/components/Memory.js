@@ -4,7 +4,9 @@ import { Database, PlusCircle, CheckCircle, List, Trash, Pencil, X, InfoCircle, 
 import * as Icon from "react-bootstrap-icons";
 import memoryService from '../utils/memoryService';
 import profileSyncService from '../utils/profileSyncService';
-import { getTenantId, getKeypass, getAutoSyncEnabled, setAutoSyncEnabled } from '../utils/settingsService';
+import { getAutoSyncEnabled, setAutoSyncEnabled } from '../utils/settingsService';
+import { useAuth } from '../contexts/AuthContext';
+import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalConfig';
 
 function Memory() {
   const [memories, setMemories] = useState({});
@@ -16,7 +18,32 @@ function Memory() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [autoSyncEnabled, setAutoSyncEnabledState] = useState(false);
+  const [oneDriveConfigured, setOneDriveConfigured] = useState(false);
+  const [requestingConsent, setRequestingConsent] = useState(false);
   const syncIntervalRef = useRef(null);
+  const { isAuthenticated, login } = useAuth();
+
+  // Helper function to try acquiring OneDrive token silently
+  const getOneDriveAccessTokenSilently = async () => {
+    if (!isMsalConfigured() || !msalInstance || !isAuthenticated) {
+      return null;
+    }
+    try {
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length === 0) {
+        return null;
+      }
+      const account = accounts[0];
+      const response = await msalInstance.acquireTokenSilent({
+        ...onedriveScopes,
+        account: account,
+      });
+      return response.accessToken;
+    } catch (error) {
+      // Silent acquisition failed, but don't throw - just return null
+      return null;
+    }
+  };
 
   // Load all memories
   const loadMemories = async () => {
@@ -29,11 +56,37 @@ function Memory() {
     }
   };
 
+  // Request OneDrive consent
+  const handleRequestOneDriveConsent = async () => {
+    if (!isAuthenticated) {
+      setError('Please login first to grant OneDrive access.');
+      return;
+    }
+
+    setRequestingConsent(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      await profileSyncService.requestOneDriveConsent();
+      setSuccess('OneDrive access granted successfully!');
+      // Check if sync is now configured
+      const configured = await profileSyncService.isSyncConfigured();
+      setOneDriveConfigured(configured);
+    } catch (err) {
+      setError(`Failed to grant OneDrive access: ${err.message}`);
+      console.error('Error requesting OneDrive consent:', err);
+    } finally {
+      setRequestingConsent(false);
+    }
+  };
+
   // Sync memories with remote profile
   const handleSyncMemories = React.useCallback(async (silent = false) => {
-    if (!profileSyncService.isSyncConfigured()) {
+    const configured = await profileSyncService.isSyncConfigured();
+    if (!configured) {
       if (!silent) {
-        setError('Please configure Tenant ID and Keypass in Settings before syncing.');
+        setError('OneDrive access not granted. Please grant OneDrive permissions to sync.');
       }
       return;
     }
@@ -82,6 +135,28 @@ function Memory() {
     // Load auto-sync setting
     setAutoSyncEnabledState(getAutoSyncEnabled());
 
+    // Check OneDrive sync configuration and try to acquire token silently
+    const checkOneDriveSync = async () => {
+      if (!isAuthenticated) {
+        setOneDriveConfigured(false);
+        return;
+      }
+      try {
+        // Try to acquire token silently first (this will cache it if successful)
+        const token = await getOneDriveAccessTokenSilently();
+        
+        // Then check if sync is configured
+        const configured = await profileSyncService.isSyncConfigured();
+        setOneDriveConfigured(configured);
+      } catch (error) {
+        // If silent acquisition fails, check if sync is configured anyway
+        const configured = await profileSyncService.isSyncConfigured();
+        setOneDriveConfigured(configured);
+      }
+    };
+    
+    checkOneDriveSync();
+
     // Subscribe to memory change events
     const unsubscribe = memoryService.subscribe((key, action) => {
       console.log(`Memory component received notification: ${action} for key ${key}`);
@@ -96,7 +171,7 @@ function Memory() {
         unsubscribe();
       }
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Set up auto-sync interval (every 5 minutes)
   useEffect(() => {
@@ -107,7 +182,7 @@ function Memory() {
     }
 
     // Set up new interval if auto-sync is enabled
-    if (autoSyncEnabled && profileSyncService.isSyncConfigured()) {
+    if (autoSyncEnabled && oneDriveConfigured) {
       syncIntervalRef.current = setInterval(() => {
         handleSyncMemories(true); // true = silent sync
       }, 5 * 60 * 1000); // 5 minutes
@@ -285,13 +360,63 @@ function Memory() {
         </Col>
       </Row>
 
-      {/* Warning banner for missing tenant ID or keypass */}
-      {(!getTenantId() || !getKeypass()) && (
+      {/* Warning banner for missing OneDrive access */}
+      {!oneDriveConfigured && (
         <Row className="mb-3">
           <Col xs={12}>
-            <Alert variant="warning" onClose={() => {}} dismissible={false}>
-              <ExclamationTriangle size={16} className="mr-2" />
-              Profile sync is not configured. Please set Tenant ID and Keypass in Settings to enable memory synchronization.
+            <Alert variant="info" onClose={() => {}} dismissible={false}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <InfoCircle size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    OneDrive sync is not configured. Please grant OneDrive access to enable memory synchronization.
+                  </div>
+                  {isAuthenticated && (
+                    <div>
+                      <Button 
+                        variant="primary" 
+                        size="sm" 
+                        onClick={handleRequestOneDriveConsent}
+                        disabled={requestingConsent}
+                      >
+                        {requestingConsent ? 'Requesting...' : 'Grant OneDrive Access'}
+                      </Button>
+                    </div>
+                  )}
+                  {!isAuthenticated && (
+                    <div>
+                      <small>
+                        Please{' '}
+                        <a 
+                          href="#" 
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            try {
+                              await login();
+                              // After login, check OneDrive sync status
+                              setTimeout(async () => {
+                                const configured = await profileSyncService.isSyncConfigured();
+                                setOneDriveConfigured(configured);
+                              }, 500);
+                            } catch (err) {
+                              console.error('Login failed:', err);
+                              setError('Failed to login. Please try again.');
+                            }
+                          }}
+                          style={{ 
+                            color: '#0d6efd', 
+                            textDecoration: 'underline',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          login
+                        </a>
+                        {' '}first to grant OneDrive access.
+                      </small>
+                    </div>
+                  )}
+                </div>
+              </div>
             </Alert>
           </Col>
         </Row>
@@ -367,7 +492,7 @@ function Memory() {
                   <List size={18} className="mr-2" />
                   Stored Memories ({Object.keys(memories).length})
                 </h5>
-                {profileSyncService.isSyncConfigured() && (
+                {oneDriveConfigured && (
                   <Form.Check
                     type="switch"
                     id="auto-sync-switch"
@@ -384,7 +509,7 @@ function Memory() {
                     id="sync-memory-btn"
                     variant="secondary" 
                     onClick={() => {
-                      if (!syncing && profileSyncService.isSyncConfigured()) {
+                      if (!syncing && oneDriveConfigured) {
                         handleSyncMemories();
                       }
                     }}
@@ -394,11 +519,11 @@ function Memory() {
                     htmlFor="sync-memory-btn" 
                     className="toggle-label toggle-on"
                     style={{ 
-                      opacity: (syncing || !profileSyncService.isSyncConfigured()) ? 0.6 : 1,
-                      cursor: (syncing || !profileSyncService.isSyncConfigured()) ? 'not-allowed' : 'pointer',
-                      pointerEvents: (syncing || !profileSyncService.isSyncConfigured()) ? 'none' : 'auto'
+                      opacity: (syncing || !oneDriveConfigured) ? 0.6 : 1,
+                      cursor: (syncing || !oneDriveConfigured) ? 'not-allowed' : 'pointer',
+                      pointerEvents: (syncing || !oneDriveConfigured) ? 'none' : 'auto'
                     }}
-                    title={profileSyncService.isSyncConfigured() ? 'Sync memories with remote profile' : 'Configure Tenant ID and Keypass in Settings first'}
+                    title={oneDriveConfigured ? 'Sync memories with OneDrive' : 'Grant OneDrive access to enable sync'}
                   >
                     <CloudArrowUp size={16} className="mr-2" />
                     <span className="toggle-text">{syncing ? 'Syncing...' : 'Sync'}</span>

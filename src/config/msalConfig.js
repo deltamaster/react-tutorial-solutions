@@ -1,0 +1,39 @@
+import { PublicClientApplication } from "@azure/msal-browser";
+
+// MSAL configuration
+// TODO: Replace 'YOUR_CLIENT_ID_HERE' with your actual Azure AD Client ID
+const CLIENT_ID = "dd795cb2-a5dd-47f6-a156-ff840409e404"; // Placeholder - replace with your Azure AD Client ID
+
+export const msalConfig = {
+  auth: {
+    clientId: CLIENT_ID,
+    authority: "https://login.microsoftonline.com/consumers", // Use 'consumers' for personal Microsoft accounts (Consumer audience)
+    redirectUri: window.location.origin, // Redirect URI after login
+  },
+  cache: {
+    cacheLocation: "sessionStorage", // This configures where your cache will be stored
+    storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
+  },
+};
+
+// Add scopes here for ID token to be used at Microsoft identity platform endpoints.
+// Includes both User.Read and Files.ReadWrite so users don't need separate consent
+export const loginRequest = {
+  scopes: ["User.Read", "Files.ReadWrite"],
+};
+
+// OneDrive scopes for profile sync (same as loginRequest, kept for backward compatibility)
+export const onedriveScopes = {
+  scopes: ["Files.ReadWrite"],
+};
+
+// Check if client ID is configured
+export const isMsalConfigured = () => {
+  return CLIENT_ID && CLIENT_ID !== "YOUR_CLIENT_ID_HERE" && CLIENT_ID.trim() !== "";
+};
+
+// Create the main myMSALObj instance
+// Only create if client ID is configured
+export const msalInstance = isMsalConfigured() 
+  ? new PublicClientApplication(msalConfig)
+  : null;

@@ -1,130 +1,273 @@
 /**
  * Profile Sync Service
- * Handles synchronization of memories with remote profile API
+ * Handles synchronization of memories with OneDrive
  */
 
-import { getTenantId, getKeypass, getSubscriptionKey } from './settingsService';
 import memoryService from './memoryService';
+import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalConfig';
 
-const API_BASE_URL = 'https://jp-gw2.azure-api.net/profile';
+const FOLDER_NAME = '.chatsphere';
+const PROFILE_FILENAME = 'profile.json';
+const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
 
 /**
- * Fetch remote profile from API
- * @returns {Promise<Object>} The remote profile data
+ * Get OneDrive access token from MSAL
+ * Tries silent acquisition first, only prompts for consent if needed
+ * @returns {Promise<string|null>} Access token or null if not available
+ */
+async function getOneDriveAccessToken() {
+  if (!isMsalConfigured() || !msalInstance) {
+    return null;
+  }
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length === 0) {
+    return null;
+  }
+  const account = accounts[0];
+  
+  try {
+    const response = await msalInstance.acquireTokenSilent({
+      ...onedriveScopes,
+      account: account,
+    });
+    return response.accessToken;
+  } catch (error) {
+    // Check if this is a consent-related error that requires user interaction
+    if (error.errorCode === 'interaction_required' || 
+        error.errorCode === 'consent_required' ||
+        error.errorCode === 'login_required') {
+      // Try interactive acquisition only if consent is needed
+      try {
+        console.log("OneDrive consent required, requesting interactively...");
+        const response = await msalInstance.acquireTokenPopup({
+          ...onedriveScopes,
+          account: account,
+        });
+        return response.accessToken;
+      } catch (popupError) {
+        console.error("Error acquiring OneDrive token via popup:", popupError);
+        return null;
+      }
+    }
+    console.error("Error acquiring OneDrive token silently:", error);
+    return null;
+  }
+}
+
+/**
+ * Request OneDrive consent from user
+ * Only prompts if consent is actually needed (not already granted)
+ * @returns {Promise<string>} Access token
+ */
+export async function requestOneDriveConsent() {
+  if (!isMsalConfigured() || !msalInstance) {
+    throw new Error('MSAL is not configured');
+  }
+  try {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length === 0) {
+      throw new Error('User must be logged in to request OneDrive access');
+    }
+    const account = accounts[0];
+    
+    // First try silent acquisition - if it works, no need to prompt
+    try {
+      const silentResponse = await msalInstance.acquireTokenSilent({
+        ...onedriveScopes,
+        account: account,
+      });
+      return silentResponse.accessToken;
+    } catch (silentError) {
+      // Only prompt if silent acquisition failed due to consent issues
+      if (silentError.errorCode === 'interaction_required' || 
+          silentError.errorCode === 'consent_required' ||
+          silentError.errorCode === 'login_required') {
+        const response = await msalInstance.acquireTokenPopup({
+          ...onedriveScopes,
+          account: account,
+        });
+        return response.accessToken;
+      }
+      // Re-throw if it's a different error
+      throw silentError;
+    }
+  } catch (error) {
+    console.error("Error requesting OneDrive consent:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get or create the .chatsphere folder in OneDrive
+ * @param {string} accessToken - OneDrive access token
+ * @returns {Promise<string>} Folder ID
+ */
+async function getOrCreateChatSphereFolder(accessToken) {
+  // List children in root and filter for the folder
+  const listUrl = `${GRAPH_API_BASE}/me/drive/root/children`;
+  
+  const response = await fetch(listUrl, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to list folder contents: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  
+  // Find the folder by name
+  if (data.value && data.value.length > 0) {
+    const folder = data.value.find(item => item.name === FOLDER_NAME && item.folder);
+    if (folder) {
+      return folder.id; // Return the folder ID
+    }
+  }
+  
+  // Folder doesn't exist, create it
+  const createUrl = `${GRAPH_API_BASE}/me/drive/root/children`;
+  const createResponse = await fetch(createUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: FOLDER_NAME,
+      folder: {},
+      '@microsoft.graph.conflictBehavior': 'fail'
+    })
+  });
+
+  if (!createResponse.ok) {
+    const errorText = await createResponse.text();
+    throw new Error(`Failed to create folder: ${createResponse.status} ${createResponse.statusText} - ${errorText}`);
+  }
+
+  const folderData = await createResponse.json();
+  return folderData.id;
+}
+
+/**
+ * Get the profile file path in OneDrive
+ * @param {string} accessToken - OneDrive access token
+ * @param {string} folderId - The .chatsphere folder ID
+ * @returns {Promise<string|null>} File ID or null if file doesn't exist
+ */
+async function getProfileFilePath(accessToken, folderId) {
+  // Try to find the file in the .chatsphere folder
+  const searchUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}/children?$filter=name eq '${PROFILE_FILENAME}'`;
+  
+  const response = await fetch(searchUrl, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to search for profile file: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  if (data.value && data.value.length > 0) {
+    return data.value[0].id; // Return the file ID
+  }
+  
+  return null; // File doesn't exist yet
+}
+
+/**
+ * Fetch remote profile from OneDrive
+ * @returns {Promise<Object|null>} The remote profile data or null if file doesn't exist
  */
 async function fetchRemoteProfile() {
-  const tenantId = getTenantId();
-  const keypass = getKeypass();
-  const subscriptionKey = getSubscriptionKey();
-
-  if (!tenantId || !keypass) {
-    throw new Error('Tenant ID and keypass must be configured');
+  const accessToken = await getOneDriveAccessToken();
+  if (!accessToken) {
+    throw new Error('OneDrive access token not available. Please grant OneDrive permissions.');
   }
 
-  if (!subscriptionKey) {
-    throw new Error('Subscription key must be configured');
-  }
-
-  const url = `${API_BASE_URL}/profiles/${encodeURIComponent(tenantId)}?keypass=${encodeURIComponent(keypass)}`;
+  // Get or create the .chatsphere folder
+  const folderId = await getOrCreateChatSphereFolder(accessToken);
   
-  const response = await fetch(url, {
-    method: 'GET',
+  const fileId = await getProfileFilePath(accessToken, folderId);
+  if (!fileId) {
+    return null; // Profile doesn't exist yet
+  }
+
+  // Download the file content
+  const downloadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
+  const response = await fetch(downloadUrl, {
     headers: {
-      'Ocp-Apim-Subscription-Key': subscriptionKey,
-      'Content-Type': 'application/json'
+      'Authorization': `Bearer ${accessToken}`
     }
   });
 
   if (!response.ok) {
     if (response.status === 404) {
-      // Profile doesn't exist yet, return null to indicate it needs to be created
       return null;
     }
-    const errorText = await response.text();
-    throw new Error(`Failed to fetch profile: ${errorText}`);
+    throw new Error(`Failed to fetch profile: ${response.statusText}`);
   }
 
-  const data = await response.json();
-  return data;
-}
-
-/**
- * Update remote profile via API
- * @param {Object} profileData - The profile data to update
- */
-async function updateRemoteProfile(profileData) {
-  const tenantId = getTenantId();
-  const keypass = getKeypass();
-  const subscriptionKey = getSubscriptionKey();
-
-  if (!tenantId || !keypass) {
-    throw new Error('Tenant ID and keypass must be configured');
-  }
-
-  if (!subscriptionKey) {
-    throw new Error('Subscription key must be configured');
-  }
-
-  const url = `${API_BASE_URL}/profiles/${encodeURIComponent(tenantId)}`;
-  
-  const requestBody = {
-    tenant_id: tenantId,
-    keypass: keypass,
-    profile_data: profileData
-  };
-
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Ocp-Apim-Subscription-Key': subscriptionKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to update profile: ${errorText}`);
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('Failed to parse profile file');
   }
 }
 
 /**
- * Create remote profile via API
- * @param {Object} profileData - The profile data to create
+ * Upload profile to OneDrive
+ * @param {Object} profileData - The profile data to upload
  */
-async function createRemoteProfile(profileData) {
-  const tenantId = getTenantId();
-  const keypass = getKeypass();
-  const subscriptionKey = getSubscriptionKey();
-
-  if (!tenantId || !keypass) {
-    throw new Error('Tenant ID and keypass must be configured');
+async function uploadProfileToOneDrive(profileData) {
+  const accessToken = await getOneDriveAccessToken();
+  if (!accessToken) {
+    throw new Error('OneDrive access token not available. Please grant OneDrive permissions.');
   }
 
-  if (!subscriptionKey) {
-    throw new Error('Subscription key must be configured');
-  }
-
-  const url = `${API_BASE_URL}/profiles`;
+  // Get or create the .chatsphere folder
+  const folderId = await getOrCreateChatSphereFolder(accessToken);
   
-  const requestBody = {
-    tenant_id: tenantId,
-    keypass: keypass,
-    profile_data: profileData
-  };
+  const fileContent = JSON.stringify(profileData, null, 2);
+  const fileId = await getProfileFilePath(accessToken, folderId);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': subscriptionKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
+  if (fileId) {
+    // Update existing file
+    const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: fileContent
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to create profile: ${errorText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to update profile: ${response.statusText}`);
+    }
+  } else {
+    // Create new file in the .chatsphere folder
+    const createUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}:/${PROFILE_FILENAME}:/content`;
+    const response = await fetch(createUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: fileContent
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create profile: ${response.statusText}`);
+    }
   }
 }
 
@@ -250,7 +393,7 @@ function mergeMemoryValues(localValue, remoteValue) {
 }
 
 /**
- * Sync memories with remote profile
+ * Sync memories with OneDrive profile
  * Merges local and remote memories, respecting deleted memories
  * @returns {Promise<Object>} Result object with sync statistics
  */
@@ -259,7 +402,7 @@ export async function syncMemories() {
     // Get local memories with full metadata
     const localMemories = await memoryService.getAllMemoriesWithMetadata();
     
-    // Fetch remote profile
+    // Fetch remote profile from OneDrive
     const remoteProfile = await fetchRemoteProfile();
     
     // If profile doesn't exist, create it with local memories
@@ -267,7 +410,7 @@ export async function syncMemories() {
       const profileData = {
         memories: memoriesToArray(localMemories)
       };
-      await createRemoteProfile(profileData);
+      await uploadProfileToOneDrive(profileData);
       return {
         success: true,
         message: 'Profile created and synced successfully',
@@ -281,7 +424,7 @@ export async function syncMemories() {
     }
 
     // Extract remote memories
-    const remoteMemoriesObj = memoriesToObject(remoteProfile.profile_data?.memories || []);
+    const remoteMemoriesObj = memoriesToObject(remoteProfile.memories || []);
     
     // Merge strategy based on timestamps:
     // 1. Start with all remote memories
@@ -317,7 +460,7 @@ export async function syncMemories() {
     // Check if there are any differences between merged and remote
     // Include deleted memories in comparison and sync
     const mergedArray = memoriesToArray(mergedMemories, true); // Include deleted memories
-    const remoteArray = remoteProfile.profile_data?.memories || [];
+    const remoteArray = remoteProfile.memories || [];
     
     // Compare arrays - check if they have the same length and same content
     const hasChanges = JSON.stringify(mergedArray.sort((a, b) => a.key.localeCompare(b.key))) !== 
@@ -417,7 +560,7 @@ export async function syncMemories() {
         memories: mergedArray // Includes deleted memories with deleted: true flag
       };
       
-      await updateRemoteProfile(profileData);
+      await uploadProfileToOneDrive(profileData);
     }
     
     return {
@@ -441,19 +584,24 @@ export async function syncMemories() {
   }
 }
 
-
 /**
- * Check if profile sync is configured
- * @returns {boolean} True if tenant_id and keypass are configured
+ * Check if OneDrive sync is configured (user has granted OneDrive permissions)
+ * @returns {Promise<boolean>} True if OneDrive access is available
  */
-export function isSyncConfigured() {
-  const tenantId = getTenantId();
-  const keypass = getKeypass();
-  return !!(tenantId && keypass);
+export async function isSyncConfigured() {
+  if (!isMsalConfigured() || !msalInstance) {
+    return false;
+  }
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length === 0) {
+    return false;
+  }
+  const token = await getOneDriveAccessToken();
+  return token !== null;
 }
 
 export default {
   syncMemories,
-  isSyncConfigured
+  isSyncConfigured,
+  requestOneDriveConsent,
 };
-

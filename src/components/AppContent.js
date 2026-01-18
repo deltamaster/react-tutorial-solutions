@@ -15,6 +15,7 @@ import Settings from "./Settings";
 import FollowUpQuestions from "./FollowUpQuestions";
 import Memory from "./Memory";
 import MarkdownEditor from "./MarkdownEditor";
+import LoginButton from "./LoginButton";
 import {
   fetchFromApi,
   generateFollowUpQuestions,
@@ -1137,8 +1138,17 @@ function AppContent() {
 
   return (
     <Container className="App">
+      {/* Login button at the top */}
       <Row>
-        <Col xs={12} className="mb-3 mt-3">
+        <Col xs={12} className="mb-2 mt-3">
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", minHeight: "40px" }}>
+            <LoginButton />
+          </div>
+        </Col>
+      </Row>
+
+      <Row>
+        <Col xs={12} className="mb-3">
           {/* Settings toggle button */}
           <div
             onClick={() => setShowTopSettings(!showTopSettings)}

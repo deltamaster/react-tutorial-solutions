@@ -1,6 +1,6 @@
 # ChatSphere
 
-An AI-first chat workspace built with React 18. The app pairs a conversational assistant with multi-role routing, memory tooling, collaborative editing, and a Chrome extension. Recent updates include KaTeX-rendered math, paste-to-upload images, fully parallel role handling, profile sync for memories, file tracking with expiration, consolidated financial APIs, thinking mode, text-to-speech, memory compression, and model selection.
+An AI-first chat workspace built with React 18. The app pairs a conversational assistant with multi-role routing, memory tooling, collaborative editing, and a Chrome extension. Recent updates include KaTeX-rendered math, paste-to-upload images, fully parallel role handling, OneDrive sync for memories, file tracking with expiration, consolidated financial APIs, thinking mode, text-to-speech, memory compression, model selection, and Microsoft authentication.
 
 ---
 
@@ -15,8 +15,9 @@ An AI-first chat workspace built with React 18. The app pairs a conversational a
 - **Thinking mode**: Toggle adaptive thinking mode to see the model's reasoning process (enabled by default).
 - **Model selection**: Choose between Gemini models (gemini-3-flash-preview, gemini-2.5-flash).
 - **Conversation controls**: reset, download, upload, and in-place editing for any message or thought.
-- **Memory management**: store, edit, and sync memories with remote profile API. Auto-sync option keeps memories synchronized across devices.
-- **Profile sync**: synchronize memories with remote profile using Tenant ID and Keypass. Supports automatic merging based on timestamps and handles deleted memories.
+- **Memory management**: store, edit, and sync memories with OneDrive. Auto-sync option keeps memories synchronized across devices.
+- **OneDrive sync**: synchronize memories with OneDrive using Microsoft authentication. Profile data is stored in `.chatsphere/profile.json` in your OneDrive. Supports automatic merging based on timestamps and handles deleted memories.
+- **Microsoft Authentication**: Optional login with Microsoft account. Anonymous access is still allowed for all features except OneDrive sync.
 - **Financial data APIs**: comprehensive financial data retrieval via consolidated AlphaVantage and Finnhub APIs with smart rate limiting, API response caching, and intelligent data fetching strategies.
 - **Collaborative Co-Edit tab** tied to the same memory and role system.
 - **Chrome extension** modes reuse the same UI and persist API keys/system prompts via extension storage.
@@ -57,24 +58,31 @@ The dev server runs at [http://localhost:3000](http://localhost:3000) with hot r
    - Model selection (gemini-3-flash-preview or gemini-2.5-flash)
    - Thinking mode toggle (enabled by default)
    - User avatar (male/female)
-   - Profile sync credentials (Tenant ID and Keypass for memory synchronization)
+   - **Optional**: Login with Microsoft account to enable OneDrive sync for memories
 
-2. **Chat immediately**  
+2. **Enable OneDrive Sync (Optional)**  
+   - Click "Login as my personal Microsoft account" button at the top of the app
+   - Grant OneDrive access permissions during login (Files.ReadWrite scope)
+   - After login, OneDrive sync will be automatically enabled
+   - Your profile data will be stored in `.chatsphere/profile.json` in your OneDrive
+
+3. **Chat immediately**  
    Type in the Question box. You can:
    - paste screenshots or drag images/PDFs (max 20 MB, PNG/JPEG/WEBP/HEIC/HEIF/PDF)
    - reference specialist personas using `@Belinda`, `@Charlie`, `@Diana`, etc.
    - edit any sent message or model response via the pencil button
    - click the speaker icon to hear responses via text-to-speech
 
-3. **Stay in context**  
+4. **Stay in context**  
    - Follow-up questions appear below the transcript once all queued requests finish.
    - The Memory tab summarizes and stores key facts. Use it to pin long-lived context.
    - Old conversation segments are automatically compressed into summaries when token count exceeds thresholds.
+   - If logged in with OneDrive sync enabled, memories are automatically synchronized across devices.
 
-4. **Co-edit documents**  
+5. **Co-edit documents**  
    Switch to the *Co-Edit* tab for a shared markdown workspace with live preview.
 
-5. **Export & Restore**  
+6. **Export & Restore**  
    Use the Reset / Download / Upload controls (top-right) to manage chat archives. Export includes conversation summaries and file tracking metadata.
 
 ---
@@ -114,13 +122,18 @@ src/
 │   ├── ConversationHistory.js
 │   ├── QuestionInput.js     // Clipboard-aware input with file handling
 │   ├── FollowUpQuestions.js
-│   ├── Memory.js            // Memory management UI with sync controls
+│   ├── Memory.js            // Memory management UI with OneDrive sync controls
 │   ├── MarkdownEditor.js
-│   └── Settings.js          // Settings with profile sync configuration
+│   ├── LoginButton.js       // Microsoft authentication login button
+│   └── Settings.js          // Settings configuration
+├── contexts/
+│   └── AuthContext.js       // MSAL authentication context and OneDrive token management
+├── config/
+│   └── msalConfig.js        // MSAL configuration for Microsoft authentication
 ├── utils/
 │   ├── apiUtils.js          // Gemini fetch helpers, toolbox bridge, memory compression, financial APIs, API caching
 │   ├── roleConfig.js        // Role definitions + mention helpers + consolidated API functions
-│   ├── profileSyncService.js // Memory synchronization with remote profile API
+│   ├── profileSyncService.js // Memory synchronization with OneDrive using Microsoft Graph API
 │   ├── fileTrackingService.js // File upload tracking with expiration handling
 │   ├── memoryService.js     // Memory storage with metadata support
 │   ├── settingsService.js   // Centralized settings management (subscription key, model, thinking mode, etc.)
@@ -135,6 +148,7 @@ src/
 Key dependencies:
 
 - **UI**: React 18, React Bootstrap, Bootstrap 5
+- **Authentication**: `@azure/msal-browser` for Microsoft authentication and OneDrive access
 - **Markdown**: `react-markdown`, `remark-gfm`, `remark-math`, `rehype-katex`, `react-syntax-highlighter`, Mermaid
 - **Build**: Create React App (react-scripts 5)
 
@@ -152,16 +166,24 @@ Outputs to `build/` with optimized assets ready for static hosting or Chrome ext
 
 ## Features in Detail
 
-### Memory Management & Profile Sync
+### Memory Management & OneDrive Sync
 
 - **Memory Storage**: Store key facts and context that persist across conversations. Memories include metadata (timestamps, deletion flags) for synchronization.
-- **Profile Sync**: Synchronize memories with a remote profile API using Tenant ID and Keypass. Supports:
+- **OneDrive Sync**: Synchronize memories with OneDrive using Microsoft authentication. Profile data is stored in `.chatsphere/profile.json` in your OneDrive root folder. Supports:
   - Automatic merging based on timestamps (newer changes take precedence)
   - Handling of deleted memories across devices
   - Auto-sync option (syncs every 5 minutes when enabled)
   - Manual sync button for on-demand synchronization
+  - Requires Microsoft account login and OneDrive access consent
 - **Memory Operations**: Create, read, update, delete memories. Download/upload memory data as JSON.
 - **Memory Compression**: Automatically compresses old conversation segments when token count exceeds thresholds (100K tokens in production, 10K in development). Recent messages (last 10) are always kept uncompressed. Summaries are stored separately and replace original segments in conversation history.
+
+### Microsoft Authentication
+
+- **Optional Login**: Users can optionally login with their Microsoft account. Anonymous access is still allowed for all features except OneDrive sync.
+- **OneDrive Integration**: Login grants both `User.Read` and `Files.ReadWrite` permissions, enabling OneDrive sync without additional consent prompts.
+- **Token Management**: Access tokens are cached and refreshed automatically. Silent token acquisition is attempted first, only prompting for consent when necessary.
+- **Profile Storage**: Profile data is stored in `.chatsphere/profile.json` in the user's OneDrive root folder, keeping it organized and accessible across devices.
 
 ### File Management
 
@@ -233,7 +255,7 @@ Outputs to `build/` with optimized assets ready for static hosting or Chrome ext
 - **Role pipeline**: Only the newest task per role runs—@mentions cancel any in-flight call for that persona. Up to 3 roles can process requests concurrently.
 - **Math overlap fix**: KaTeX blocks no longer cover edit buttons thanks to z-index adjustments.
 - **File expiration**: Uploaded files expire after 12 hours. The app automatically handles expired files and updates conversations accordingly.
-- **Profile sync**: Requires Tenant ID and Keypass configuration in Settings. Auto-sync runs every 5 minutes when enabled.
+- **OneDrive sync**: Requires Microsoft account login and OneDrive access consent. Consent is requested during login (both User.Read and Files.ReadWrite scopes). Auto-sync runs every 5 minutes when enabled. Profile data is stored in `.chatsphere/profile.json` in your OneDrive.
 - **Financial APIs**: Always specify time ranges when requesting historical data. The system prefers Finnhub APIs for better rate limits. Responses are cached to reduce API calls.
 - **Memory compression**: Automatically triggers when conversation token count exceeds thresholds. Summaries replace old segments but are stored separately for export.
 - **Text-to-Speech**: Requires subscription key. Long responses are automatically chunked. Audio URLs may expire based on API response.
