@@ -4,11 +4,69 @@
  */
 
 import memoryService from './memoryService';
+import { getSystemPrompts, setSystemPrompts, getSubscriptionKey, getUserAvatar, getModel } from './settingsService';
 import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalConfig';
 
 const FOLDER_NAME = '.chatsphere';
 const PROFILE_FILENAME = 'profile.json';
+const SYSTEM_PROMPTS_FILENAME = 'systemPrompts.json';
+const CONFIG_FILENAME = 'config.json';
 const GRAPH_API_BASE = 'https://graph.microsoft.com/v1.0';
+
+// Cache keys for localStorage
+const CACHE_KEYS = {
+  FOLDER_ID: 'onedrive_folder_id',
+  PROFILE_FILE_ID: 'onedrive_profile_file_id',
+  SYSTEM_PROMPTS_FILE_ID: 'onedrive_system_prompts_file_id',
+  CONFIG_FILE_ID: 'onedrive_config_file_id'
+};
+
+/**
+ * Get cached folder ID from localStorage
+ * @returns {string|null} Cached folder ID or null
+ */
+function getCachedFolderId() {
+  return localStorage.getItem(CACHE_KEYS.FOLDER_ID);
+}
+
+/**
+ * Cache folder ID in localStorage
+ * @param {string} folderId - The folder ID to cache
+ */
+function setCachedFolderId(folderId) {
+  localStorage.setItem(CACHE_KEYS.FOLDER_ID, folderId);
+}
+
+/**
+ * Get cached file ID from localStorage
+ * @param {string} cacheKey - The cache key for the file
+ * @returns {string|null} Cached file ID or null
+ */
+function getCachedFileId(cacheKey) {
+  return localStorage.getItem(cacheKey);
+}
+
+/**
+ * Cache file ID in localStorage
+ * @param {string} cacheKey - The cache key for the file
+ * @param {string|null} fileId - The file ID to cache (null to clear)
+ */
+function setCachedFileId(cacheKey, fileId) {
+  if (fileId) {
+    localStorage.setItem(cacheKey, fileId);
+  } else {
+    localStorage.removeItem(cacheKey);
+  }
+}
+
+/**
+ * Clear all OneDrive cache
+ */
+function clearOneDriveCache() {
+  Object.values(CACHE_KEYS).forEach(key => {
+    localStorage.removeItem(key);
+  });
+}
 
 /**
  * Get OneDrive access token from MSAL
@@ -98,11 +156,45 @@ export async function requestOneDriveConsent() {
 }
 
 /**
+ * Validate cached folder ID by checking if it still exists
+ * @param {string} accessToken - OneDrive access token
+ * @param {string} folderId - The folder ID to validate
+ * @returns {Promise<boolean>} True if folder exists, false otherwise
+ */
+async function validateFolderId(accessToken, folderId) {
+  try {
+    const checkUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}`;
+    const response = await fetch(checkUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Get or create the .chatsphere folder in OneDrive
+ * Uses cached folder ID if available and valid
  * @param {string} accessToken - OneDrive access token
  * @returns {Promise<string>} Folder ID
  */
 async function getOrCreateChatSphereFolder(accessToken) {
+  // Check cache first
+  const cachedFolderId = getCachedFolderId();
+  if (cachedFolderId) {
+    // Validate cached ID
+    const isValid = await validateFolderId(accessToken, cachedFolderId);
+    if (isValid) {
+      return cachedFolderId;
+    }
+    // Cache is invalid, clear it
+    setCachedFolderId(null);
+  }
+  
+  // Cache miss or invalid, fetch from OneDrive
   // List children in root and filter for the folder
   const listUrl = `${GRAPH_API_BASE}/me/drive/root/children`;
   
@@ -124,7 +216,9 @@ async function getOrCreateChatSphereFolder(accessToken) {
   if (data.value && data.value.length > 0) {
     const folder = data.value.find(item => item.name === FOLDER_NAME && item.folder);
     if (folder) {
-      return folder.id; // Return the folder ID
+      // Cache the folder ID
+      setCachedFolderId(folder.id);
+      return folder.id;
     }
   }
   
@@ -149,16 +243,52 @@ async function getOrCreateChatSphereFolder(accessToken) {
   }
 
   const folderData = await createResponse.json();
+  // Cache the newly created folder ID
+  setCachedFolderId(folderData.id);
   return folderData.id;
 }
 
 /**
+ * Validate cached file ID by checking if it still exists
+ * @param {string} accessToken - OneDrive access token
+ * @param {string} fileId - The file ID to validate
+ * @returns {Promise<boolean>} True if file exists, false otherwise
+ */
+async function validateFileId(accessToken, fileId) {
+  try {
+    const checkUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}`;
+    const response = await fetch(checkUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Get the profile file path in OneDrive
+ * Uses cached file ID if available and valid
  * @param {string} accessToken - OneDrive access token
  * @param {string} folderId - The .chatsphere folder ID
  * @returns {Promise<string|null>} File ID or null if file doesn't exist
  */
 async function getProfileFilePath(accessToken, folderId) {
+  // Check cache first
+  const cachedFileId = getCachedFileId(CACHE_KEYS.PROFILE_FILE_ID);
+  if (cachedFileId) {
+    // Validate cached ID
+    const isValid = await validateFileId(accessToken, cachedFileId);
+    if (isValid) {
+      return cachedFileId;
+    }
+    // Cache is invalid, clear it
+    setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, null);
+  }
+  
+  // Cache miss or invalid, fetch from OneDrive
   // Try to find the file in the .chatsphere folder
   const searchUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}/children?$filter=name eq '${PROFILE_FILENAME}'`;
   
@@ -175,10 +305,15 @@ async function getProfileFilePath(accessToken, folderId) {
 
   const data = await response.json();
   if (data.value && data.value.length > 0) {
-    return data.value[0].id; // Return the file ID
+    const fileId = data.value[0].id;
+    // Cache the file ID
+    setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, fileId);
+    return fileId;
   }
   
-  return null; // File doesn't exist yet
+  // File doesn't exist, clear cache
+  setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, null);
+  return null;
 }
 
 /**
@@ -253,6 +388,7 @@ async function uploadProfileToOneDrive(profileData) {
     if (!response.ok) {
       throw new Error(`Failed to update profile: ${response.statusText}`);
     }
+    // File ID remains the same, cache is already set
   } else {
     // Create new file in the .chatsphere folder
     const createUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}:/${PROFILE_FILENAME}:/content`;
@@ -267,6 +403,12 @@ async function uploadProfileToOneDrive(profileData) {
 
     if (!response.ok) {
       throw new Error(`Failed to create profile: ${response.statusText}`);
+    }
+    
+    // Get the file ID from the response and cache it
+    const fileData = await response.json();
+    if (fileData.id) {
+      setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, fileData.id);
     }
   }
 }
@@ -600,8 +742,452 @@ export async function isSyncConfigured() {
   return token !== null;
 }
 
+/**
+ * Get file path for systemPrompts.json in OneDrive
+ * Uses cached file ID if available and valid
+ * @param {string} accessToken - OneDrive access token
+ * @param {string} folderId - The .chatsphere folder ID
+ * @returns {Promise<string|null>} File ID if exists, null otherwise
+ */
+async function getSystemPromptsFilePath(accessToken, folderId) {
+  // Check cache first
+  const cachedFileId = getCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID);
+  if (cachedFileId) {
+    // Validate cached ID
+    const isValid = await validateFileId(accessToken, cachedFileId);
+    if (isValid) {
+      return cachedFileId;
+    }
+    // Cache is invalid, clear it
+    setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, null);
+  }
+  
+  // Cache miss or invalid, fetch from OneDrive
+  const childrenUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}/children`;
+  const response = await fetch(childrenUrl, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to list folder contents: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const file = data.value.find(item => item.name === SYSTEM_PROMPTS_FILENAME);
+  
+  if (file) {
+    // Cache the file ID
+    setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, file.id);
+    return file.id;
+  }
+  
+  // File doesn't exist, clear cache
+  setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, null);
+  return null;
+}
+
+/**
+ * Fetch remote system prompts from OneDrive
+ * @returns {Promise<Object|null>} The remote system prompts data or null if file doesn't exist
+ */
+async function fetchRemoteSystemPrompts() {
+  const accessToken = await getOneDriveAccessToken();
+  if (!accessToken) {
+    throw new Error('OneDrive access token not available. Please grant OneDrive permissions.');
+  }
+
+  // Get or create the .chatsphere folder
+  const folderId = await getOrCreateChatSphereFolder(accessToken);
+  
+  const fileId = await getSystemPromptsFilePath(accessToken, folderId);
+  if (!fileId) {
+    return null; // File doesn't exist yet
+  }
+
+  // Download the file content
+  const downloadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
+  const response = await fetch(downloadUrl, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(`Failed to fetch system prompts: ${response.statusText}`);
+  }
+
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('Failed to parse system prompts file');
+  }
+}
+
+/**
+ * Upload system prompts to OneDrive
+ * @param {Object} systemPromptsData - The system prompts data to upload
+ */
+async function uploadSystemPromptsToOneDrive(systemPromptsData) {
+  const accessToken = await getOneDriveAccessToken();
+  if (!accessToken) {
+    throw new Error('OneDrive access token not available. Please grant OneDrive permissions.');
+  }
+
+  // Get or create the .chatsphere folder
+  const folderId = await getOrCreateChatSphereFolder(accessToken);
+  
+  const fileContent = JSON.stringify(systemPromptsData, null, 2);
+  const fileId = await getSystemPromptsFilePath(accessToken, folderId);
+
+  if (fileId) {
+    // Update existing file
+    const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: fileContent
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update system prompts: ${response.statusText}`);
+    }
+    // File ID remains the same, cache is already set
+  } else {
+    // Create new file in the .chatsphere folder
+    const createUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}:/${SYSTEM_PROMPTS_FILENAME}:/content`;
+    const response = await fetch(createUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: fileContent
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create system prompts file: ${response.statusText}`);
+    }
+    
+    // Get the file ID from the response and cache it
+    const fileData = await response.json();
+    if (fileData.id) {
+      setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, fileData.id);
+    }
+  }
+}
+
+/**
+ * Merge two system prompt values based on lastUpdate timestamp
+ * @param {Object} localPrompt - Local system prompt object
+ * @param {Object} remotePrompt - Remote system prompt object
+ * @returns {Object} The prompt with the later timestamp
+ */
+function mergeSystemPromptValues(localPrompt, remotePrompt) {
+  const localLastUpdate = localPrompt.lastUpdate || 0;
+  const remoteLastUpdate = remotePrompt.lastUpdate || 0;
+  
+  // Use the one with the later timestamp
+  return localLastUpdate >= remoteLastUpdate ? localPrompt : remotePrompt;
+}
+
+/**
+ * Sync system prompts with OneDrive
+ * Merges local and remote system prompts based on lastUpdate timestamps
+ * @returns {Promise<Object>} Result object with success status and stats
+ */
+export async function syncSystemPrompts() {
+  try {
+    // Get local system prompts
+    const localPrompts = getSystemPrompts();
+    
+    // Fetch remote system prompts from OneDrive
+    const remotePrompts = await fetchRemoteSystemPrompts();
+    
+    // If remote doesn't exist, create it with local prompts
+    if (!remotePrompts || Object.keys(remotePrompts).length === 0) {
+      await uploadSystemPromptsToOneDrive(localPrompts);
+      return {
+        success: true,
+        message: 'System prompts created and synced successfully',
+        stats: {
+          localCount: Object.keys(localPrompts).length,
+          remoteCount: 0,
+          mergedCount: Object.keys(localPrompts).length
+        }
+      };
+    }
+
+    // Merge strategy based on timestamps:
+    // 1. Start with all remote prompts
+    // 2. For each local prompt:
+    //    - If not in remote, add it
+    //    - If in remote, use the one with later lastUpdate timestamp
+    const mergedPrompts = { ...remotePrompts };
+    
+    // Merge local prompts
+    for (const [key, localPrompt] of Object.entries(localPrompts)) {
+      if (mergedPrompts[key]) {
+        // Both exist, merge based on timestamp
+        mergedPrompts[key] = mergeSystemPromptValues(localPrompt, mergedPrompts[key]);
+      } else {
+        // Only in local, add it
+        mergedPrompts[key] = localPrompt;
+      }
+    }
+    
+    // Check if there are any differences between merged and remote
+    const hasChanges = JSON.stringify(mergedPrompts) !== JSON.stringify(remotePrompts);
+    
+    // Update local storage with merged prompts
+    setSystemPrompts(mergedPrompts);
+    
+    // Only update remote if there are changes
+    if (hasChanges) {
+      await uploadSystemPromptsToOneDrive(mergedPrompts);
+    }
+    
+    return {
+      success: true,
+      message: hasChanges ? 'System prompts synced successfully' : 'System prompts are already in sync',
+      stats: {
+        localCount: Object.keys(localPrompts).length,
+        remoteCount: Object.keys(remotePrompts).length,
+        mergedCount: Object.keys(mergedPrompts).length,
+        hasChanges: hasChanges
+      }
+    };
+  } catch (error) {
+    console.error('Error syncing system prompts:', error);
+    return {
+      success: false,
+      message: error.message || 'Failed to sync system prompts',
+      error: error
+    };
+  }
+}
+
+/**
+ * Get file path for config.json in OneDrive
+ * Uses cached file ID if available and valid
+ * @param {string} accessToken - OneDrive access token
+ * @param {string} folderId - The .chatsphere folder ID
+ * @returns {Promise<string|null>} File ID if exists, null otherwise
+ */
+async function getConfigFilePath(accessToken, folderId) {
+  // Check cache first
+  const cachedFileId = getCachedFileId(CACHE_KEYS.CONFIG_FILE_ID);
+  if (cachedFileId) {
+    // Validate cached ID
+    const isValid = await validateFileId(accessToken, cachedFileId);
+    if (isValid) {
+      return cachedFileId;
+    }
+    // Cache is invalid, clear it
+    setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, null);
+  }
+  
+  // Cache miss or invalid, fetch from OneDrive
+  const childrenUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}/children`;
+  const response = await fetch(childrenUrl, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to list folder contents: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const file = data.value.find(item => item.name === CONFIG_FILENAME);
+  
+  if (file) {
+    // Cache the file ID
+    setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, file.id);
+    return file.id;
+  }
+  
+  // File doesn't exist, clear cache
+  setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, null);
+  return null;
+}
+
+/**
+ * Fetch remote config from OneDrive
+ * @returns {Promise<Object|null>} The remote config data or null if file doesn't exist
+ */
+async function fetchRemoteConfig() {
+  const accessToken = await getOneDriveAccessToken();
+  if (!accessToken) {
+    throw new Error('OneDrive access token not available. Please grant OneDrive permissions.');
+  }
+
+  // Get or create the .chatsphere folder
+  const folderId = await getOrCreateChatSphereFolder(accessToken);
+  
+  const fileId = await getConfigFilePath(accessToken, folderId);
+  if (!fileId) {
+    return null; // File doesn't exist yet
+  }
+
+  // Download the file content
+  const downloadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
+  const response = await fetch(downloadUrl, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+    throw new Error(`Failed to fetch config: ${response.statusText}`);
+  }
+
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('Failed to parse config file');
+  }
+}
+
+/**
+ * Upload config to OneDrive
+ * @param {Object} configData - The config data to upload
+ */
+async function uploadConfigToOneDrive(configData) {
+  const accessToken = await getOneDriveAccessToken();
+  if (!accessToken) {
+    throw new Error('OneDrive access token not available. Please grant OneDrive permissions.');
+  }
+
+  // Get or create the .chatsphere folder
+  const folderId = await getOrCreateChatSphereFolder(accessToken);
+  
+  const fileContent = JSON.stringify(configData, null, 2);
+  const fileId = await getConfigFilePath(accessToken, folderId);
+
+  if (fileId) {
+    // Update existing file
+    const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: fileContent
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update config: ${response.statusText}`);
+    }
+    // File ID remains the same, cache is already set
+  } else {
+    // Create new file in the .chatsphere folder
+    const createUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}:/${CONFIG_FILENAME}:/content`;
+    const response = await fetch(createUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: fileContent
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create config file: ${response.statusText}`);
+    }
+    
+    // Get the file ID from the response and cache it
+    const fileData = await response.json();
+    if (fileData.id) {
+      setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, fileData.id);
+    }
+  }
+}
+
+/**
+ * Sync config with OneDrive
+ * Merges local and remote config, preferring local changes when they differ
+ * @returns {Promise<Object>} Result object with success status
+ */
+export async function syncConfig() {
+  try {
+    // Get local config
+    const localConfig = {
+      subscriptionKey: getSubscriptionKey(),
+      userAvatar: getUserAvatar(),
+      model: getModel()
+    };
+    
+    // Fetch remote config from OneDrive
+    const remoteConfig = await fetchRemoteConfig();
+    
+    // If remote doesn't exist, create it with local config
+    if (!remoteConfig) {
+      await uploadConfigToOneDrive(localConfig);
+      return {
+        success: true,
+        message: 'Config created and synced successfully'
+      };
+    }
+
+    // Check if local config differs from remote
+    const hasLocalChanges = JSON.stringify(localConfig) !== JSON.stringify(remoteConfig);
+    
+    // If local has changes, upload local (local changes win)
+    // Otherwise, update local with remote values (in case remote was updated elsewhere)
+    if (hasLocalChanges) {
+      // Local has changes, upload local to OneDrive
+      await uploadConfigToOneDrive(localConfig);
+      return {
+        success: true,
+        message: 'Config synced successfully (local changes uploaded)'
+      };
+    } else {
+      // No local changes, ensure local storage matches remote (in case of partial updates)
+      if (remoteConfig.subscriptionKey !== undefined) {
+        localStorage.setItem('subscriptionKey', remoteConfig.subscriptionKey || '');
+      }
+      if (remoteConfig.userAvatar !== undefined) {
+        localStorage.setItem('userAvatar', remoteConfig.userAvatar || '');
+      }
+      if (remoteConfig.model !== undefined) {
+        localStorage.setItem('model', remoteConfig.model || 'gemini-3-flash-preview');
+      }
+      
+      return {
+        success: true,
+        message: 'Config is already in sync'
+      };
+    }
+  } catch (error) {
+    console.error('Error syncing config:', error);
+    return {
+      success: false,
+      message: error.message || 'Failed to sync config',
+      error: error
+    };
+  }
+}
+
 export default {
   syncMemories,
+  syncSystemPrompts,
+  syncConfig,
   isSyncConfigured,
   requestOneDriveConsent,
+  clearOneDriveCache,
 };

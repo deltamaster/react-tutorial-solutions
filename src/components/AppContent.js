@@ -28,6 +28,7 @@ import { useLocalStorage } from "../utils/storageUtils";
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { getSubscriptionKey, setSubscriptionKey, getSystemPrompt, setSystemPrompt, getUserAvatar, setUserAvatar, getModel, setModel } from "../utils/settingsService";
 import { normalizeBeginMarker } from "../utils/responseUtils";
+import profileSyncService from "../utils/profileSyncService";
 
 const MAX_CONCURRENT_ROLE_REQUESTS = 3;
 
@@ -74,7 +75,7 @@ function AppContent() {
     setLocalModel(model); // 更新本地状态
   };
 
-  // Retrieve API key from Chrome storage
+  // Retrieve API key from Chrome storage and sync config on load
   useEffect(() => {
     // Check if running in Chrome extension environment
     if (typeof chrome !== "undefined" && chrome.storage) {
@@ -85,6 +86,31 @@ function AppContent() {
         }
       });
     }
+    
+    // Sync config from OneDrive on page load (immediate, not debounced)
+    const syncConfigOnLoad = async () => {
+      try {
+        const configured = await profileSyncService.isSyncConfigured();
+        if (configured) {
+          const result = await profileSyncService.syncConfig();
+          if (result.success) {
+            console.log('Config synced on load:', result.message);
+            // Update local state if config was synced from remote
+            if (result.message.includes('already in sync') || result.message.includes('synced successfully')) {
+              setLocalSubscriptionKey(getSubscriptionKey());
+              setLocalUserAvatar(getUserAvatar());
+              setLocalModel(getModel());
+            }
+          } else {
+            console.error('Config sync failed on load:', result.message);
+          }
+        }
+      } catch (err) {
+        console.error('Error syncing config on load:', err);
+      }
+    };
+    
+    syncConfigOnLoad();
   }, []);
 
   // Update Chrome storage when subscriptionKey changes

@@ -3,6 +3,37 @@
  * Centralized management for user settings including subscription key, user avatar, system prompt, and thinking toggle.
  */
 
+// Debounce sync to prevent too many requests
+let syncConfigTimeout = null;
+const SYNC_DEBOUNCE_MS = 2000; // 2 seconds
+
+/**
+ * Trigger config sync with debouncing
+ * Only syncs if there are local changes
+ */
+export const triggerConfigSync = () => {
+  // Clear existing timeout
+  if (syncConfigTimeout) {
+    clearTimeout(syncConfigTimeout);
+  }
+  
+  // Set new timeout
+  syncConfigTimeout = setTimeout(async () => {
+    try {
+      const profileSyncService = await import('./profileSyncService');
+      const configured = await profileSyncService.default.isSyncConfigured();
+      if (configured) {
+        const result = await profileSyncService.default.syncConfig();
+        if (!result.success) {
+          console.error('Config sync failed:', result.message);
+        }
+      }
+    } catch (err) {
+      console.error('Error syncing config:', err);
+    }
+  }, SYNC_DEBOUNCE_MS);
+};
+
 const STORAGE_KEYS = {
   SUBSCRIPTION_KEY: 'subscriptionKey',
   USER_AVATAR: 'userAvatar',
@@ -28,6 +59,7 @@ export const getSubscriptionKey = () => {
  */
 export const setSubscriptionKey = (key) => {
   localStorage.setItem(STORAGE_KEYS.SUBSCRIPTION_KEY, key);
+  triggerConfigSync();
 };
 
 /**
@@ -44,6 +76,7 @@ export const getUserAvatar = () => {
  */
 export const setUserAvatar = (avatarUrl) => {
   localStorage.setItem(STORAGE_KEYS.USER_AVATAR, avatarUrl);
+  triggerConfigSync();
 };
 
 /**
@@ -172,6 +205,21 @@ export const getSystemPrompts = () => {
  */
 export const setSystemPrompts = (prompts) => {
   localStorage.setItem(STORAGE_KEYS.SYSTEM_PROMPTS, JSON.stringify(prompts));
+  
+  // Trigger sync to OneDrive if available (async, don't wait)
+  import('./profileSyncService').then(profileSyncService => {
+    profileSyncService.default.isSyncConfigured().then(configured => {
+      if (configured) {
+        profileSyncService.default.syncSystemPrompts().catch(err => {
+          console.error('Error auto-syncing system prompts:', err);
+        });
+      }
+    }).catch(() => {
+      // Ignore errors checking sync configuration
+    });
+  }).catch(() => {
+    // Ignore errors importing profileSyncService
+  });
 };
 
 /**
@@ -348,6 +396,7 @@ export const getModel = () => {
  */
 export const setModel = (model) => {
   localStorage.setItem(STORAGE_KEYS.MODEL, model);
+  triggerConfigSync();
 };
 
 /**
