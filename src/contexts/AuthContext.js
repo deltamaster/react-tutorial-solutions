@@ -32,13 +32,47 @@ export const AuthProvider = ({ children }) => {
     msalInstance
       .initialize()
       .then(() => {
-        // Check if user is already logged in
+        // Check if user is already logged in (cached account)
         const accounts = msalInstance.getAllAccounts();
         if (accounts.length > 0) {
-          setUser(accounts[0]);
-          setIsAuthenticated(true);
+          const account = accounts[0];
+          // Try to acquire token silently to verify the account is still valid
+          msalInstance
+            .acquireTokenSilent({
+              ...loginRequest,
+              account: account,
+            })
+            .then((response) => {
+              // Silent token acquisition successful, user is authenticated
+              setUser(response.account);
+              setIsAuthenticated(true);
+              setIsLoading(false);
+            })
+            .catch((error) => {
+              // Silent token acquisition failed, account may be invalid
+              // Give up and wait for user to manually login
+              console.log("Silent login not possible:", error.errorCode || error.message);
+              setIsLoading(false);
+            });
+        } else {
+          // No cached account found, try silent SSO login
+          msalInstance
+            .ssoSilent({
+              ...loginRequest,
+              loginHint: undefined, // Try without login hint first
+            })
+            .then((response) => {
+              // Silent SSO login successful
+              setUser(response.account);
+              setIsAuthenticated(true);
+              setIsLoading(false);
+            })
+            .catch((error) => {
+              // Silent SSO login failed, give up and wait for manual login
+              console.log("Silent SSO login not possible:", error.errorCode || error.message);
+              setIsLoading(false);
+            });
         }
-        setIsLoading(false);
       })
       .catch((error) => {
         console.error("MSAL initialization error:", error);
