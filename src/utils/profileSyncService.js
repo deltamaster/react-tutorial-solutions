@@ -4,7 +4,7 @@
  */
 
 import memoryService from './memoryService';
-import { getSystemPrompts, setSystemPrompts, getSubscriptionKey, getUserAvatar, getModel, setSyncingFromRemote, setSyncingSystemPrompts } from './settingsService';
+import { getSystemPrompts, getAllSystemPromptsWithDeleted, setSystemPrompts, getSubscriptionKey, getUserAvatar, getModel, setSyncingFromRemote, setSyncingSystemPrompts } from './settingsService';
 import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalConfig';
 
 const FOLDER_NAME = '.chatsphere';
@@ -895,6 +895,7 @@ async function uploadSystemPromptsToOneDrive(systemPromptsData) {
 
 /**
  * Merge two system prompt values based on lastUpdate timestamp
+ * Respects deleted flag: if local is deleted with later timestamp, keep it deleted
  * @param {Object} localPrompt - Local system prompt object
  * @param {Object} remotePrompt - Remote system prompt object
  * @returns {Object} The prompt with the later timestamp
@@ -902,6 +903,16 @@ async function uploadSystemPromptsToOneDrive(systemPromptsData) {
 function mergeSystemPromptValues(localPrompt, remotePrompt) {
   const localLastUpdate = localPrompt.lastUpdate || 0;
   const remoteLastUpdate = remotePrompt.lastUpdate || 0;
+  
+  // If local is deleted and has later timestamp, keep it deleted (don't restore from remote)
+  if (localPrompt.deleted && localLastUpdate >= remoteLastUpdate) {
+    return localPrompt;
+  }
+  
+  // If remote is deleted and has later timestamp, use remote (deletion wins)
+  if (remotePrompt.deleted && remoteLastUpdate > localLastUpdate) {
+    return remotePrompt;
+  }
   
   // Use the one with the later timestamp
   return localLastUpdate >= remoteLastUpdate ? localPrompt : remotePrompt;
@@ -917,41 +928,51 @@ export async function syncSystemPrompts() {
     // Set flag to prevent sync loops
     setSyncingSystemPrompts(true);
     
-    // Get local system prompts
-    const localPrompts = getSystemPrompts();
+    // Get local system prompts including deleted ones (for sync)
+    const localPrompts = getAllSystemPromptsWithDeleted();
     
     // Fetch remote system prompts from OneDrive
     const remotePrompts = await fetchRemoteSystemPrompts();
     
-    // If remote doesn't exist, create it with local prompts
+    // If remote doesn't exist, create it with local prompts (including deleted)
     if (!remotePrompts || Object.keys(remotePrompts).length === 0) {
       await uploadSystemPromptsToOneDrive(localPrompts);
       setSyncingSystemPrompts(false);
+      const nonDeletedLocal = Object.keys(localPrompts).filter(key => !localPrompts[key].deleted).length;
       return {
         success: true,
         message: 'System prompts created and synced successfully',
         stats: {
-          localCount: Object.keys(localPrompts).length,
+          localCount: nonDeletedLocal,
           remoteCount: 0,
-          mergedCount: Object.keys(localPrompts).length
+          mergedCount: nonDeletedLocal,
+          deletedCount: Object.keys(localPrompts).length - nonDeletedLocal
         }
       };
     }
 
+    // Ensure remote prompts have deleted field (default to false for backward compatibility)
+    Object.keys(remotePrompts).forEach(key => {
+      if (remotePrompts[key].deleted === undefined) {
+        remotePrompts[key].deleted = false;
+      }
+    });
+    
     // Merge strategy based on timestamps:
     // 1. Start with all remote prompts
     // 2. For each local prompt:
-    //    - If not in remote, add it
+    //    - If not in remote, add it (including deleted ones)
     //    - If in remote, use the one with later lastUpdate timestamp
+    //    - If local is deleted with later timestamp, keep it deleted (don't restore from remote)
     const mergedPrompts = { ...remotePrompts };
     
-    // Merge local prompts
+    // Merge local prompts (including deleted ones)
     for (const [key, localPrompt] of Object.entries(localPrompts)) {
       if (mergedPrompts[key]) {
-        // Both exist, merge based on timestamp
+        // Both exist, merge based on timestamp (respects deleted flag)
         mergedPrompts[key] = mergeSystemPromptValues(localPrompt, mergedPrompts[key]);
       } else {
-        // Only in local, add it
+        // Only in local, add it (including deleted ones for sync)
         mergedPrompts[key] = localPrompt;
       }
     }
@@ -960,6 +981,7 @@ export async function syncSystemPrompts() {
     const hasChanges = JSON.stringify(mergedPrompts) !== JSON.stringify(remotePrompts);
     
     // Update local storage with merged prompts (skip sync to prevent loop)
+    // Include deleted prompts in storage for sync purposes
     setSystemPrompts(mergedPrompts, true);
     
     // Only update remote if there are changes
@@ -968,13 +990,19 @@ export async function syncSystemPrompts() {
     }
     
     setSyncingSystemPrompts(false);
+    const nonDeletedMerged = Object.keys(mergedPrompts).filter(key => !mergedPrompts[key].deleted).length;
+    const nonDeletedLocal = Object.keys(localPrompts).filter(key => !localPrompts[key].deleted).length;
+    const nonDeletedRemote = Object.keys(remotePrompts).filter(key => !remotePrompts[key]?.deleted).length;
+    const deletedCount = Object.keys(mergedPrompts).length - nonDeletedMerged;
+    
     return {
       success: true,
       message: hasChanges ? 'System prompts synced successfully' : 'System prompts are already in sync',
       stats: {
-        localCount: Object.keys(localPrompts).length,
-        remoteCount: Object.keys(remotePrompts).length,
-        mergedCount: Object.keys(mergedPrompts).length,
+        localCount: nonDeletedLocal,
+        remoteCount: nonDeletedRemote,
+        mergedCount: nonDeletedMerged,
+        deletedCount: deletedCount,
         hasChanges: hasChanges
       }
     };

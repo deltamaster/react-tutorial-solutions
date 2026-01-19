@@ -109,13 +109,24 @@ export const setUserAvatar = (avatarUrl) => {
 };
 
 /**
- * Ensure a system prompt has lastUpdate field, add if missing
+ * Ensure a system prompt has lastUpdate and deleted fields, add if missing
  * @param {Object} prompt - The system prompt object
- * @returns {Object} System prompt with lastUpdate field
+ * @returns {Object} System prompt with lastUpdate and deleted fields
  */
 const ensureLastUpdate = (prompt) => {
+  if (!prompt || typeof prompt !== 'object') {
+    return {
+      title: 'Untitled',
+      prompt: '',
+      lastUpdate: Date.now(),
+      deleted: false
+    };
+  }
   if (!prompt.lastUpdate) {
     prompt.lastUpdate = Date.now();
+  }
+  if (prompt.deleted === undefined) {
+    prompt.deleted = false;
   }
   return prompt;
 };
@@ -143,7 +154,8 @@ const migrateSystemPrompt = () => {
           [uuid]: {
             title: 'Untitled',
             prompt: oldPrompt.trim(), // Use the plain string value directly
-            lastUpdate: Date.now()
+            lastUpdate: Date.now(),
+            deleted: false
           }
         };
         
@@ -163,8 +175,8 @@ const migrateSystemPrompt = () => {
 };
 
 /**
- * Get all system prompts dictionary from localStorage
- * @returns {Object} Dictionary of system prompts: {uuidkey: {title: string, prompt: string, lastUpdate: number}}
+ * Get all system prompts dictionary from localStorage (excluding deleted ones)
+ * @returns {Object} Dictionary of system prompts: {uuidkey: {title: string, prompt: string, lastUpdate: number, deleted: boolean}}
  */
 export const getSystemPrompts = () => {
   try {
@@ -177,13 +189,21 @@ export const getSystemPrompts = () => {
       if (migrated) {
         try {
           const prompts = JSON.parse(migrated);
-          // Ensure all prompts have lastUpdate field
+          // Ensure all prompts have lastUpdate and deleted fields
           Object.keys(prompts).forEach(key => {
             prompts[key] = ensureLastUpdate(prompts[key]);
           });
           // Save back if any were updated
-          setSystemPrompts(prompts);
-          return prompts;
+          setSystemPrompts(prompts, true); // Skip sync - migration shouldn't trigger sync
+          
+          // Filter out deleted prompts for normal use
+          const nonDeletedPrompts = {};
+          Object.keys(prompts).forEach(key => {
+            if (!prompts[key].deleted) {
+              nonDeletedPrompts[key] = prompts[key];
+            }
+          });
+          return nonDeletedPrompts;
         } catch (parseError) {
           console.error('Error parsing migrated system prompts:', parseError);
           return {};
@@ -195,18 +215,28 @@ export const getSystemPrompts = () => {
     try {
       const prompts = JSON.parse(stored);
       let needsUpdate = false;
-      // Ensure all prompts have lastUpdate field
+      // Ensure all prompts have lastUpdate and deleted fields
       Object.keys(prompts).forEach(key => {
-        if (!prompts[key].lastUpdate) {
+        const needsUpdateField = !prompts[key].lastUpdate || prompts[key].deleted === undefined;
+        if (needsUpdateField) {
           prompts[key] = ensureLastUpdate(prompts[key]);
           needsUpdate = true;
         }
       });
+      
       // Save back if any were updated (skip sync to avoid double sync)
       if (needsUpdate) {
         setSystemPrompts(prompts, true); // Skip sync - this is just ensuring metadata
       }
-      return prompts;
+      
+      // Filter out deleted prompts for normal use
+      const nonDeletedPrompts = {};
+      Object.keys(prompts).forEach(key => {
+        if (!prompts[key].deleted) {
+          nonDeletedPrompts[key] = prompts[key];
+        }
+      });
+      return nonDeletedPrompts;
     } catch (parseError) {
       console.error('Error parsing system prompts from localStorage:', parseError);
       // If parsing fails, try to migrate from old format
@@ -218,7 +248,15 @@ export const getSystemPrompts = () => {
           prompts[key] = ensureLastUpdate(prompts[key]);
         });
         setSystemPrompts(prompts, true); // Skip sync - migration shouldn't trigger sync
-        return prompts;
+        
+        // Filter out deleted prompts for normal use
+        const nonDeletedPrompts = {};
+        Object.keys(prompts).forEach(key => {
+          if (!prompts[key].deleted) {
+            nonDeletedPrompts[key] = prompts[key];
+          }
+        });
+        return nonDeletedPrompts;
       }
       return {};
     }
@@ -323,18 +361,19 @@ export const setSystemPrompt = (prompt, skipSync = false) => {
   if (!selectedKey) {
     // If no selected key, create a new system prompt
     const uuid = crypto.randomUUID();
-    const prompts = getSystemPrompts();
+    const prompts = getAllSystemPromptsWithDeleted();
     prompts[uuid] = {
       title: 'Untitled',
       prompt: prompt,
-      lastUpdate: Date.now()
+      lastUpdate: Date.now(),
+      deleted: false
     };
     setSystemPrompts(prompts, skipSync);
     setSelectedSystemPromptKey(uuid);
   } else {
     // Update the selected system prompt only if it actually changed
-    const prompts = getSystemPrompts();
-    if (prompts[selectedKey]) {
+    const prompts = getAllSystemPromptsWithDeleted();
+    if (prompts[selectedKey] && !prompts[selectedKey].deleted) {
       // Check if prompt actually changed before updating
       if (prompts[selectedKey].prompt !== prompt) {
         prompts[selectedKey].prompt = prompt;
@@ -362,11 +401,12 @@ export const setSystemPrompt = (prompt, skipSync = false) => {
  */
 export const addSystemPrompt = (title = 'Untitled', prompt = '') => {
   const uuid = crypto.randomUUID();
-  const prompts = getSystemPrompts();
+  const prompts = getAllSystemPromptsWithDeleted();
   prompts[uuid] = {
     title: title || 'Untitled',
     prompt: prompt,
-    lastUpdate: Date.now()
+    lastUpdate: Date.now(),
+    deleted: false
   };
   setSystemPrompts(prompts);
   return uuid;
@@ -398,19 +438,48 @@ export const updateSystemPrompt = (uuidKey, { title, prompt } = {}) => {
 };
 
 /**
- * Delete a system prompt
+ * Get all system prompts including deleted ones (for sync purposes)
+ * @returns {Object} Dictionary of all system prompts including deleted: {uuidkey: {title: string, prompt: string, lastUpdate: number, deleted: boolean}}
+ */
+export const getAllSystemPromptsWithDeleted = () => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.SYSTEM_PROMPTS);
+    if (!stored) {
+      return {};
+    }
+    try {
+      const prompts = JSON.parse(stored);
+      // Ensure all prompts have lastUpdate and deleted fields
+      Object.keys(prompts).forEach(key => {
+        prompts[key] = ensureLastUpdate(prompts[key]);
+      });
+      return prompts; // Return all prompts including deleted
+    } catch (parseError) {
+      console.error('Error parsing system prompts from localStorage:', parseError);
+      return {};
+    }
+  } catch (error) {
+    console.error('Error getting all system prompts:', error);
+    return {};
+  }
+};
+
+/**
+ * Delete a system prompt (marks as deleted instead of actually deleting)
  * @param {string} uuidKey - The UUID key of the system prompt to delete
  */
 export const deleteSystemPrompt = (uuidKey) => {
-  const prompts = getSystemPrompts();
+  const prompts = getAllSystemPromptsWithDeleted();
   if (prompts[uuidKey]) {
-    delete prompts[uuidKey];
+    // Mark as deleted instead of actually deleting
+    prompts[uuidKey].deleted = true;
+    prompts[uuidKey].lastUpdate = Date.now();
     setSystemPrompts(prompts);
     
-    // If the deleted prompt was selected, clear selection or select first available
+    // If the deleted prompt was selected, clear selection or select first available non-deleted prompt
     const selectedKey = getSelectedSystemPromptKey();
     if (selectedKey === uuidKey) {
-      const remainingKeys = Object.keys(prompts);
+      const remainingKeys = Object.keys(prompts).filter(key => !prompts[key].deleted);
       if (remainingKeys.length > 0) {
         setSelectedSystemPromptKey(remainingKeys[0]);
       } else {
