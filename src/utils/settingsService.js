@@ -5,11 +5,22 @@
 
 // Debounce sync to prevent too many requests
 let syncConfigTimeout = null;
+let syncSystemPromptsTimeout = null;
 const SYNC_DEBOUNCE_MS = 2000; // 2 seconds
+let isSyncingFromRemote = false; // Flag to prevent sync loops
+let isSyncingSystemPrompts = false; // Flag to prevent system prompts sync loops
+
+/**
+ * Set flag to indicate we're syncing from remote (prevents loops)
+ * @param {boolean} syncing - Whether we're currently syncing from remote
+ */
+export const setSyncingFromRemote = (syncing) => {
+  isSyncingFromRemote = syncing;
+};
 
 /**
  * Trigger config sync with debouncing
- * Only syncs if there are local changes
+ * Only syncs if there are local changes (not when syncing from remote)
  */
 export const triggerConfigSync = () => {
   // Clear existing timeout
@@ -19,6 +30,22 @@ export const triggerConfigSync = () => {
   
   // Set new timeout
   syncConfigTimeout = setTimeout(async () => {
+    // Wait for any in-progress sync to complete before starting a new one
+    // Poll every 100ms, max wait 5 seconds
+    let waitCount = 0;
+    const maxWait = 50; // 50 * 100ms = 5 seconds max wait
+    
+    while (isSyncingFromRemote && waitCount < maxWait) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      waitCount++;
+    }
+    
+    // If still syncing after max wait, skip this sync (another one is in progress)
+    if (isSyncingFromRemote) {
+      console.log('Config sync skipped - another sync in progress');
+      return;
+    }
+    
     try {
       const profileSyncService = await import('./profileSyncService');
       const configured = await profileSyncService.default.isSyncConfigured();
@@ -26,6 +53,8 @@ export const triggerConfigSync = () => {
         const result = await profileSyncService.default.syncConfig();
         if (!result.success) {
           console.error('Config sync failed:', result.message);
+        } else {
+          console.log('Config synced successfully:', result.message);
         }
       }
     } catch (err) {
@@ -173,9 +202,9 @@ export const getSystemPrompts = () => {
           needsUpdate = true;
         }
       });
-      // Save back if any were updated
+      // Save back if any were updated (skip sync to avoid double sync)
       if (needsUpdate) {
-        setSystemPrompts(prompts);
+        setSystemPrompts(prompts, true); // Skip sync - this is just ensuring metadata
       }
       return prompts;
     } catch (parseError) {
@@ -188,7 +217,7 @@ export const getSystemPrompts = () => {
         Object.keys(prompts).forEach(key => {
           prompts[key] = ensureLastUpdate(prompts[key]);
         });
-        setSystemPrompts(prompts);
+        setSystemPrompts(prompts, true); // Skip sync - migration shouldn't trigger sync
         return prompts;
       }
       return {};
@@ -202,24 +231,50 @@ export const getSystemPrompts = () => {
 /**
  * Save all system prompts dictionary to localStorage
  * @param {Object} prompts - Dictionary of system prompts
+ * @param {boolean} skipSync - If true, skip triggering sync (used when updating from sync operation)
  */
-export const setSystemPrompts = (prompts) => {
+export const setSystemPrompts = (prompts, skipSync = false) => {
   localStorage.setItem(STORAGE_KEYS.SYSTEM_PROMPTS, JSON.stringify(prompts));
   
-  // Trigger sync to OneDrive if available (async, don't wait)
-  import('./profileSyncService').then(profileSyncService => {
-    profileSyncService.default.isSyncConfigured().then(configured => {
-      if (configured) {
-        profileSyncService.default.syncSystemPrompts().catch(err => {
-          console.error('Error auto-syncing system prompts:', err);
-        });
-      }
+  // Don't trigger sync if we're already syncing or if skipSync is true
+  if (isSyncingSystemPrompts || skipSync) {
+    return;
+  }
+  
+  // Debounce sync to prevent multiple rapid calls
+  if (syncSystemPromptsTimeout) {
+    clearTimeout(syncSystemPromptsTimeout);
+  }
+  
+  syncSystemPromptsTimeout = setTimeout(() => {
+    // Double-check flag before syncing
+    if (isSyncingSystemPrompts) {
+      return;
+    }
+    
+    // Trigger sync to OneDrive if available (async, don't wait)
+    import('./profileSyncService').then(profileSyncService => {
+      profileSyncService.default.isSyncConfigured().then(configured => {
+        if (configured) {
+          profileSyncService.default.syncSystemPrompts().catch(err => {
+            console.error('Error auto-syncing system prompts:', err);
+          });
+        }
+      }).catch(() => {
+        // Ignore errors checking sync configuration
+      });
     }).catch(() => {
-      // Ignore errors checking sync configuration
+      // Ignore errors importing profileSyncService
     });
-  }).catch(() => {
-    // Ignore errors importing profileSyncService
-  });
+  }, SYNC_DEBOUNCE_MS);
+};
+
+/**
+ * Set flag to indicate we're syncing system prompts (prevents loops)
+ * @param {boolean} syncing - Whether we're currently syncing system prompts
+ */
+export const setSyncingSystemPrompts = (syncing) => {
+  isSyncingSystemPrompts = syncing;
 };
 
 /**
@@ -260,8 +315,9 @@ export const getSystemPrompt = () => {
 /**
  * Save the system prompt to localStorage (updates the selected system prompt)
  * @param {string} prompt - The system prompt to save
+ * @param {boolean} skipSync - If true, skip triggering sync (used when loading existing prompt)
  */
-export const setSystemPrompt = (prompt) => {
+export const setSystemPrompt = (prompt, skipSync = false) => {
   migrateSystemPrompt(); // Ensure migration happens
   const selectedKey = getSelectedSystemPromptKey();
   if (!selectedKey) {
@@ -273,15 +329,27 @@ export const setSystemPrompt = (prompt) => {
       prompt: prompt,
       lastUpdate: Date.now()
     };
-    setSystemPrompts(prompts);
+    setSystemPrompts(prompts, skipSync);
     setSelectedSystemPromptKey(uuid);
   } else {
-    // Update the selected system prompt
+    // Update the selected system prompt only if it actually changed
     const prompts = getSystemPrompts();
     if (prompts[selectedKey]) {
-      prompts[selectedKey].prompt = prompt;
-      prompts[selectedKey].lastUpdate = Date.now();
-      setSystemPrompts(prompts);
+      // Check if prompt actually changed before updating
+      if (prompts[selectedKey].prompt !== prompt) {
+        prompts[selectedKey].prompt = prompt;
+        prompts[selectedKey].lastUpdate = Date.now();
+        setSystemPrompts(prompts, skipSync);
+      } else if (!skipSync) {
+        // If prompt didn't change but skipSync is false, still update lastUpdate silently
+        // This handles the case where we want to ensure metadata is up to date
+        // but don't want to trigger sync if nothing changed
+        const currentPrompt = prompts[selectedKey];
+        if (!currentPrompt.lastUpdate) {
+          prompts[selectedKey].lastUpdate = Date.now();
+          setSystemPrompts(prompts, true); // Skip sync since content didn't change
+        }
+      }
     }
   }
 };

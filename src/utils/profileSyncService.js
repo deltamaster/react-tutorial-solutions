@@ -4,7 +4,7 @@
  */
 
 import memoryService from './memoryService';
-import { getSystemPrompts, setSystemPrompts, getSubscriptionKey, getUserAvatar, getModel } from './settingsService';
+import { getSystemPrompts, setSystemPrompts, getSubscriptionKey, getUserAvatar, getModel, setSyncingFromRemote, setSyncingSystemPrompts } from './settingsService';
 import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalConfig';
 
 const FOLDER_NAME = '.chatsphere';
@@ -75,21 +75,26 @@ function clearOneDriveCache() {
  */
 async function getOneDriveAccessToken() {
   if (!isMsalConfigured() || !msalInstance) {
+    console.log('getOneDriveAccessToken: MSAL not configured');
     return null;
   }
   const accounts = msalInstance.getAllAccounts();
   if (accounts.length === 0) {
+    console.log('getOneDriveAccessToken: No accounts found');
     return null;
   }
   const account = accounts[0];
+  console.log('getOneDriveAccessToken: Attempting silent token acquisition...');
   
   try {
     const response = await msalInstance.acquireTokenSilent({
       ...onedriveScopes,
       account: account,
     });
+    console.log('getOneDriveAccessToken: Silent acquisition successful');
     return response.accessToken;
   } catch (error) {
+    console.log('getOneDriveAccessToken: Silent acquisition failed:', error.errorCode, error.message);
     // Check if this is a consent-related error that requires user interaction
     if (error.errorCode === 'interaction_required' || 
         error.errorCode === 'consent_required' ||
@@ -156,42 +161,16 @@ export async function requestOneDriveConsent() {
 }
 
 /**
- * Validate cached folder ID by checking if it still exists
- * @param {string} accessToken - OneDrive access token
- * @param {string} folderId - The folder ID to validate
- * @returns {Promise<boolean>} True if folder exists, false otherwise
- */
-async function validateFolderId(accessToken, folderId) {
-  try {
-    const checkUrl = `${GRAPH_API_BASE}/me/drive/items/${folderId}`;
-    const response = await fetch(checkUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-}
-
-/**
  * Get or create the .chatsphere folder in OneDrive
- * Uses cached folder ID if available and valid
+ * Uses cached folder ID if available (trusts cache, only refreshes on error)
  * @param {string} accessToken - OneDrive access token
  * @returns {Promise<string>} Folder ID
  */
 async function getOrCreateChatSphereFolder(accessToken) {
-  // Check cache first
+  // Check cache first - trust it, don't validate proactively
   const cachedFolderId = getCachedFolderId();
   if (cachedFolderId) {
-    // Validate cached ID
-    const isValid = await validateFolderId(accessToken, cachedFolderId);
-    if (isValid) {
-      return cachedFolderId;
-    }
-    // Cache is invalid, clear it
-    setCachedFolderId(null);
+    return cachedFolderId; // Trust the cache, validate only on error
   }
   
   // Cache miss or invalid, fetch from OneDrive
@@ -249,43 +228,17 @@ async function getOrCreateChatSphereFolder(accessToken) {
 }
 
 /**
- * Validate cached file ID by checking if it still exists
- * @param {string} accessToken - OneDrive access token
- * @param {string} fileId - The file ID to validate
- * @returns {Promise<boolean>} True if file exists, false otherwise
- */
-async function validateFileId(accessToken, fileId) {
-  try {
-    const checkUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}`;
-    const response = await fetch(checkUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-}
-
-/**
  * Get the profile file path in OneDrive
- * Uses cached file ID if available and valid
+ * Uses cached file ID if available (trusts cache, only refreshes on error)
  * @param {string} accessToken - OneDrive access token
  * @param {string} folderId - The .chatsphere folder ID
  * @returns {Promise<string|null>} File ID or null if file doesn't exist
  */
 async function getProfileFilePath(accessToken, folderId) {
-  // Check cache first
+  // Check cache first - trust it, don't validate proactively
   const cachedFileId = getCachedFileId(CACHE_KEYS.PROFILE_FILE_ID);
   if (cachedFileId) {
-    // Validate cached ID
-    const isValid = await validateFileId(accessToken, cachedFileId);
-    if (isValid) {
-      return cachedFileId;
-    }
-    // Cache is invalid, clear it
-    setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, null);
+    return cachedFileId; // Trust the cache, validate only on error
   }
   
   // Cache miss or invalid, fetch from OneDrive
@@ -344,7 +297,13 @@ async function fetchRemoteProfile() {
 
   if (!response.ok) {
     if (response.status === 404) {
+      // File doesn't exist, clear cache and return null
+      setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, null);
       return null;
+    }
+    // If it's a 403 or other error, might be invalid ID, clear cache
+    if (response.status === 403 || response.status === 400) {
+      setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, null);
     }
     throw new Error(`Failed to fetch profile: ${response.statusText}`);
   }
@@ -374,7 +333,7 @@ async function uploadProfileToOneDrive(profileData) {
   const fileId = await getProfileFilePath(accessToken, folderId);
 
   if (fileId) {
-    // Update existing file
+    // Update existing file (don't use If-Match to avoid 412 errors)
     const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
     const response = await fetch(uploadUrl, {
       method: 'PUT',
@@ -386,7 +345,29 @@ async function uploadProfileToOneDrive(profileData) {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to update profile: ${response.statusText}`);
+      // If update fails with 404, file was deleted, clear cache
+      if (response.status === 404) {
+        setCachedFileId(CACHE_KEYS.PROFILE_FILE_ID, null);
+      }
+      // If 409 conflict, file was modified - just retry once without If-Match
+      if (response.status === 409) {
+        const retryResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: fileContent
+        });
+        
+        if (!retryResponse.ok) {
+          throw new Error(`Failed to update profile after retry: ${retryResponse.statusText}`);
+        }
+        // Success on retry
+        return;
+      } else {
+        throw new Error(`Failed to update profile: ${response.statusText}`);
+      }
     }
     // File ID remains the same, cache is already set
   } else {
@@ -732,34 +713,33 @@ export async function syncMemories() {
  */
 export async function isSyncConfigured() {
   if (!isMsalConfigured() || !msalInstance) {
+    console.log('isSyncConfigured: MSAL not configured');
     return false;
   }
   const accounts = msalInstance.getAllAccounts();
   if (accounts.length === 0) {
+    console.log('isSyncConfigured: No accounts found');
     return false;
   }
+  console.log('isSyncConfigured: Found', accounts.length, 'account(s), attempting to get token...');
   const token = await getOneDriveAccessToken();
-  return token !== null;
+  const configured = token !== null;
+  console.log('isSyncConfigured: Token acquired:', configured);
+  return configured;
 }
 
 /**
  * Get file path for systemPrompts.json in OneDrive
- * Uses cached file ID if available and valid
+ * Uses cached file ID if available (trusts cache, only refreshes on error)
  * @param {string} accessToken - OneDrive access token
  * @param {string} folderId - The .chatsphere folder ID
  * @returns {Promise<string|null>} File ID if exists, null otherwise
  */
 async function getSystemPromptsFilePath(accessToken, folderId) {
-  // Check cache first
+  // Check cache first - trust it, don't validate proactively
   const cachedFileId = getCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID);
   if (cachedFileId) {
-    // Validate cached ID
-    const isValid = await validateFileId(accessToken, cachedFileId);
-    if (isValid) {
-      return cachedFileId;
-    }
-    // Cache is invalid, clear it
-    setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, null);
+    return cachedFileId; // Trust the cache, validate only on error
   }
   
   // Cache miss or invalid, fetch from OneDrive
@@ -806,7 +786,7 @@ async function fetchRemoteSystemPrompts() {
     return null; // File doesn't exist yet
   }
 
-  // Download the file content
+  // Download the file content (ETag not needed for read operations)
   const downloadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
   const response = await fetch(downloadUrl, {
     headers: {
@@ -816,7 +796,13 @@ async function fetchRemoteSystemPrompts() {
 
   if (!response.ok) {
     if (response.status === 404) {
+      // File doesn't exist, clear cache and return null
+      setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, null);
       return null;
+    }
+    // If it's a 403 or other error, might be invalid ID, clear cache
+    if (response.status === 403 || response.status === 400) {
+      setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, null);
     }
     throw new Error(`Failed to fetch system prompts: ${response.statusText}`);
   }
@@ -846,7 +832,7 @@ async function uploadSystemPromptsToOneDrive(systemPromptsData) {
   const fileId = await getSystemPromptsFilePath(accessToken, folderId);
 
   if (fileId) {
-    // Update existing file
+    // Update existing file (don't use If-Match to avoid 412 errors)
     const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
     const response = await fetch(uploadUrl, {
       method: 'PUT',
@@ -858,7 +844,29 @@ async function uploadSystemPromptsToOneDrive(systemPromptsData) {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to update system prompts: ${response.statusText}`);
+      // If update fails with 404, file was deleted, clear cache
+      if (response.status === 404) {
+        setCachedFileId(CACHE_KEYS.SYSTEM_PROMPTS_FILE_ID, null);
+      }
+      // If 409 conflict, file was modified - just retry once without If-Match
+      if (response.status === 409) {
+        const retryResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: fileContent
+        });
+        
+        if (!retryResponse.ok) {
+          throw new Error(`Failed to update system prompts after retry: ${retryResponse.statusText}`);
+        }
+        // Success on retry
+        return;
+      } else {
+        throw new Error(`Failed to update system prompts: ${response.statusText}`);
+      }
     }
     // File ID remains the same, cache is already set
   } else {
@@ -906,6 +914,9 @@ function mergeSystemPromptValues(localPrompt, remotePrompt) {
  */
 export async function syncSystemPrompts() {
   try {
+    // Set flag to prevent sync loops
+    setSyncingSystemPrompts(true);
+    
     // Get local system prompts
     const localPrompts = getSystemPrompts();
     
@@ -915,6 +926,7 @@ export async function syncSystemPrompts() {
     // If remote doesn't exist, create it with local prompts
     if (!remotePrompts || Object.keys(remotePrompts).length === 0) {
       await uploadSystemPromptsToOneDrive(localPrompts);
+      setSyncingSystemPrompts(false);
       return {
         success: true,
         message: 'System prompts created and synced successfully',
@@ -947,14 +959,15 @@ export async function syncSystemPrompts() {
     // Check if there are any differences between merged and remote
     const hasChanges = JSON.stringify(mergedPrompts) !== JSON.stringify(remotePrompts);
     
-    // Update local storage with merged prompts
-    setSystemPrompts(mergedPrompts);
+    // Update local storage with merged prompts (skip sync to prevent loop)
+    setSystemPrompts(mergedPrompts, true);
     
     // Only update remote if there are changes
     if (hasChanges) {
       await uploadSystemPromptsToOneDrive(mergedPrompts);
     }
     
+    setSyncingSystemPrompts(false);
     return {
       success: true,
       message: hasChanges ? 'System prompts synced successfully' : 'System prompts are already in sync',
@@ -966,6 +979,7 @@ export async function syncSystemPrompts() {
       }
     };
   } catch (error) {
+    setSyncingSystemPrompts(false);
     console.error('Error syncing system prompts:', error);
     return {
       success: false,
@@ -977,22 +991,16 @@ export async function syncSystemPrompts() {
 
 /**
  * Get file path for config.json in OneDrive
- * Uses cached file ID if available and valid
+ * Uses cached file ID if available (trusts cache, only refreshes on error)
  * @param {string} accessToken - OneDrive access token
  * @param {string} folderId - The .chatsphere folder ID
  * @returns {Promise<string|null>} File ID if exists, null otherwise
  */
 async function getConfigFilePath(accessToken, folderId) {
-  // Check cache first
+  // Check cache first - trust it, don't validate proactively
   const cachedFileId = getCachedFileId(CACHE_KEYS.CONFIG_FILE_ID);
   if (cachedFileId) {
-    // Validate cached ID
-    const isValid = await validateFileId(accessToken, cachedFileId);
-    if (isValid) {
-      return cachedFileId;
-    }
-    // Cache is invalid, clear it
-    setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, null);
+    return cachedFileId; // Trust the cache, validate only on error
   }
   
   // Cache miss or invalid, fetch from OneDrive
@@ -1039,7 +1047,7 @@ async function fetchRemoteConfig() {
     return null; // File doesn't exist yet
   }
 
-  // Download the file content
+  // Download the file content (ETag not needed for read operations)
   const downloadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
   const response = await fetch(downloadUrl, {
     headers: {
@@ -1049,7 +1057,13 @@ async function fetchRemoteConfig() {
 
   if (!response.ok) {
     if (response.status === 404) {
+      // File doesn't exist, clear cache and return null
+      setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, null);
       return null;
+    }
+    // If it's a 403 or other error, might be invalid ID, clear cache
+    if (response.status === 403 || response.status === 400) {
+      setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, null);
     }
     throw new Error(`Failed to fetch config: ${response.statusText}`);
   }
@@ -1079,7 +1093,7 @@ async function uploadConfigToOneDrive(configData) {
   const fileId = await getConfigFilePath(accessToken, folderId);
 
   if (fileId) {
-    // Update existing file
+    // Update existing file (don't use If-Match to avoid 412 errors)
     const uploadUrl = `${GRAPH_API_BASE}/me/drive/items/${fileId}/content`;
     const response = await fetch(uploadUrl, {
       method: 'PUT',
@@ -1091,7 +1105,29 @@ async function uploadConfigToOneDrive(configData) {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to update config: ${response.statusText}`);
+      // If update fails with 404, file was deleted, clear cache
+      if (response.status === 404) {
+        setCachedFileId(CACHE_KEYS.CONFIG_FILE_ID, null);
+      }
+      // If 409 conflict, file was modified - just retry once without If-Match
+      if (response.status === 409) {
+        const retryResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: fileContent
+        });
+        
+        if (!retryResponse.ok) {
+          throw new Error(`Failed to update config after retry: ${retryResponse.statusText}`);
+        }
+        // Success on retry
+        return;
+      } else {
+        throw new Error(`Failed to update config: ${response.statusText}`);
+      }
     }
     // File ID remains the same, cache is already set
   } else {
@@ -1125,19 +1161,28 @@ async function uploadConfigToOneDrive(configData) {
  */
 export async function syncConfig() {
   try {
+    // Set flag to prevent sync loops
+    setSyncingFromRemote(true);
+    
     // Get local config
     const localConfig = {
       subscriptionKey: getSubscriptionKey(),
       userAvatar: getUserAvatar(),
       model: getModel()
     };
+    console.log('syncConfig: Local config:', localConfig);
     
     // Fetch remote config from OneDrive
+    console.log('syncConfig: Fetching remote config...');
     const remoteConfig = await fetchRemoteConfig();
+    console.log('syncConfig: Remote config:', remoteConfig);
     
     // If remote doesn't exist, create it with local config
     if (!remoteConfig) {
+      console.log('syncConfig: Remote config does not exist, creating with local config...');
       await uploadConfigToOneDrive(localConfig);
+      console.log('syncConfig: Config created and uploaded successfully');
+      setSyncingFromRemote(false);
       return {
         success: true,
         message: 'Config created and synced successfully'
@@ -1146,18 +1191,24 @@ export async function syncConfig() {
 
     // Check if local config differs from remote
     const hasLocalChanges = JSON.stringify(localConfig) !== JSON.stringify(remoteConfig);
+    console.log('syncConfig: Has local changes:', hasLocalChanges);
     
     // If local has changes, upload local (local changes win)
     // Otherwise, update local with remote values (in case remote was updated elsewhere)
     if (hasLocalChanges) {
       // Local has changes, upload local to OneDrive
+      console.log('syncConfig: Local has changes, uploading local config...');
       await uploadConfigToOneDrive(localConfig);
+      console.log('syncConfig: Local config uploaded successfully');
+      setSyncingFromRemote(false);
       return {
         success: true,
         message: 'Config synced successfully (local changes uploaded)'
       };
     } else {
       // No local changes, ensure local storage matches remote (in case of partial updates)
+      // Set flag before updating to prevent triggers
+      console.log('syncConfig: No local changes, updating local storage to match remote...');
       if (remoteConfig.subscriptionKey !== undefined) {
         localStorage.setItem('subscriptionKey', remoteConfig.subscriptionKey || '');
       }
@@ -1168,12 +1219,14 @@ export async function syncConfig() {
         localStorage.setItem('model', remoteConfig.model || 'gemini-3-flash-preview');
       }
       
+      setSyncingFromRemote(false);
       return {
         success: true,
         message: 'Config is already in sync'
       };
     }
   } catch (error) {
+    setSyncingFromRemote(false);
     console.error('Error syncing config:', error);
     return {
       success: false,

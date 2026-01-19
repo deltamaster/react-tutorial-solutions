@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { msalInstance, loginRequest, onedriveScopes, isMsalConfigured } from "../config/msalConfig";
 import * as msal from "@azure/msal-browser";
+import profileSyncService from "../utils/profileSyncService";
 
 const AuthContext = createContext(null);
 
@@ -17,6 +18,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isConfigured, setIsConfigured] = useState(false);
+  const hasSyncedAfterLoginRef = React.useRef(false); // Track if we've synced after login
 
   useEffect(() => {
     // Check if MSAL is configured
@@ -42,11 +44,43 @@ export const AuthProvider = ({ children }) => {
               ...loginRequest,
               account: account,
             })
-            .then((response) => {
+            .then(async (response) => {
               // Silent token acquisition successful, user is authenticated
               setUser(response.account);
               setIsAuthenticated(true);
               setIsLoading(false);
+              
+              // Trigger config sync after successful silent login (only once)
+              // Check ref BEFORE any async operations to prevent race conditions
+              if (hasSyncedAfterLoginRef.current) {
+                return; // Already syncing or synced
+              }
+              hasSyncedAfterLoginRef.current = true;
+              
+              try {
+                const configured = await profileSyncService.isSyncConfigured();
+                if (configured) {
+                  console.log('Silent login successful, triggering config and system prompts sync...');
+                  // Sync config
+                  const configResult = await profileSyncService.syncConfig();
+                  if (configResult.success) {
+                    console.log('Config synced after silent login:', configResult.message);
+                  } else {
+                    console.error('Config sync failed after silent login:', configResult.message);
+                  }
+                  // Sync system prompts
+                  const promptsResult = await profileSyncService.syncSystemPrompts();
+                  if (promptsResult.success) {
+                    console.log('System prompts synced after silent login:', promptsResult.message);
+                  } else {
+                    console.error('System prompts sync failed after silent login:', promptsResult.message);
+                  }
+                } else {
+                  console.log('OneDrive sync not configured yet, skipping sync');
+                }
+              } catch (err) {
+                console.error('Error syncing after silent login:', err);
+              }
             })
             .catch((error) => {
               // Silent token acquisition failed, account may be invalid
@@ -61,11 +95,43 @@ export const AuthProvider = ({ children }) => {
               ...loginRequest,
               loginHint: undefined, // Try without login hint first
             })
-            .then((response) => {
+            .then(async (response) => {
               // Silent SSO login successful
               setUser(response.account);
               setIsAuthenticated(true);
               setIsLoading(false);
+              
+              // Trigger config sync after successful silent SSO login (only once)
+              // Check ref BEFORE any async operations to prevent race conditions
+              if (hasSyncedAfterLoginRef.current) {
+                return; // Already syncing or synced
+              }
+              hasSyncedAfterLoginRef.current = true;
+              
+              try {
+                const configured = await profileSyncService.isSyncConfigured();
+                if (configured) {
+                  console.log('Silent SSO login successful, triggering config and system prompts sync...');
+                  // Sync config
+                  const configResult = await profileSyncService.syncConfig();
+                  if (configResult.success) {
+                    console.log('Config synced after silent SSO login:', configResult.message);
+                  } else {
+                    console.error('Config sync failed after silent SSO login:', configResult.message);
+                  }
+                  // Sync system prompts
+                  const promptsResult = await profileSyncService.syncSystemPrompts();
+                  if (promptsResult.success) {
+                    console.log('System prompts synced after silent SSO login:', promptsResult.message);
+                  } else {
+                    console.error('System prompts sync failed after silent SSO login:', promptsResult.message);
+                  }
+                } else {
+                  console.log('OneDrive sync not configured yet, skipping sync');
+                }
+              } catch (err) {
+                console.error('Error syncing after silent SSO login:', err);
+              }
             })
             .catch((error) => {
               // Silent SSO login failed, give up and wait for manual login
@@ -88,6 +154,39 @@ export const AuthProvider = ({ children }) => {
       const response = await msalInstance.loginPopup(loginRequest);
       setUser(response.account);
       setIsAuthenticated(true);
+      
+      // Trigger config sync after manual login (only once)
+      // Check ref BEFORE any async operations to prevent race conditions
+      if (hasSyncedAfterLoginRef.current) {
+        return response; // Already syncing or synced
+      }
+      hasSyncedAfterLoginRef.current = true;
+      
+      try {
+        const configured = await profileSyncService.isSyncConfigured();
+        if (configured) {
+          console.log('Manual login successful, triggering config and system prompts sync...');
+          // Sync config
+          const configResult = await profileSyncService.syncConfig();
+          if (configResult.success) {
+            console.log('Config synced after manual login:', configResult.message);
+          } else {
+            console.error('Config sync failed after manual login:', configResult.message);
+          }
+          // Sync system prompts
+          const promptsResult = await profileSyncService.syncSystemPrompts();
+          if (promptsResult.success) {
+            console.log('System prompts synced after manual login:', promptsResult.message);
+          } else {
+            console.error('System prompts sync failed after manual login:', promptsResult.message);
+          }
+        } else {
+          console.log('OneDrive sync not configured yet, skipping sync');
+        }
+      } catch (err) {
+        console.error('Error syncing after manual login:', err);
+      }
+      
       return response;
     } catch (error) {
       console.error("Login error:", error);

@@ -75,7 +75,7 @@ function AppContent() {
     setLocalModel(model); // 更新本地状态
   };
 
-  // Retrieve API key from Chrome storage and sync config on load
+  // Retrieve API key from Chrome storage (config sync is handled by AuthContext after login)
   useEffect(() => {
     // Check if running in Chrome extension environment
     if (typeof chrome !== "undefined" && chrome.storage) {
@@ -86,32 +86,7 @@ function AppContent() {
         }
       });
     }
-    
-    // Sync config from OneDrive on page load (immediate, not debounced)
-    const syncConfigOnLoad = async () => {
-      try {
-        const configured = await profileSyncService.isSyncConfigured();
-        if (configured) {
-          const result = await profileSyncService.syncConfig();
-          if (result.success) {
-            console.log('Config synced on load:', result.message);
-            // Update local state if config was synced from remote
-            if (result.message.includes('already in sync') || result.message.includes('synced successfully')) {
-              setLocalSubscriptionKey(getSubscriptionKey());
-              setLocalUserAvatar(getUserAvatar());
-              setLocalModel(getModel());
-            }
-          } else {
-            console.error('Config sync failed on load:', result.message);
-          }
-        }
-      } catch (err) {
-        console.error('Error syncing config on load:', err);
-      }
-    };
-    
-    syncConfigOnLoad();
-  }, []);
+  }, []); // Empty deps ensures this runs only once on mount
 
   // Update Chrome storage when subscriptionKey changes
   useEffect(() => {

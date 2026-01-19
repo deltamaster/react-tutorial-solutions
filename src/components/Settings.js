@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Form from 'react-bootstrap/Form';
 import Card from 'react-bootstrap/Card';
 import Col from 'react-bootstrap/Col';
@@ -20,6 +20,7 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
   const [newPromptTitle, setNewPromptTitle] = useState('');
   const [newPromptText, setNewPromptText] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const lastSyncedPromptRef = useRef(null); // Track last synced prompt to prevent loops
 
   // Load saved preferences on mount
   useEffect(() => {
@@ -31,21 +32,33 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
     const selectedKey = getSelectedSystemPromptKey();
     setSystemPromptsState(prompts);
     setSelectedPromptKeyState(selectedKey);
+    
+    // Load prompt on mount (skip sync - just loading existing value)
+    if (selectedKey && prompts[selectedKey]) {
+      const promptText = prompts[selectedKey].prompt;
+      setSystemPrompt(promptText, true); // Skip sync when loading on mount
+      lastSyncedPromptRef.current = promptText;
+    }
+    
     setIsInitialized(true);
   }, []);
 
-  // Update system prompt when selection changes (only after initialization)
+  // Update system prompt ONLY when selection changes (not when systemPrompts object changes)
   useEffect(() => {
-    // Don't sync until initialization is complete to preserve existing prompt value
+    // Don't sync until initialization is complete
     if (!isInitialized) return;
     
-    if (selectedPromptKey && systemPrompts[selectedPromptKey]) {
-      setSystemPrompt(systemPrompts[selectedPromptKey].prompt);
-    } else if (selectedPromptKey === null && Object.keys(systemPrompts).length === 0) {
-      // Only set to empty if there are no prompts at all
-      setSystemPrompt('');
+    // Only update if the selected key changed, not if systemPrompts object reference changed
+    const currentPromptText = selectedPromptKey && systemPrompts[selectedPromptKey] 
+      ? systemPrompts[selectedPromptKey].prompt 
+      : '';
+    
+    // Only update if the prompt text actually changed
+    if (currentPromptText !== lastSyncedPromptRef.current) {
+      setSystemPrompt(currentPromptText);
+      lastSyncedPromptRef.current = currentPromptText;
     }
-  }, [selectedPromptKey, systemPrompts, setSystemPrompt, isInitialized]);
+  }, [selectedPromptKey, isInitialized]); // Removed systemPrompts and setSystemPrompt from deps
 
   // Reload system prompts when they change
   const reloadSystemPrompts = () => {
@@ -71,6 +84,15 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
   const handleSelectSystemPrompt = (uuidKey) => {
     setSelectedSystemPromptKey(uuidKey);
     setSelectedPromptKeyState(uuidKey);
+    
+    // Update prompt immediately when user selects
+    const prompts = getSystemPrompts();
+    if (uuidKey && prompts[uuidKey]) {
+      const promptText = prompts[uuidKey].prompt;
+      setSystemPrompt(promptText);
+      lastSyncedPromptRef.current = promptText;
+    }
+    
     reloadSystemPrompts();
   };
 
@@ -81,6 +103,13 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
     }
     const uuid = addSystemPrompt(newPromptTitle.trim() || 'Untitled', newPromptText.trim());
     setSelectedSystemPromptKey(uuid);
+    setSelectedPromptKeyState(uuid);
+    
+    // Update prompt immediately when new prompt is added
+    const promptText = newPromptText.trim();
+    setSystemPrompt(promptText);
+    lastSyncedPromptRef.current = promptText;
+    
     setNewPromptTitle('');
     setNewPromptText('');
     setShowAddForm(false);
@@ -104,6 +133,14 @@ const Settings = ({ subscriptionKey, setSubscriptionKey, systemPrompt, setSystem
         title: editingTitle.trim() || 'Untitled',
         prompt: editingPrompt.trim()
       });
+      
+      // Update prompt if this is the selected prompt
+      if (editingKey === selectedPromptKey) {
+        const promptText = editingPrompt.trim();
+        setSystemPrompt(promptText);
+        lastSyncedPromptRef.current = promptText;
+      }
+      
       setEditingKey(null);
       setEditingTitle('');
       setEditingPrompt('');
