@@ -164,6 +164,24 @@ Outputs to `build/` with optimized assets ready for static hosting or Chrome ext
 
 ---
 
+## Deployment
+
+The solution is deployed as an **Azure Static Web App** using free tier features. All API calls from the application are routed through an **Azure API Management (APIM)** gateway, which also uses free tier features.
+
+### Architecture
+
+- **Frontend**: Azure Static Web App hosts the React application
+- **API Gateway**: Azure APIM acts as a proxy for all external API calls
+- **Backend Services** (proxied through APIM):
+  - **Gemini**: AI model API for chat and reasoning
+  - **QWen TTS**: Text-to-speech service for audio generation
+  - **AlphaVantage**: Financial data API for market information
+  - **Finnhub**: Financial data API for stock quotes and company data
+
+The APIM gateway centralizes API management, provides a single entry point for all backend services, and enables consistent rate limiting, caching, and monitoring across all API calls.
+
+---
+
 ## Features in Detail
 
 ### Memory Management & OneDrive Sync
