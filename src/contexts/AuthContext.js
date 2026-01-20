@@ -21,6 +21,12 @@ export const AuthProvider = ({ children }) => {
   const hasSyncedAfterLoginRef = React.useRef(false); // Track if we've synced after login
 
   useEffect(() => {
+    // Helper function to detect iOS devices
+    const isIOSDevice = () => {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    };
+
     // Check if MSAL is configured
     const configured = isMsalConfigured();
     setIsConfigured(configured);
@@ -33,7 +39,51 @@ export const AuthProvider = ({ children }) => {
     // Initialize MSAL
     msalInstance
       .initialize()
-      .then(() => {
+      .then(async () => {
+        // Handle redirect response first (for iOS redirect flow)
+        try {
+          const redirectResponse = await msalInstance.handleRedirectPromise();
+          if (redirectResponse) {
+            // User just completed redirect login
+            setUser(redirectResponse.account);
+            setIsAuthenticated(true);
+            setIsLoading(false);
+            
+            // Trigger config sync after redirect login (only once)
+            if (!hasSyncedAfterLoginRef.current) {
+              hasSyncedAfterLoginRef.current = true;
+              
+              try {
+                const configured = await profileSyncService.isSyncConfigured();
+                if (configured) {
+                  console.log('Redirect login successful, triggering config and system prompts sync...');
+                  // Sync config
+                  const configResult = await profileSyncService.syncConfig();
+                  if (configResult.success) {
+                    console.log('Config synced after redirect login:', configResult.message);
+                  } else {
+                    console.error('Config sync failed after redirect login:', configResult.message);
+                  }
+                  // Sync system prompts
+                  const promptsResult = await profileSyncService.syncSystemPrompts();
+                  if (promptsResult.success) {
+                    console.log('System prompts synced after redirect login:', promptsResult.message);
+                  } else {
+                    console.error('System prompts sync failed after redirect login:', promptsResult.message);
+                  }
+                }
+              } catch (err) {
+                console.error('Error syncing after redirect login:', err);
+              }
+            }
+            
+            return; // Exit early, don't try silent login
+          }
+        } catch (redirectError) {
+          // Redirect promise failed or no redirect response, continue with normal flow
+          console.log("No redirect response or redirect error:", redirectError?.errorCode || redirectError?.message);
+        }
+        
         // Check if user is already logged in (cached account)
         const accounts = msalInstance.getAllAccounts();
         if (accounts.length > 0) {
@@ -89,7 +139,16 @@ export const AuthProvider = ({ children }) => {
               setIsLoading(false);
             });
         } else {
-          // No cached account found, try silent SSO login
+          // No cached account found
+          // On iOS, ssoSilent won't work due to Intelligent Tracking Prevention (ITP)
+          // Skip ssoSilent on iOS and wait for manual login
+          if (isIOSDevice()) {
+            console.log("iOS device detected - skipping ssoSilent (not supported due to ITP)");
+            setIsLoading(false);
+            return;
+          }
+          
+          // Try silent SSO login on non-iOS devices
           msalInstance
             .ssoSilent({
               ...loginRequest,
@@ -150,44 +209,60 @@ export const AuthProvider = ({ children }) => {
     if (!isConfigured || !msalInstance) {
       throw new Error("MSAL is not configured. Please set your Azure AD Client ID in msalConfig.js");
     }
+    
+    // Helper function to detect iOS devices
+    const isIOSDevice = () => {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    };
+    
     try {
-      const response = await msalInstance.loginPopup(loginRequest);
-      setUser(response.account);
-      setIsAuthenticated(true);
-      
-      // Trigger config sync after manual login (only once)
-      // Check ref BEFORE any async operations to prevent race conditions
-      if (hasSyncedAfterLoginRef.current) {
-        return response; // Already syncing or synced
-      }
-      hasSyncedAfterLoginRef.current = true;
-      
-      try {
-        const configured = await profileSyncService.isSyncConfigured();
-        if (configured) {
-          console.log('Manual login successful, triggering config and system prompts sync...');
-          // Sync config
-          const configResult = await profileSyncService.syncConfig();
-          if (configResult.success) {
-            console.log('Config synced after manual login:', configResult.message);
-          } else {
-            console.error('Config sync failed after manual login:', configResult.message);
-          }
-          // Sync system prompts
-          const promptsResult = await profileSyncService.syncSystemPrompts();
-          if (promptsResult.success) {
-            console.log('System prompts synced after manual login:', promptsResult.message);
-          } else {
-            console.error('System prompts sync failed after manual login:', promptsResult.message);
-          }
-        } else {
-          console.log('OneDrive sync not configured yet, skipping sync');
+      // Use redirect on iOS (popups are often blocked), popup on other platforms
+      if (isIOSDevice()) {
+        // On iOS, use redirect flow (more reliable than popup)
+        await msalInstance.loginRedirect(loginRequest);
+        // Note: After redirect, handleRedirectPromise() in useEffect will handle the response
+        return;
+      } else {
+        // On non-iOS, use popup flow
+        const response = await msalInstance.loginPopup(loginRequest);
+        setUser(response.account);
+        setIsAuthenticated(true);
+        
+        // Trigger config sync after manual login (only once)
+        // Check ref BEFORE any async operations to prevent race conditions
+        if (hasSyncedAfterLoginRef.current) {
+          return response; // Already syncing or synced
         }
-      } catch (err) {
-        console.error('Error syncing after manual login:', err);
+        hasSyncedAfterLoginRef.current = true;
+        
+        try {
+          const configured = await profileSyncService.isSyncConfigured();
+          if (configured) {
+            console.log('Manual login successful, triggering config and system prompts sync...');
+            // Sync config
+            const configResult = await profileSyncService.syncConfig();
+            if (configResult.success) {
+              console.log('Config synced after manual login:', configResult.message);
+            } else {
+              console.error('Config sync failed after manual login:', configResult.message);
+            }
+            // Sync system prompts
+            const promptsResult = await profileSyncService.syncSystemPrompts();
+            if (promptsResult.success) {
+              console.log('System prompts synced after manual login:', promptsResult.message);
+            } else {
+              console.error('System prompts sync failed after manual login:', promptsResult.message);
+            }
+          } else {
+            console.log('OneDrive sync not configured yet, skipping sync');
+          }
+        } catch (err) {
+          console.error('Error syncing after manual login:', err);
+        }
+        
+        return response;
       }
-      
-      return response;
     } catch (error) {
       console.error("Login error:", error);
       throw error;

@@ -4,6 +4,12 @@ import { PublicClientApplication } from "@azure/msal-browser";
 // TODO: Replace 'YOUR_CLIENT_ID_HERE' with your actual Azure AD Client ID
 const CLIENT_ID = "dd795cb2-a5dd-47f6-a156-ff840409e404"; // Placeholder - replace with your Azure AD Client ID
 
+// Detect iOS devices for cache configuration
+const isIOSDevice = () => {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
 export const msalConfig = {
   auth: {
     clientId: CLIENT_ID,
@@ -11,7 +17,8 @@ export const msalConfig = {
     redirectUri: window.location.origin, // Redirect URI after login
   },
   cache: {
-    cacheLocation: "sessionStorage", // This configures where your cache will be stored
+    // Use localStorage on iOS for better persistence (sessionStorage can be cleared aggressively)
+    cacheLocation: isIOSDevice() ? "localStorage" : "sessionStorage",
     storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
   },
 };
