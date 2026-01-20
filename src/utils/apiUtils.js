@@ -892,6 +892,9 @@ async function callFinnhubAPI(endpoint, params, requiredParams = []) {
         const errorResult = {
           success: false,
           error: `API request failed with status ${response.status}: ${errorText}`,
+          status: response.status,
+          statusCode: response.status,
+          errorType: response.status === 429 ? 'rate_limit' : response.status >= 500 ? 'server_error' : 'api_error',
         };
         // Don't cache errors
         return errorResult;
@@ -911,7 +914,10 @@ async function callFinnhubAPI(endpoint, params, requiredParams = []) {
     } catch (error) {
       const errorResult = {
         success: false,
-        error: `Failed to fetch data: ${error.message}`,
+        error: `Failed to fetch data: ${error.message || String(error)}`,
+        ...(error.status && { status: error.status }),
+        ...(error.statusCode && { statusCode: error.statusCode }),
+        ...(error.errorType && { errorType: error.errorType }),
       };
       // Don't cache errors
       return errorResult;
@@ -971,6 +977,9 @@ async function callAlphaVantageAPI(functionName, params, requiredParams = [], fi
         const errorResult = {
           success: false,
           error: `API request failed with status ${response.status}: ${errorText}`,
+          status: response.status,
+          statusCode: response.status,
+          errorType: response.status === 429 ? 'rate_limit' : response.status >= 500 ? 'server_error' : 'api_error',
         };
         // Don't cache errors
         return errorResult;
@@ -989,6 +998,9 @@ async function callAlphaVantageAPI(functionName, params, requiredParams = [], fi
           return {
             success: false,
             error: data.Information,
+            errorType: 'rate_limit',
+            status: 429,
+            statusCode: 429,
           };
         }
       }
@@ -1010,7 +1022,10 @@ async function callAlphaVantageAPI(functionName, params, requiredParams = [], fi
     } catch (error) {
       const errorResult = {
         success: false,
-        error: `Failed to fetch data: ${error.message}`,
+        error: `Failed to fetch data: ${error.message || String(error)}`,
+        ...(error.status && { status: error.status }),
+        ...(error.statusCode && { statusCode: error.statusCode }),
+        ...(error.errorType && { errorType: error.errorType }),
       };
       // Don't cache errors
       return errorResult;
@@ -2173,77 +2188,77 @@ const prepareContentsForRequest = async (contents, role) => {
     parts: content.parts,
   }));
 
-  // Filter out thought contents before sending the request and process any image files
-  const finalContents = [];
-  for (const content of filteredContents) {
-    if (content.parts) {
-      // Process each part to handle image files and filter out thoughts
-      const processedParts = [];
-      for (const part of content.parts) {
-        // Skip thought parts
-        if (part.thought) continue;
-        if (part.hide === true) delete part.hide;
+      // Filter out thought contents before sending the request and process any image files
+      const finalContents = [];
+      for (const content of filteredContents) {
+        if (content.parts) {
+          // Process each part to handle image files and filter out thoughts
+          const processedParts = [];
+          for (const part of content.parts) {
+            // Skip thought parts
+            if (part.thought) continue;
+            if (part.hide === true) delete part.hide;
 
-        // If file_data is already present (file already uploaded), use only file_data
-        if (part.file_data && part.file_data.file_uri) {
-          // Create a copy without inline_data for API request
-          const apiPart = {
-            file_data: {
-              mime_type: part.file_data.mime_type,
-              file_uri: part.file_data.file_uri,
-            },
-          };
-          // Copy other properties except inline_data
-          Object.keys(part).forEach(key => {
-            if (key !== 'inline_data' && key !== 'file_data') {
-              apiPart[key] = part[key];
+            // If file_data is already present (file already uploaded), use only file_data
+            if (part.file_data && part.file_data.file_uri) {
+              // Create a copy without inline_data for API request
+              const apiPart = {
+                file_data: {
+                  mime_type: part.file_data.mime_type,
+                  file_uri: part.file_data.file_uri,
+                },
+              };
+              // Copy other properties except inline_data
+              Object.keys(part).forEach(key => {
+                if (key !== 'inline_data' && key !== 'file_data') {
+                  apiPart[key] = part[key];
+                }
+              });
+              processedParts.push(apiPart);
             }
-          });
-          processedParts.push(apiPart);
-        }
-        // Process files if any (works for both images and PDFs)
-        else if (part.inline_data && part.inline_data.file) {
-          try {
-            // Upload file and get file URI
-            const fileUri = await uploadFile(part.inline_data.file, getSubscriptionKey());
-            // Create new part with file_data only (no inline_data in API request)
-            const apiPart = {
-              file_data: {
-                mime_type: part.inline_data.mime_type,
-                file_uri: fileUri,
-              },
-            };
-            // Copy other properties except inline_data
-            Object.keys(part).forEach(key => {
-              if (key !== 'inline_data' && key !== 'file_data') {
-                apiPart[key] = part[key];
+            // Process files if any (works for both images and PDFs)
+            else if (part.inline_data && part.inline_data.file) {
+              try {
+                // Upload file and get file URI
+                const fileUri = await uploadFile(part.inline_data.file, getSubscriptionKey());
+                // Create new part with file_data only (no inline_data in API request)
+                const apiPart = {
+                  file_data: {
+                    mime_type: part.inline_data.mime_type,
+                    file_uri: fileUri,
+                  },
+                };
+                // Copy other properties except inline_data
+                Object.keys(part).forEach(key => {
+                  if (key !== 'inline_data' && key !== 'file_data') {
+                    apiPart[key] = part[key];
+                  }
+                });
+                processedParts.push(apiPart);
+              } catch (error) {
+                console.error("Error uploading file:", error);
+                throw new ApiError("Failed to upload file", {
+                  errorType: "file_upload_error",
+                  originalError: error,
+                  details: { mimeType: part.inline_data.mime_type },
+                });
               }
-            });
-            processedParts.push(apiPart);
-          } catch (error) {
-            console.error("Error uploading file:", error);
-            throw new ApiError("Failed to upload file", {
-              errorType: "file_upload_error",
-              originalError: error,
-              details: { mimeType: part.inline_data.mime_type },
+            } else {
+              // Just add the part as is if it's not a thought or an image file
+              processedParts.push(part);
+            }
+          }
+
+          if (processedParts.length > 0) {
+            finalContents.push({
+              ...content,
+              parts: processedParts,
             });
           }
         } else {
-          // Just add the part as is if it's not a thought or an image file
-          processedParts.push(part);
+          finalContents.push(content);
         }
       }
-
-      if (processedParts.length > 0) {
-        finalContents.push({
-          ...content,
-          parts: processedParts,
-        });
-      }
-    } else {
-      finalContents.push(content);
-    }
-  }
   
   return finalContents;
 }

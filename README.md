@@ -226,7 +226,7 @@ Outputs to `build/` with optimized assets ready for static hosting or Chrome ext
 - **Consolidated Functions**: Streamlined API functions for financial data:
   - **AlphaVantage**: Time series (stock/fx/crypto), fundamental data, financial statements, commodities, economic indicators, exchange rates
   - **Finnhub**: Stock quotes, company profiles, key metrics, news, market data, calendar events
-- **Smart Rate Limiting**: Prefers Finnhub over AlphaVantage when both offer similar functionality (Finnhub: 60 calls/min vs AlphaVantage: 5 calls/min). Uses request queues to manage rate limits.
+- **Smart Rate Limiting**: Prefers Finnhub over AlphaVantage when both offer similar functionality (Finnhub: 60 calls/min vs AlphaVantage: 25 calls/day). Uses request queues to manage rate limits.
 - **API Response Caching**: Caches API responses to reduce redundant calls and improve performance.
 - **Intelligent Data Fetching**: Automatically selects appropriate time granularity:
   - Daily data for recent periods (< 3 months)

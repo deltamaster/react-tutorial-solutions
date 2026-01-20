@@ -527,15 +527,36 @@ function AppContent() {
           if (toolbox[name]) {
             try {
               const result = await Promise.resolve(toolbox[name](args));
-              functionResults.push({ name, result });
+              // Ensure result is always an object with error information if it failed
+              if (result && typeof result === 'object' && result.success === false) {
+                // Function returned an error - ensure error message is included
+                functionResults.push({ 
+                  name, 
+                  result: {
+                    success: false,
+                    error: result.error || 'Function call failed with unknown error',
+                    ...(result.status && { status: result.status }),
+                    ...(result.statusCode && { statusCode: result.statusCode }),
+                    ...(result.errorType && { errorType: result.errorType }),
+                    ...(result.details && { details: result.details }),
+                  }
+                });
+              } else {
+                // Success case - pass through as-is
+                functionResults.push({ name, result });
+              }
             } catch (error) {
               console.error(`Error executing function ${name}:`, error);
-              // Return error response to LLM
+              // Return error response to LLM with full error details
               functionResults.push({
                 name,
                 result: {
                   success: false,
-                  error: `Error executing function ${name}: ${error.message || error}`,
+                  error: `Error executing function ${name}: ${error.message || String(error)}`,
+                  ...(error.status && { status: error.status }),
+                  ...(error.statusCode && { statusCode: error.statusCode }),
+                  ...(error.errorType && { errorType: error.errorType }),
+                  ...(error.details && { details: error.details }),
                 },
               });
             }
@@ -568,6 +589,15 @@ function AppContent() {
           };
 
           appendMessageToConversation(functionResponseMessage);
+          
+          // Update task's conversationSnapshot to include the functionResponse message
+          // This ensures subsequent API calls in the same request cycle see the updated conversation
+          // Without this, the next iteration would use the stale snapshot from when the task was created
+          if (task.conversationSnapshot) {
+            task.conversationSnapshot = [...task.conversationSnapshot, functionResponseMessage];
+          }
+          // Note: appendMessageToConversation already updates conversationRef.current, so we don't need to do it again
+          
           continueProcessing = true;
         }
       } else if (functionCallParts.length > 0) {
@@ -1072,15 +1102,57 @@ function AppContent() {
     reader.readAsText(file);
   };
 
+  // Helper function to check if a message is a functionResponse message
+  const isFunctionResponseMessage = useCallback((message) => {
+    if (!message || message.role !== "user" || !message.parts || !Array.isArray(message.parts)) {
+      return false;
+    }
+    // A functionResponse message has parts that all contain functionResponse
+    return message.parts.length > 0 && 
+           message.parts.every(part => part && part.functionResponse);
+  }, []);
+
   // Delete a conversation message
   const deleteConversationMessage = useCallback((index) => {
-    if (window.confirm("Are you sure you want to delete this message?")) {
+    // First, check what will be deleted
+    const currentConversation = conversationRef.current || [];
+    const messageToDelete = currentConversation[index];
+    
+    if (!messageToDelete) {
+      return;
+    }
+    
+    let indicesToDelete = [index];
+    let confirmMessage = "Are you sure you want to delete this message?";
+    
+    // If deleting a model response, also find following functionResponse messages
+    if (messageToDelete.role === "model") {
+      // Find all consecutive functionResponse messages following this model response
+      for (let i = index + 1; i < currentConversation.length; i++) {
+        if (isFunctionResponseMessage(currentConversation[i])) {
+          indicesToDelete.push(i);
+        } else {
+          // Stop at the first non-functionResponse message
+          break;
+        }
+      }
+      
+      // Update confirmation message if functionResponse messages will also be deleted
+      const functionResponseCount = indicesToDelete.length - 1;
+      if (functionResponseCount > 0) {
+        confirmMessage = `Are you sure you want to delete this model response and ${functionResponseCount} associated function response${functionResponseCount > 1 ? 's' : ''}?`;
+      }
+    }
+    
+    // Show confirmation and delete if confirmed
+    if (window.confirm(confirmMessage)) {
       setConversation((prev) => {
         const safePrev = Array.isArray(prev) ? prev : [];
-        return safePrev.filter((_, i) => i !== index);
+        // Delete all messages at once
+        return safePrev.filter((_, i) => !indicesToDelete.includes(i));
       });
     }
-  }, []);
+  }, [isFunctionResponseMessage]);
 
   // Start editing a conversation part
   const startEditing = useCallback((index, partIndex, text) => {
