@@ -6,6 +6,7 @@ import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
 import Form from "react-bootstrap/Form";
 import { getThinkingEnabled, setThinkingEnabled } from "../utils/settingsService";
+import { validateImageFile, validatePdfFile } from "../utils/fileUtils";
 
 // Question input component
 function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
@@ -155,25 +156,10 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     // Reset error state
     setUploadError("");
 
-    // Validate file type
-    const validTypes = [
-      "image/png",
-      "image/jpeg",
-      "image/webp",
-      "image/heic",
-      "image/heif",
-    ];
-    if (!validTypes.includes(file.type)) {
-      setUploadError(
-        "Unsupported file format. Please upload PNG, JPEG, WEBP, HEIC, or HEIF."
-      );
-      return false;
-    }
-
-    // Validate file size (20MB)
-    const maxSize = 20 * 1024 * 1024; // 20MB in bytes
-    if (file.size > maxSize) {
-      setUploadError("File size exceeds 20MB limit.");
+    // Validate file using utility function
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setUploadError(validation.error);
       return false;
     }
 
@@ -212,16 +198,10 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     // Reset error state
     setUploadError("");
 
-    // Validate file type
-    if (file.type !== "application/pdf") {
-      setUploadError("Unsupported file format. Please upload PDF files only.");
-      return;
-    }
-
-    // Validate file size (20MB)
-    const maxSize = 20 * 1024 * 1024; // 20MB in bytes
-    if (file.size > maxSize) {
-      setUploadError("File size exceeds 20MB limit.");
+    // Validate file using utility function
+    const validation = validatePdfFile(file);
+    if (!validation.valid) {
+      setUploadError(validation.error);
       return;
     }
 

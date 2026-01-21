@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "ChatSphere - A React-based Electron application",
   "author": "Your Name",
-    "main": "build/electron.js",
+  "main": "build/electron.js",
   "homepage": "./",
   "scripts": {
     "start": "react-scripts start",
@@ -46,6 +46,7 @@
     ]
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^39.2.7",
