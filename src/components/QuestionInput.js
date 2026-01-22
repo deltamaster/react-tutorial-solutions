@@ -494,18 +494,17 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
                 style={{ display: "none" }}
                 disabled={disabled}
               />
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="sm"
                 onClick={() => !disabled && pdfInputRef.current.click()}
                 disabled={disabled}
-                className="toggle-label toggle-on"
-                style={{
-                  cursor: disabled ? "not-allowed" : "pointer",
-                }}
+                className="pdf-image-button"
               >
-                <Icon.FileEarmarkPdf size={16} className="mr-1" />
-                <span className="d-none d-md-inline">PDF</span>
-              </button>
+                <Icon.FileEarmarkPdf size={14} />
+                <span className="d-none d-md-inline ms-1">PDF</span>
+              </Button>
             </div>
 
             {/* Image Upload Button */}
@@ -518,18 +517,17 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
                 style={{ display: "none" }}
                 disabled={disabled}
               />
-              <button
+              <Button
                 type="button"
+                variant="primary"
+                size="sm"
                 onClick={() => !disabled && fileInputRef.current.click()}
                 disabled={disabled}
-                className="toggle-label toggle-on"
-                style={{
-                  cursor: disabled ? "not-allowed" : "pointer",
-                }}
+                className="pdf-image-button"
               >
-                <Icon.Image size={16} className="mr-1" />
-                <span className="d-none d-md-inline">Image</span>
-              </button>
+                <Icon.Image size={14} />
+                <span className="d-none d-md-inline ms-1">Image</span>
+              </Button>
             </div>
 
             {/* Send Button */}

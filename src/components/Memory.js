@@ -11,6 +11,7 @@ import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalCo
 function Memory() {
   const [memories, setMemories] = useState({});
   const [newMemoryValue, setNewMemoryValue] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
   const [editingKey, setEditingKey] = useState(null);
   const [editingValue, setEditingValue] = useState('');
   const [error, setError] = useState('');
@@ -198,8 +199,7 @@ function Memory() {
   }, [autoSyncEnabled, handleSyncMemories]);
 
   // Add new memory
-  const handleAddMemory = async (e) => {
-    e.preventDefault();
+  const handleAddMemory = async () => {
     setError('');
     setSuccess('');
     setLoading(true);
@@ -215,6 +215,7 @@ function Memory() {
       const memoryKey = crypto.randomUUID();
       await memoryService.setMemory(memoryKey, newMemoryValue.trim());
       setNewMemoryValue('');
+      setShowAddForm(false);
       setSuccess('Memory added successfully');
       // No need to manually call loadMemories, as memoryService will trigger event notifications
     } catch (err) {
@@ -445,53 +446,16 @@ function Memory() {
         </Row>
       )}
 
-      {/* Add new memory form */}
-      <Row className="mb-4">
-        <Col xs={12}>
-          <div className="card p-3">
-            <h5>
-              <PlusCircle size={18} className="mr-2" />
-              Add New Memory
-            </h5>
-            <Form onSubmit={handleAddMemory} className="mt-2">
-              <Row>
-                <Col xs={12} md={10} className="mb-2">
-                  <Form.Group controlId="memoryValue">
-                    <Form.Label>Memory Value</Form.Label>
-                    <Form.Control
-                      as="textarea"
-                      value={newMemoryValue}
-                      onChange={(e) => setNewMemoryValue(e.target.value)}
-                      placeholder="Enter the memory content"
-                      rows={2}
-                      maxLength={5000}
-                    />
-                    <Form.Text className="text-muted">
-                      Memory key will be automatically generated
-                    </Form.Text>
-                  </Form.Group>
-                </Col>
-                <Col xs={12} md={2} className="mb-2 d-flex align-items-end">
-                  <Button type="submit" variant="primary" className="w-100">
-                    <Save size={16} />
-                  </Button>
-                </Col>
-              </Row>
-            </Form>
-          </div>
-        </Col>
-      </Row>
-
       {/* Memory list */}
       <Row>
         <Col xs={12}>
           <div className="card">
             <div className="card-header d-flex justify-content-between align-items-center">
-              <div className="d-flex align-items-center gap-3">
-                <h5>
+              <div className="d-flex align-items-center gap-3 flex-wrap">
+                <h6 className="mb-0">
                   <List size={18} className="mr-2" />
                   Stored Memories ({Object.keys(memories).length})
-                </h5>
+                </h6>
                 {oneDriveConfigured && (
                   <Form.Check
                     type="switch"
@@ -503,79 +467,95 @@ function Memory() {
                   />
                 )}
               </div>
-              <div className="d-flex gap-2">
-                <div className="relative">
-                  <Button 
-                    id="sync-memory-btn"
-                    variant="secondary" 
-                    onClick={() => {
-                      if (!syncing && oneDriveConfigured) {
-                        handleSyncMemories();
-                      }
-                    }}
-                    style={{ display: "none" }} 
-                  ></Button>
-                  <label 
-                    htmlFor="sync-memory-btn" 
-                    className="toggle-label toggle-on"
-                    style={{ 
-                      opacity: (syncing || !oneDriveConfigured) ? 0.6 : 1,
-                      cursor: (syncing || !oneDriveConfigured) ? 'not-allowed' : 'pointer',
-                      pointerEvents: (syncing || !oneDriveConfigured) ? 'none' : 'auto'
-                    }}
-                    title={oneDriveConfigured ? 'Sync memories with OneDrive' : 'Grant OneDrive access to enable sync'}
-                  >
-                    <CloudArrowUp size={16} className="mr-2" />
-                    <span className="toggle-text">{syncing ? 'Syncing...' : 'Sync'}</span>
-                  </label>
-                </div>
-                <div className="relative">
-                  <Button 
-                    id="upload-memory-btn"
-                    variant="secondary" 
-                    onClick={() => document.getElementById('upload-memory').click()}
-                    style={{ display: "none" }} 
-                  ></Button>
-                  <input
-                    id="upload-memory"
-                    type="file"
-                    accept=".json"
-                    onChange={uploadMemory}
-                    style={{ display: "none" }}
-                  />
-                  <label htmlFor="upload-memory-btn" className="toggle-label toggle-on">
-                    <Icon.Upload size={16} className="mr-2" />
-                    <span className="toggle-text">Upload</span>
-                  </label>
-                </div>
+              <div className="d-flex gap-2 flex-wrap">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowAddForm(!showAddForm)}
+                >
+                  <PlusCircle size={14} />
+                  <span className="d-none d-md-inline ms-1">{showAddForm ? 'Cancel' : 'Add New'}</span>
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="sm"
+                  onClick={() => {
+                    if (!syncing && oneDriveConfigured) {
+                      handleSyncMemories();
+                    }
+                  }}
+                  disabled={syncing || !oneDriveConfigured}
+                  title={oneDriveConfigured ? 'Sync memories with OneDrive' : 'Grant OneDrive access to enable sync'}
+                >
+                  <CloudArrowUp size={14} />
+                  <span className="d-none d-md-inline ms-1">{syncing ? 'Syncing...' : 'Sync'}</span>
+                </Button>
+                <Button 
+                  variant="primary" 
+                  size="sm"
+                  onClick={() => document.getElementById('upload-memory').click()}
+                >
+                  <Icon.Upload size={14} />
+                  <span className="d-none d-md-inline ms-1">Upload</span>
+                </Button>
+                <input
+                  id="upload-memory"
+                  type="file"
+                  accept=".json"
+                  onChange={uploadMemory}
+                  style={{ display: "none" }}
+                />
                 {Object.keys(memories).length > 0 && (
                   <>
                     <Button 
-                      id="download-memory-btn"
-                      variant="secondary" 
+                      variant="primary" 
+                      size="sm"
                       onClick={downloadMemory}
-                      style={{ display: "none" }}
-                    ></Button>
-                    <label htmlFor="download-memory-btn" className="toggle-label toggle-on">
-                      <Icon.Download size={16} className="mr-2" />
-                      <span className="toggle-text">Download</span>
-                    </label>
-                    
+                    >
+                      <Icon.Download size={14} />
+                      <span className="d-none d-md-inline ms-1">Download</span>
+                    </Button>
                     <Button 
-                      id="clear-memory-btn"
-                      variant="secondary" 
+                      variant="danger" 
+                      size="sm"
                       onClick={clearAllMemories}
-                      style={{ display: "none" }}
-                    ></Button>
-                    <label htmlFor="clear-memory-btn" className="toggle-label toggle-on">
-                      <Trash size={16} className="mr-2" />
-                      <span className="toggle-text">Clear All</span>
-                    </label>
+                    >
+                      <Trash size={14} />
+                      <span className="d-none d-md-inline ms-1">Clear All</span>
+                    </Button>
                   </>
                 )}
               </div>
             </div>
             <div className="card-body">
+              {/* Add New Memory Form */}
+              {showAddForm && (
+                <div className="mb-3 p-3 border rounded">
+                  <Form.Group className="mb-2">
+                    <Form.Label>Memory Value</Form.Label>
+                    <Form.Control
+                      as="textarea"
+                      rows={3}
+                      value={newMemoryValue}
+                      onChange={(e) => setNewMemoryValue(e.target.value)}
+                      placeholder="Enter the memory content"
+                      maxLength={5000}
+                    />
+                    <Form.Text className="text-muted">
+                      Memory key will be automatically generated
+                    </Form.Text>
+                  </Form.Group>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={handleAddMemory}
+                    disabled={!newMemoryValue.trim()}
+                  >
+                    <CheckCircle size={16} className="mr-1" />
+                    Save
+                  </Button>
+                </div>
+              )}
               {Object.keys(memories).length === 0 ? (
                 <div className="text-center text-muted py-4">
                   <Inbox size={48} className="mb-2" />
@@ -588,18 +568,7 @@ function Memory() {
                       {editingKey === key ? (
                         <Form onSubmit={handleUpdateMemory}>
                           <Row>
-                            <Col xs={12} md={3} className="mb-2">
-                              <Form.Group controlId={`editKey-${key}`}>
-                                <Form.Label className="small">Memory Key</Form.Label>
-                                <Form.Control
-                                  type="text"
-                                  value={key}
-                                  disabled
-                                  className="bg-light"
-                                />
-                              </Form.Group>
-                            </Col>
-                            <Col xs={12} md={7} className="mb-2">
+                            <Col xs={12} md={10} className="mb-2">
                               <Form.Group controlId={`editValue-${key}`}>
                                 <Form.Label className="small">Memory Value</Form.Label>
                                 <Form.Control
@@ -612,45 +581,44 @@ function Memory() {
                               </Form.Group>
                             </Col>
                             <Col xs={12} md={2} className="mb-2 d-flex gap-2">
-                              <Button type="submit" variant="success" size="sm" className="flex-grow-1">
+                              <Button 
+                                type="submit" 
+                                variant="success" 
+                                size="sm"
+                              >
                                 <CheckCircle size={16} />
-                                Save
+                                <span>Save</span>
                               </Button>
-                              <Button variant="secondary" size="sm" onClick={cancelEditing} className="flex-grow-1">
+                              <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                onClick={cancelEditing}
+                              >
                                 <X size={16} />
-                                Cancel
+                                <span>Cancel</span>
                               </Button>
                             </Col>
                           </Row>
                         </Form>
                       ) : (
                         <Row>
-                          <Col xs={12} md={3}>
-                            <div className="font-weight-bold text-primary">{key}</div>
-                          </Col>
-                          <Col xs={12} md={7}>
+                          <Col xs={12} md={10}>
                             <div className="text-muted">{value}</div>
                           </Col>
-                          <Col xs={6} md={1} className="d-flex gap-2">
-                            <Button 
-                              variant="info" 
-                              size="sm" 
+                          <Col xs={12} md={2} className="d-flex gap-2 justify-content-end">
+                            <Button
+                              variant="info"
+                              size="sm"
                               onClick={() => startEditing(key, value)}
-                              className="flex-grow-1"
                             >
-                              <Pencil size={16} />
-                              <br />Edit
+                              <Pencil size={14} />
                             </Button>
-                          </Col>
-                          <Col xs={6} md={1} className="d-flex gap-2">
-                            <Button 
-                              variant="danger" 
-                              size="sm" 
+                            <Button
+                              variant="danger"
+                              size="sm"
                               onClick={() => handleDeleteMemory(key)}
-                              className="flex-grow-1"
                             >
-                              <Trash size={16} />
-                              <br />Delete
+                              <Trash size={14} />
                             </Button>
                           </Col>
                         </Row>

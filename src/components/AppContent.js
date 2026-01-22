@@ -304,14 +304,29 @@ function AppContent() {
               justifyContent: "space-between",
               alignItems: "center",
               padding: "12px 16px",
-              backgroundColor: "#f8f9fa",
+              backgroundColor: "#FFFFFF",
               borderRadius: "8px",
-              border: "1px solid #e9ecef",
+              border: "1px solid #E2E8F0",
               cursor: "pointer",
-              transition: "background-color 0.2s ease",
+              transition: "all 0.2s ease",
             }}
-            onMouseEnter={(e) => (e.target.style.backgroundColor = "#e9ecef")}
-            onMouseLeave={(e) => (e.target.style.backgroundColor = "#f8f9fa")}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#F1F5F9";
+              e.currentTarget.style.borderColor = "#2563EB";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "#FFFFFF";
+              e.currentTarget.style.borderColor = "#E2E8F0";
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setShowTopSettings(!showTopSettings);
+              }
+            }}
+            tabIndex={0}
+            role="button"
+            aria-expanded={showTopSettings}
           >
             <h5 className="mb-0" style={{ fontWeight: "500" }}>
               Global Settings
@@ -366,73 +381,53 @@ function AppContent() {
           activeKey={currentTab}
           onSelect={(tab) => setCurrentTab(tab)}
           className="mb-3"
-          style={{ borderBottom: "1px solid #e9ecef" }}
+          style={{ borderBottom: "2px solid #E2E8F0" }}
         >
           <Tab eventKey="chatbot" title="Chatbot">
             <Row className="mb-3">
               <Col xs={12} className="d-flex justify-content-end gap-2">
                 <div className="relative">
                   <Button
-                    id="reset-conversation"
-                    variant="secondary"
-                    onClick={resetConversation}
-                    className="toggle-label"
-                    style={{ display: "none" }} // Hide the actual input element
-                  ></Button>
-                  <label
-                    htmlFor="reset-conversation"
-                    className="toggle-label toggle-on"
-                    style={{
-                      display:
-                        conversation.length > 0 ? "inline-block" : "none",
-                    }}
-                  >
-                    <Icon.ArrowClockwise size={16} className="mr-2" />
-                    <span className="toggle-text">
-                      &nbsp;Reset Conversation
-                    </span>
-                  </label>
-                </div>
-                <div className="relative">
-                  <Button
                     id="download-conversation"
-                    variant="secondary"
+                    variant="primary"
                     onClick={downloadConversation}
-                    style={{ display: "none" }} // Hide the actual input element
-                  ></Button>
-                  <label
-                    htmlFor="download-conversation"
-                    className="toggle-label toggle-on"
-                    style={{
-                      display:
-                        conversation.length > 0 ? "inline-block" : "none",
-                    }}
+                    size="sm"
+                    style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
                   >
-                    <Icon.Download size={16} className="mr-2" />
-                    <span className="toggle-text">&nbsp;Download History</span>
-                  </label>
+                    <Icon.Download size={14} />
+                    <span className="d-none d-md-inline ms-1">Download</span>
+                  </Button>
                 </div>
 
                 <div className="relative">
                   <Button
-                    variant="secondary"
-                    style={{ display: "none" }} // Hide the actual input element
-                  ></Button>
+                    variant="primary"
+                    size="sm"
+                    onClick={() => document.getElementById('upload-conversation').click()}
+                  >
+                    <Icon.Upload size={14} />
+                    <span className="d-none d-md-inline ms-1">Upload</span>
+                  </Button>
                   <input
                     id="upload-conversation"
                     type="file"
                     accept=".json"
                     onChange={uploadConversation}
-                    style={{ display: "none" }} // Hide the actual input element
+                    style={{ display: "none" }}
                   />
-                  <label
-                    htmlFor="upload-conversation"
-                    className="toggle-label toggle-on"
-                    style={{ display: "inline-block" }}
+                </div>
+
+                <div className="relative">
+                  <Button
+                    id="reset-conversation"
+                    variant="danger"
+                    onClick={resetConversation}
+                    size="sm"
+                    style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
                   >
-                    <Icon.Upload size={16} className="mr-2" />
-                    <span className="toggle-text">&nbsp;Upload History</span>
-                  </label>
+                    <Icon.ArrowClockwise size={14} />
+                    <span className="d-none d-md-inline ms-1">Reset</span>
+                  </Button>
                 </div>
               </Col>
             </Row>
@@ -479,7 +474,7 @@ function AppContent() {
                 )}
 
                 {activeTypers.length > 0 && (
-                  <div className="mb-3 text-muted typing-indicator">
+                  <div className="mb-3 typing-indicator">
                     {activeTypers.length === 1
                       ? `${activeTypers[0]} is typing ...`
                       : `${activeTypers.join(", ")} are typing ...`}
@@ -515,16 +510,21 @@ function AppContent() {
         <div
           style={{
             position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
+            top: "16px",
+            left: "16px",
+            right: "16px",
             zIndex: 1000,
             backgroundColor: "rgba(255, 255, 255, 0.95)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            padding: "10px 20px",
+            backdropFilter: "blur(10px)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+            padding: "12px 20px",
             display: "flex",
             justifyContent: "center",
             gap: "10px",
+            borderRadius: "12px",
+            border: "1px solid rgba(226, 232, 240, 0.8)",
+            maxWidth: "fit-content",
+            margin: "0 auto",
           }}
         >
           <Button

@@ -17,6 +17,12 @@ function FollowUpQuestions({ questions, onQuestionClick, isLoading = false }) {
             key={index}
             className="follow-up-button"
             onClick={() => onQuestionClick(question)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onQuestionClick(question);
+              }
+            }}
           >
             {question}
           </button>
