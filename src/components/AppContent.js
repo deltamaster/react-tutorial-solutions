@@ -508,21 +508,15 @@ function AppContent() {
       {/* Floating tabs buttons - appear when original tabs are scrolled out of view */}
       {showFloatingTabs && (
         <div
+          className="floating-tabs-container"
           style={{
             position: "fixed",
             top: "16px",
             left: "16px",
             right: "16px",
             zIndex: 1000,
-            backgroundColor: "rgba(255, 255, 255, 0.95)",
-            backdropFilter: "blur(10px)",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-            padding: "12px 20px",
             display: "flex",
             justifyContent: "center",
-            gap: "10px",
-            borderRadius: "12px",
-            border: "1px solid rgba(226, 232, 240, 0.8)",
             maxWidth: "fit-content",
             margin: "0 auto",
           }}

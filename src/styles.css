@@ -736,6 +736,32 @@ button.btn-outline-danger:disabled {
   border-radius: 4px;
 }
 
+/* Floating tabs container - glassmorphism effect for all screen sizes */
+.floating-tabs-container {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(5px) !important;
+  -webkit-backdrop-filter: blur(5px) !important;
+  border: 1px solid rgba(226, 232, 240, 0.4) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  padding: 12px 20px !important;
+  gap: 10px !important;
+  border-radius: 12px !important;
+}
+
+/* Mobile: More compact floating tabs */
+@media (max-width: 767px) {
+  .floating-tabs-container {
+    padding: 6px 12px !important;
+    gap: 6px !important;
+  }
+
+  .floating-tabs-container .btn {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+    min-height: 32px !important;
+  }
+}
+
 /* Thinking Toggle Styles */
 .question-input-container {
   display: flex;
