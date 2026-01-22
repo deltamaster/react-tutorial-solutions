@@ -366,16 +366,6 @@ function AppContent() {
         </Col>
       </Row>
 
-      <Row>
-        <Col xs={12}>
-          <Alert variant="info" className="warning-alert">
-            <Icon.ShieldExclamation size={16} className="mr-2" />
-            There is no filter on offending response. Use the tool at your own
-            risk.
-          </Alert>
-        </Col>
-      </Row>
-
       <div ref={tabsRef}>
         <Tabs
           activeKey={currentTab}

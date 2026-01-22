@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Row, Col, Card, Button, Form, Alert } from 'react-bootstrap';
+import { Trash } from 'react-bootstrap-icons';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import coEditService from '../utils/coEditService';
@@ -124,9 +125,13 @@ const MarkdownEditor = () => {
           <small className="text-muted">Last updated: {formatDate(lastUpdate)}</small>
         </Col>
         <Col xs={12} md={6} className="d-flex justify-content-end gap-2">
-
-          <Button variant="secondary" onClick={clearDocument}>
-            Clear Document
+          <Button 
+            variant="danger" 
+            size="sm"
+            onClick={clearDocument}
+          >
+            <Trash size={14} />
+            <span className="d-none d-md-inline ms-1">Clear Document</span>
           </Button>
         </Col>
       </Row>
