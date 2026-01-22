@@ -93,10 +93,25 @@ export function useLocalStorage(key, initialValue) {
         return;
       }
       
-      // Save to storage asynchronously after state update
-      // Check if we're in a Chrome extension environment
+      // CRITICAL: Save to localStorage SYNCHRONOUSLY first (for immediate reads)
+      // This ensures localStorage is updated before any sync operations read from it
+      if (typeof chrome === 'undefined' || !chrome.storage) {
+        // Fallback to localStorage (synchronous)
+        const stringified = JSON.stringify(valueToStore);
+        if (stringified === undefined) {
+          // If stringify returns undefined, remove the item instead
+          localStorage.removeItem(key);
+        } else {
+          localStorage.setItem(key, stringified);
+          console.log(`[useLocalStorage] Saved to localStorage synchronously: ${key}`, {
+            length: Array.isArray(valueToStore) ? valueToStore.length : 'N/A'
+          });
+        }
+      }
+      
+      // Also save to Chrome storage if available (asynchronous, but localStorage already updated)
       if (typeof chrome !== 'undefined' && chrome.storage) {
-        // Use Chrome's storage API
+        // Use Chrome's storage API (async, but localStorage already updated above)
         await new Promise((resolve, reject) => {
           chrome.storage.local.set({ [key]: valueToStore }, () => {
             if (chrome.runtime.lastError) {
@@ -106,16 +121,6 @@ export function useLocalStorage(key, initialValue) {
             }
           });
         });
-      } else {
-        // Fallback to localStorage if not in Chrome extension
-        // JSON.stringify(undefined) returns undefined, which localStorage converts to "undefined"
-        const stringified = JSON.stringify(valueToStore);
-        if (stringified === undefined) {
-          // If stringify returns undefined, remove the item instead
-          localStorage.removeItem(key);
-        } else {
-          localStorage.setItem(key, stringified);
-        }
       }
     } catch (error) {
       console.error('Error saving to storage:', error);

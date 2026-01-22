@@ -19,14 +19,17 @@ This plan outlines the implementation of OneDrive-based conversation history sto
 - ❌ Single conversation history only
 - ❌ No ability to switch between multiple conversations
 - ❌ Risk of data loss when storage quota is exceeded
+- ❌ No automatic sync to cloud storage
 
 ## Goals
 
 1. **Break Storage Limit**: Store conversation histories in OneDrive to bypass 20MB localStorage limit
 2. **Multiple Conversations**: Support saving and managing multiple conversation histories
 3. **Conversation Switching**: Allow users to seamlessly switch between different conversation histories
-4. **Backward Compatibility**: Maintain existing localStorage fallback for users without OneDrive access
-5. **Seamless Integration**: Leverage existing OneDrive infrastructure and authentication
+4. **Primary Storage**: localStorage is ALWAYS the source of truth for current conversation
+5. **OneDrive Sync**: OneDrive syncs in parallel, retries on every conversation change if not ready initially
+6. **Backward Compatibility**: App works normally with localStorage only if OneDrive unavailable
+7. **Seamless Integration**: Leverage existing OneDrive infrastructure and authentication
 
 ## Architecture Design
 
@@ -128,9 +131,10 @@ This plan outlines the implementation of OneDrive-based conversation history sto
 **Location**: `src/hooks/useConversationSync.js`
 
 **Functionality**:
-- Manage current conversation state (local vs OneDrive)
-- Handle conversation switching
-- Auto-save immediately on user request and model response
+- **Receives conversation from localStorage** (does not manage its own state)
+- **Syncs to OneDrive** whenever conversation changes (retries if not ready)
+- Handle conversation switching (loads from OneDrive, saves to localStorage)
+- Auto-save to OneDrive on every conversation change (user request, model response, edit, delete)
 - Handle sync conflicts
 - Provide conversation list for UI
 - Manage conversation titles (auto-generation and manual editing)
@@ -138,7 +142,7 @@ This plan outlines the implementation of OneDrive-based conversation history sto
 **API**:
 ```javascript
 const {
-  conversations,              // List of all conversations
+  conversations,              // List of all conversations from OneDrive
   currentConversationId,      // Currently active conversation ID
   currentConversationTitle,  // Current conversation title
   isSyncing,                 // Sync in progress flag
@@ -148,10 +152,17 @@ const {
   deleteConversation,        // Delete conversation
   renameConversation,        // Rename conversation (stops auto-title)
   updateConversationTitle,    // Update title (manual edit)
-  syncCurrentConversation,   // Manual sync trigger
-  isOneDriveAvailable        // Check if OneDrive sync is available
+  syncCurrentConversation,   // Manual sync trigger (called on every conversation change)
+  isOneDriveAvailable,       // Check if OneDrive sync is available
+  generateAndUpdateTitle     // Generate title after model response
 } = useConversationSync(conversation, setConversation);
 ```
+
+**Key Behavior**:
+- Watches `conversation` prop (from localStorage)
+- Attempts to sync to OneDrive whenever `conversation` changes
+- Retries sync on every change if OneDrive wasn't ready initially
+- Does NOT replace localStorage - localStorage remains source of truth
 
 ### Phase 3: Enhanced Conversation Hook
 
@@ -159,28 +170,28 @@ const {
 **Location**: `src/hooks/useConversation.js`
 
 **Changes**:
-- Detect if OneDrive sync is enabled
-- If OneDrive available: use `useConversationSync` instead of `useLocalStorage`
-- If OneDrive not available: fallback to existing `useLocalStorage` behavior
-- Maintain backward compatibility
+- ALWAYS use localStorage as primary storage
+- Use `useConversationSync` hook for OneDrive sync (runs in parallel)
+- OneDrive sync attempts on every conversation change
+- Retry OneDrive sync even if it wasn't available initially
 
-**Hybrid Approach**:
+**Architecture**:
 ```javascript
 export const useConversation = (storageKey = "conversation") => {
-  const [oneDriveAvailable, setOneDriveAvailable] = useState(false);
+  // ALWAYS use localStorage as primary storage
+  const [conversation, setConversation] = useLocalStorage(storageKey, []);
   
-  useEffect(() => {
-    // Check OneDrive availability
-    checkOneDriveAvailability().then(setOneDriveAvailable);
-  }, []);
+  // OneDrive sync hook (runs in parallel, syncs when available)
+  const syncHelpers = useConversationSync(conversation, setConversation);
   
-  if (oneDriveAvailable) {
-    // Use OneDrive sync
-    return useConversationSync();
-  } else {
-    // Fallback to localStorage
-    return useLocalStorage(storageKey, []);
-  }
+  // Wrapper that updates localStorage AND triggers OneDrive sync
+  const setConversationWithSync = (newConversation) => {
+    setConversation(newConversation); // Always update localStorage
+    // Trigger OneDrive sync attempt (will retry if not ready)
+    syncHelpers?.syncCurrentConversation?.();
+  };
+  
+  return [conversation, setConversationWithSync, conversationRef, syncHelpers];
 };
 ```
 
@@ -261,40 +272,57 @@ export const useConversation = (storageKey = "conversation") => {
 ### Phase 5: Sync Strategy
 
 #### 5.1 Auto-Save Behavior
-- **Immediate Save on User Request**: Save conversation to OneDrive immediately when user sends a new request
-- **Immediate Save on Model Response**: Save conversation to OneDrive immediately when model response is received
-- **On Conversation Switch**: Always save current conversation before switching
-- **On Message Edit/Delete**: Save immediately after edit/delete operations
-- **On App Load**: Fetch latest from OneDrive if available
+- **Primary Storage**: localStorage is ALWAYS updated immediately (source of truth)
+- **OneDrive Sync**: Attempt to sync to OneDrive on every conversation change:
+  - User sends a new request → sync to OneDrive
+  - Model response is received → sync to OneDrive
+  - User edits conversation → sync to OneDrive
+  - User deletes part of conversation → sync to OneDrive
+- **Retry Strategy**: If OneDrive is not ready initially, retry sync on every conversation change
+- **On Conversation Switch**: Load from OneDrive (if available), save to localStorage
+- **On App Load**: Try to load from OneDrive if available, otherwise use localStorage
 - **Background Sync**: Use async/await for save operations to avoid blocking UI
 
-**Note**: Unlike debounced sync, this ensures conversations are always saved immediately, preventing data loss. OneDrive API calls are asynchronous and won't block the UI.
+**Note**: localStorage is always updated first. OneDrive sync happens asynchronously and won't block the UI. If OneDrive sync fails, localStorage still has the conversation. OneDrive sync retries on every conversation change, so if it becomes available later, sync happens automatically without user intervention.
 
 #### 5.2 Conflict Resolution
-- **Last-Write-Wins**: Use `updatedAt` timestamp to determine latest version
-- **Merge Strategy**: For simultaneous edits, prefer OneDrive version (more authoritative)
-- **User Notification**: Show conflict warning if local changes would be overwritten
+- **Primary Source**: localStorage is always the source of truth
+- **Last-Write-Wins**: When switching conversations, use `updatedAt` timestamp to determine latest version
+- **Merge Strategy**: When loading from OneDrive, prefer OneDrive version if newer, but always save to localStorage
+- **User Notification**: Show conflict warning if OneDrive version is newer when switching conversations
 
-#### 5.3 Offline Support
-- **Local Cache**: Keep current conversation in localStorage as cache
-- **Offline Mode**: Work with local cache when OneDrive unavailable
-- **Sync on Reconnect**: Auto-sync when OneDrive becomes available
+#### 5.3 Storage Architecture
+- **Primary Storage**: localStorage is **ALWAYS** used to keep the local copy of the current conversation (source of truth)
+- **Secondary Storage**: OneDrive is used as backup/sync mechanism (when available)
+- **Retry Strategy**: OneDrive might not be ready initially, but retry syncing on every conversation change:
+  - User sends a request → retry OneDrive sync
+  - Model receives a response → retry OneDrive sync
+  - User edits conversation → retry OneDrive sync
+  - User deletes part of conversation → retry OneDrive sync
+- **Offline Mode**: Work with localStorage when OneDrive unavailable (app functions normally)
+- **Sync on Reconnect**: Auto-sync to OneDrive when it becomes available (retry on every change, no user action needed)
+- **No Data Loss**: Even if OneDrive sync never succeeds, localStorage always has the conversation
 
 ### Phase 6: Migration Strategy
 
-#### 6.1 Existing Conversation Migration
+#### 6.1 Conversation Sync Strategy
+- **No Migration Needed**: localStorage conversation is always maintained
 - **On First OneDrive Enable**: 
-  1. Export current localStorage conversation
-  2. Create new OneDrive conversation named "Migrated Conversation"
-  3. Upload to OneDrive
-  4. Clear localStorage conversation (optional, keep as backup)
-  5. Switch to OneDrive conversation
+  1. Check if localStorage has existing conversation
+  2. If yes, create OneDrive conversation and upload localStorage content
+  3. Set as current conversation in OneDrive
+  4. Keep localStorage conversation (it remains the source of truth)
+  5. Future changes sync to OneDrive automatically
 
-- **Migration Prompt**: Show dialog asking user if they want to migrate existing conversation
+- **Retry on Every Change**: Every conversation change triggers OneDrive sync attempt
+  - If OneDrive becomes available later, sync happens automatically
+  - No user action required
 
-#### 6.2 Backward Compatibility
-- **Dual Mode**: Support both localStorage and OneDrive conversations
-- **Fallback**: If OneDrive unavailable, automatically use localStorage
+#### 6.2 Storage Strategy
+- **Primary Storage**: localStorage is ALWAYS the primary storage for current conversation
+- **OneDrive Sync**: OneDrive acts as backup/sync layer (synced when available)
+- **Retry on Change**: Every conversation change (send, receive, edit, delete) triggers OneDrive sync attempt
+- **No Migration Needed**: localStorage conversation is always maintained, OneDrive syncs when ready
 - **Export Format**: Maintain existing export format for compatibility
 
 ## Technical Details
@@ -325,11 +353,12 @@ async function generateConversationTitle(conversation) {
 1. **After Model Response**: In `AppContent.js`, after receiving model response:
    ```javascript
    // After model response is added to conversation
-   // 1. Save conversation immediately
-   await syncCurrentConversation();
+   // 1. localStorage is already updated (happens synchronously)
+   // 2. Trigger OneDrive sync attempt (async, non-blocking, retries if not ready)
+   syncHelpers?.syncCurrentConversation?.();
    
-   // 2. Generate title if autoTitle is enabled
-   if (oneDriveAvailable && currentConversation?.autoTitle) {
+   // 3. Generate title if autoTitle is enabled (only if OneDrive sync successful)
+   if (syncHelpers?.isOneDriveAvailable && currentConversation?.autoTitle) {
      generateAndUpdateTitle(conversation); // Async, non-blocking
    }
    ```
@@ -337,7 +366,20 @@ async function generateConversationTitle(conversation) {
 2. **After User Request**: In `AppContent.js`, after user sends request:
    ```javascript
    // After user request is added to conversation
-   await syncCurrentConversation(); // Save immediately
+   // localStorage is already updated (happens synchronously)
+   // Trigger OneDrive sync attempt (async, non-blocking, retries if not ready)
+   syncHelpers?.syncCurrentConversation?.();
+   ```
+
+3. **On Conversation Change**: In `useConversationSync.js`, watch for conversation changes:
+   ```javascript
+   // Watch conversation prop (from localStorage)
+   useEffect(() => {
+     if (conversation && conversation.length > 0) {
+       // Attempt to sync to OneDrive (retries if not ready)
+       syncCurrentConversation();
+     }
+   }, [conversation]);
    ```
 
 2. **Title Update**: Update index.json with new title:
@@ -401,12 +443,13 @@ DELETE /me/drive/items/{fileId}
 ### Error Handling
 
 #### Common Scenarios
-1. **OneDrive Not Available**: Fallback to localStorage, show notification
-2. **Network Error**: Queue sync, retry on next action
-3. **Token Expired**: Refresh token automatically via MSAL
-4. **File Not Found**: Create new file
+1. **OneDrive Not Available**: Continue with localStorage only, retry sync on next conversation change
+2. **Network Error**: Continue with localStorage, retry sync on next conversation change
+3. **Token Expired**: Refresh token automatically via MSAL, retry sync
+4. **File Not Found**: Create new file, retry sync
 5. **Conflict (409)**: Retry with latest version
-6. **Permission Denied**: Request consent, show error message
+6. **Permission Denied**: Request consent, show error message, retry sync after consent granted
+7. **OneDrive Becomes Available Later**: Automatically sync on next conversation change (no user action needed)
 
 ### Performance Considerations
 
@@ -427,9 +470,11 @@ DELETE /me/drive/items/{fileId}
 ### First-Time OneDrive Setup
 1. User logs in with Microsoft account
 2. System detects OneDrive sync available
-3. Show prompt: "Enable OneDrive sync for conversations?"
-4. If yes: Migrate existing conversation, create index
-5. Show success message with conversation management UI
+3. OneDrive sync hook attempts to sync existing localStorage conversation
+4. If localStorage has conversation: Create OneDrive conversation and upload
+5. If no conversation: Wait for first conversation change to create OneDrive conversation
+6. Show success message with conversation management UI
+7. Future changes automatically sync to OneDrive
 
 ### Creating New Conversation
 1. User clicks "New Conversation" button
@@ -443,28 +488,34 @@ DELETE /me/drive/items/{fileId}
 1. User selects conversation from dropdown/list
 2. Show loading indicator
 3. Fetch conversation from OneDrive (or cache)
-4. Update UI with conversation history
-5. Update current conversation indicator
+4. **Save to localStorage** (localStorage becomes source of truth)
+5. Update UI with conversation history
+6. Update current conversation indicator
+7. Future changes sync back to OneDrive automatically
 
 ### Auto-Save Flow
 1. User sends message
-2. **Immediately**: Save conversation to OneDrive (async, non-blocking)
-3. Show subtle sync indicator (syncing → synced)
-4. Model response received
-5. **Immediately**: Save conversation to OneDrive again (async, non-blocking)
-6. Update conversation metadata (updatedAt, messageCount)
-7. If autoTitle enabled: Generate conversation title using question prediction feature
-8. Update conversation title in index (if autoTitle is true)
+2. **Immediately**: Update localStorage (always, synchronous)
+3. **In parallel**: Attempt to sync to OneDrive (async, non-blocking, retries if not ready)
+4. Show subtle sync indicator (syncing → synced) if OneDrive available
+5. Model response received
+6. **Immediately**: Update localStorage (always, synchronous)
+7. **In parallel**: Attempt to sync to OneDrive again (async, non-blocking, retries if not ready)
+8. Update conversation metadata in OneDrive (updatedAt, messageCount) if sync successful
+9. If autoTitle enabled: Generate conversation title using question prediction feature
+10. Update conversation title in OneDrive index (if autoTitle is true and sync successful)
 
 ### Auto-Title Generation Flow
-1. After model response is received and saved
-2. Check if current conversation has `autoTitle: true`
-3. Use question prediction feature with modified prompt:
+1. After model response is received
+2. localStorage is already updated (happens synchronously)
+3. OneDrive sync is attempted (async, retries if not ready)
+4. If OneDrive sync successful, check if current conversation has `autoTitle: true`
+5. Use question prediction feature with modified prompt:
    - Request: "Generate a one-sentence summary of this conversation, followed by 3 follow-up questions"
    - Response format: `{ summary: "...", questions: ["...", "...", "..."] }`
-4. Extract summary sentence as conversation title
-5. Update conversation name in index.json
-6. If user manually edits title: Set `autoTitle: false` and stop auto-updates
+6. Extract summary sentence as conversation title
+7. Update conversation name in OneDrive index.json
+8. If user manually edits title: Set `autoTitle: false` and stop auto-updates
 
 ## Testing Strategy
 
@@ -487,13 +538,18 @@ DELETE /me/drive/items/{fileId}
 5. Delete conversation
 6. Rename conversation
 7. Migrate from localStorage to OneDrive
-8. **Auto-save**: Verify conversation saves immediately after user request
-9. **Auto-save**: Verify conversation saves immediately after model response
-10. **Auto-title**: Verify title generates after first model response
-11. **Auto-title**: Verify title updates after subsequent responses (if autoTitle is true)
-12. **Manual title edit**: Verify auto-title stops after manual edit
-13. **Title display**: Verify title appears on left side of download/upload/reset buttons
-14. **Title editing**: Verify inline title editing works correctly
+8. **Auto-save**: Verify localStorage updates immediately after user request
+9. **Auto-save**: Verify OneDrive sync attempts after user request (even if not ready)
+10. **Auto-save**: Verify localStorage updates immediately after model response
+11. **Auto-save**: Verify OneDrive sync attempts after model response (even if not ready)
+12. **Retry behavior**: Verify OneDrive sync retries on every conversation change if not ready initially
+13. **Auto-title**: Verify title generates after first model response (only if OneDrive sync successful)
+14. **Auto-title**: Verify title updates after subsequent responses (if autoTitle is true and OneDrive available)
+15. **Manual title edit**: Verify auto-title stops after manual edit
+16. **Title display**: Verify title appears on left side of download/upload/reset buttons
+17. **Title editing**: Verify inline title editing works correctly
+18. **OneDrive becomes available**: Verify sync happens automatically on next conversation change
+19. **localStorage primary**: Verify app works normally even if OneDrive never becomes available
 
 ## Security Considerations
 
@@ -522,10 +578,10 @@ DELETE /me/drive/items/{fileId}
 - Index management
 
 ### Phase 2: Hook Integration (Week 2)
-- Implement `useConversationSync.js`
-- Update `useConversation.js`
-- Basic conversation switching
-- Implement auto-save triggers (immediate save on request/response)
+- Implement `useConversationSync.js` (receives conversation from localStorage, syncs to OneDrive)
+- Update `useConversation.js` (always uses localStorage, triggers OneDrive sync)
+- Basic conversation switching (loads from OneDrive, saves to localStorage)
+- Implement auto-save triggers (sync to OneDrive on every conversation change, retry if not ready)
 - Implement auto-title generation using question prediction feature
 
 ### Phase 3: UI Components (Week 3)
@@ -579,13 +635,16 @@ DELETE /me/drive/items/{fileId}
 ### Key Performance Indicators
 1. **Storage Limit Overcome**: Users can store conversations >20MB
 2. **Multiple Conversations**: Average user creates 3+ conversations
-3. **Sync Reliability**: 99%+ successful sync rate
+3. **Sync Reliability**: 99%+ successful sync rate (when OneDrive available)
 4. **User Adoption**: 80%+ of logged-in users enable OneDrive sync
 5. **Performance**: Conversation switch <500ms
-6. **Error Rate**: <1% sync errors
-7. **Auto-Save Performance**: Save completes within 500ms (non-blocking)
-8. **Title Generation**: Title generates within 2 seconds (async, non-blocking)
-9. **Title Accuracy**: 80%+ of auto-generated titles are meaningful/useful
+6. **Error Rate**: <1% sync errors (when OneDrive available)
+7. **localStorage Performance**: localStorage updates are always immediate (<10ms)
+8. **OneDrive Sync Performance**: OneDrive sync completes within 500ms (non-blocking, async)
+9. **Retry Success Rate**: 95%+ of conversations sync successfully after OneDrive becomes available
+10. **Title Generation**: Title generates within 2 seconds (async, non-blocking, only if OneDrive available)
+11. **Title Accuracy**: 80%+ of auto-generated titles are meaningful/useful
+12. **No Data Loss**: 100% of conversations preserved in localStorage even if OneDrive sync fails
 
 ## Risk Mitigation
 
@@ -599,11 +658,18 @@ DELETE /me/drive/items/{fileId}
 7. **Frequent Auto-Saves**: Multiple saves per conversation turn may hit rate limits
    - **Mitigation**: Use async/await properly, implement request queuing if needed
    - **Mitigation**: OneDrive API is robust and handles concurrent requests well
-8. **Title Generation Latency**: Title generation adds delay after response
+   - **Mitigation**: localStorage is always updated first, so no data loss even if OneDrive sync fails
+8. **OneDrive Not Ready Initially**: OneDrive might not be available when app starts
+   - **Mitigation**: Retry sync on every conversation change
+   - **Mitigation**: localStorage always has the conversation, app works normally
+   - **Mitigation**: No user action needed - sync happens automatically when OneDrive becomes available
+9. **Title Generation Latency**: Title generation adds delay after response
    - **Mitigation**: Run title generation asynchronously, don't block UI
    - **Mitigation**: Show loading indicator for title generation
-9. **Title Generation Failures**: API call may fail for title generation
+   - **Mitigation**: Only generate title if OneDrive sync is successful
+10. **Title Generation Failures**: API call may fail for title generation
    - **Mitigation**: Gracefully handle failures, keep existing title or use default
+   - **Mitigation**: Title generation is optional - conversation still works without it
 
 ### Mitigation Strategies
 - Comprehensive error handling

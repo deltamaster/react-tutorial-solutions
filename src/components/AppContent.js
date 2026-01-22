@@ -10,12 +10,14 @@ import * as Icon from "react-bootstrap-icons";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "../styles.css";
 import ConversationHistory from "./ConversationHistory";
+import ConversationSelector from "./ConversationSelector";
 import QuestionInput from "./QuestionInput";
 import Settings from "./Settings";
 import FollowUpQuestions from "./FollowUpQuestions";
 import Memory from "./Memory";
 import MarkdownEditor from "./MarkdownEditor";
 import LoginButton from "./LoginButton";
+import ConversationTitle from "./ConversationTitle";
 import { roleDefinition } from "../utils/roleConfig";
 import { buildUserFacingErrorMessage } from "../services/errorService";
 import { extractMentionedRolesFromParts } from "../utils/textProcessing/mentionUtils";
@@ -58,7 +60,28 @@ function AppContent() {
   }, []);
 
   // Use conversation hook for state management
-  const [conversation, setConversation, conversationRef] = useConversation("conversation");
+  const conversationHookResult = useConversation("conversation");
+  const [conversation, setConversation, conversationRef, syncHelpers] = conversationHookResult;
+  
+  // Extract sync helpers if OneDrive is available
+  const currentConversationTitle = syncHelpers?.currentConversationTitle || 'New Conversation';
+  const isSyncing = syncHelpers?.isSyncing || false;
+  const isGeneratingTitle = syncHelpers?.isGeneratingTitle || false;
+  const updateConversationTitle = syncHelpers?.updateConversationTitle || (() => {});
+  const isOneDriveAvailable = syncHelpers?.isOneDriveAvailable || false;
+  const conversations = syncHelpers?.conversations || [];
+  const currentConversationId = syncHelpers?.currentConversationId;
+  
+  // Debug: Log OneDrive status
+  useEffect(() => {
+    console.log('[AppContent] OneDrive status:', {
+      hasSyncHelpers: !!syncHelpers,
+      isOneDriveAvailable,
+      currentConversationId,
+      conversationLength: conversation?.length,
+      syncConversationLength: syncHelpers?.conversation?.length
+    });
+  }, [syncHelpers, isOneDriveAvailable, currentConversationId, conversation?.length]);
 
   // Use Chrome content hook for retrieving content from Chrome storage or URL
   const { question, setQuestion } = useChromeContent();
@@ -89,10 +112,10 @@ function AppContent() {
     conversationRef,
     setConversation,
     appendMessage: (message) => {
+      // setConversation wrapper already updates conversationRef.current immediately
+      // No need to manually update it here
       setConversation((prevConversation) => {
-        const updatedConversation = [...(prevConversation || []), message];
-        conversationRef.current = updatedConversation;
-        return updatedConversation;
+        return [...(prevConversation || []), message];
       });
     },
     onError: (error) => {
@@ -101,6 +124,72 @@ function AppContent() {
     },
     onAllRequestsComplete: () => {
       scheduleFollowUpQuestions();
+      // Trigger auto-save and title generation after model responses
+      console.log('[AppContent] onAllRequestsComplete called', {
+        hasSyncHelpers: !!syncHelpers,
+        isOneDriveAvailable: syncHelpers?.isOneDriveAvailable,
+        conversationLength: conversation?.length,
+        nextQuestionLoading: nextQuestionLoading
+      });
+      
+      // CRITICAL: Always sync when model response is received (both user request and model response)
+      // Don't skip sync even if follow-up questions are being generated - we still need to save the conversation
+      // Add a small delay to ensure conversationRef.current is updated with the latest model response
+      console.log('[AppContent] Model response complete, triggering OneDrive sync...', {
+        conversationLength: conversation?.length,
+        conversationRefLength: conversationRef?.current?.length
+      });
+      if (syncHelpers?.syncCurrentConversation) {
+        // Small delay to ensure conversationRef.current is updated with latest model response
+        // This handles race conditions where onAllRequestsComplete fires before appendMessage completes
+        setTimeout(() => {
+          console.log('[AppContent] Delayed sync - ensuring conversationRef is up-to-date', {
+            conversationRefLength: conversationRef?.current?.length
+          });
+          // Sync first, then generate title after sync completes (to ensure conversation ID exists)
+          syncHelpers.syncCurrentConversation()
+            .then(() => {
+              // Generate title after sync completes successfully
+              // This ensures conversation ID is created before title generation
+              // Only generate title if NOT generating follow-up questions (to avoid duplicate API calls)
+              if (!nextQuestionLoading && syncHelpers?.generateAndUpdateTitle) {
+                console.log('[AppContent] Sync completed, triggering auto-title generation...');
+                // Small delay to ensure state is updated
+                setTimeout(() => {
+                  console.log('[AppContent] Calling generateAndUpdateTitle...');
+                  syncHelpers.generateAndUpdateTitle().catch(err => {
+                    console.error('[AppContent] Error generating title:', err);
+                  });
+                }, 500);
+              } else if (nextQuestionLoading) {
+                console.log('[AppContent] Sync completed, but skipping auto-title (follow-up questions in progress)');
+              }
+            })
+            .catch(err => {
+              console.error('[AppContent] Error syncing conversation:', err);
+              // Still try to generate title even if sync fails (might have existing ID)
+              // But only if not generating follow-up questions
+              if (!nextQuestionLoading && syncHelpers?.generateAndUpdateTitle) {
+                setTimeout(() => {
+                  console.log('[AppContent] Sync failed, but trying auto-title anyway...');
+                  syncHelpers.generateAndUpdateTitle().catch(titleErr => {
+                    console.error('[AppContent] Error generating title:', titleErr);
+                  });
+                }, 500);
+              }
+            });
+        }, 300); // Small delay to ensure conversationRef.current is updated
+      } else {
+        // No sync helpers available, try title generation anyway (if not generating follow-up questions)
+        if (!nextQuestionLoading && syncHelpers?.generateAndUpdateTitle) {
+          setTimeout(() => {
+            console.log('[AppContent] No sync helpers, calling generateAndUpdateTitle directly...');
+            syncHelpers.generateAndUpdateTitle().catch(err => {
+              console.error('[AppContent] Error generating title:', err);
+            });
+          }, 500);
+        }
+      }
     },
     mentionRoleMap,
   });
@@ -144,11 +233,32 @@ function AppContent() {
       timestamp: Date.now(),
     };
 
-    // Update conversation synchronously to ensure it's available for parallel requests
+    // Update conversation - setConversation wrapper will update ref and localStorage immediately
     const latestConversation = conversationRef.current || [];
     const updatedConversation = [...latestConversation, newUserMessage];
-    conversationRef.current = updatedConversation;
+    
+    console.log('[AppContent] handleSubmit - updating conversation', {
+      conversationLength: updatedConversation.length,
+      hasSyncHelpers: !!syncHelpers,
+      isOneDriveAvailable: syncHelpers?.isOneDriveAvailable
+    });
+    
+    // Update conversation state (this updates localStorage and ref immediately via wrapper)
     setConversation(updatedConversation);
+    
+    // Explicitly trigger OneDrive sync after user sends message
+    // Let syncCurrentConversation handle availability check internally
+    // Delay sync to ensure conversation state and localStorage are updated first
+    if (syncHelpers?.syncCurrentConversation) {
+      setTimeout(() => {
+        syncHelpers.syncCurrentConversation().catch(err => {
+          console.error('[AppContent] Error syncing conversation:', err);
+        });
+      }, 500);
+    }
+    
+    // Auto-save is handled automatically by useConversationSync hook via useEffect
+    // It will create a conversation automatically if OneDrive is available and no conversation exists
 
     // Step 3: Extract roles and prepare for API request
     const mentionedRoles = extractMentionedRolesFromParts(displayContentParts, mentionRoleMap);
@@ -177,7 +287,10 @@ function AppContent() {
               ...updatedConversation[messageIndex],
               parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...updatedParts],
             };
-            conversationRef.current = updatedConversation;
+            // setConversation wrapper will update ref automatically
+            console.log('[AppContent] Updated conversation with file_data', {
+              conversationLength: updatedConversation.length
+            });
             return updatedConversation;
           }
           return latestConversation;
@@ -197,7 +310,7 @@ function AppContent() {
           const filteredConversation = latestConversation.filter(
             msg => msg.timestamp !== newUserMessage.timestamp
           );
-          conversationRef.current = filteredConversation;
+          // setConversation wrapper will update ref automatically
           return filteredConversation;
         });
       }
@@ -216,15 +329,37 @@ function AppContent() {
     if (
       window.confirm("Are you sure you want to reset the conversation history?")
     ) {
+      // IMMEDIATELY reset UI and localStorage first (user sees instant feedback)
       setConversation([]);
       setFollowUpQuestions([]); // Clear predicted questions
-      // Also clear conversation summaries from localStorage
+      
+      // Clear conversation summaries from localStorage
       try {
         localStorage.removeItem("conversation_summaries");
         console.log("Conversation summaries cleared");
       } catch (error) {
         console.error("Error clearing conversation summaries:", error);
       }
+      
+      // Reset OneDrive conversation ID and title immediately
+      if (syncHelpers?.resetCurrentConversation) {
+        // Reset immediately (saves old conversation to OneDrive in background)
+        syncHelpers.resetCurrentConversation().catch(err => {
+          console.error('[AppContent] Error saving old conversation during reset:', err);
+        });
+        console.log('[AppContent] Reset OneDrive conversation ID and title');
+      } else {
+        // Fallback: clear localStorage directly if reset function not available
+        try {
+          localStorage.removeItem("onedrive_latest_conversation_id");
+          localStorage.removeItem("onedrive_latest_conversation_title");
+          console.log('[AppContent] Cleared OneDrive conversation ID and title from localStorage (fallback)');
+        } catch (error) {
+          console.error("Error clearing OneDrive conversation ID:", error);
+        }
+      }
+      
+      console.log('[AppContent] Conversation reset complete - UI and localStorage cleared immediately');
     }
   };
 
@@ -375,19 +510,39 @@ function AppContent() {
         >
           <Tab eventKey="chatbot" title="Chatbot">
             <Row className="mb-3">
-              <Col xs={12} className="d-flex justify-content-end gap-2">
-                <div className="relative">
-                  <Button
-                    id="download-conversation"
-                    variant="primary"
-                    onClick={downloadConversation}
-                    size="sm"
-                    style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
-                  >
-                    <Icon.Download size={14} />
-                    <span className="d-none d-md-inline ms-1">Download</span>
-                  </Button>
-                </div>
+              <Col xs={12} className="d-flex justify-content-between align-items-start gap-2">
+                {/* Conversation Title and Selector - Left side */}
+                {isOneDriveAvailable && (
+                  <div className="flex-grow-1 d-flex flex-column gap-2">
+                    <ConversationTitle
+                      title={currentConversationTitle}
+                      isAutoTitle={conversations.find(c => c.id === currentConversationId)?.autoTitle !== false}
+                      isGeneratingTitle={isGeneratingTitle}
+                      onTitleChange={updateConversationTitle}
+                    />
+                    <ConversationSelector
+                      conversations={conversations}
+                      currentConversationId={currentConversationId}
+                      onSwitchConversation={syncHelpers?.switchConversation}
+                      isSyncing={isSyncing}
+                    />
+                  </div>
+                )}
+                
+                {/* Action Buttons - Right side (always on right) */}
+                <div className="d-flex gap-2 ms-auto">
+                  <div className="relative">
+                    <Button
+                      id="download-conversation"
+                      variant="primary"
+                      onClick={downloadConversation}
+                      size="sm"
+                      style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
+                    >
+                      <Icon.Download size={14} />
+                      <span className="d-none d-md-inline ms-1">Download</span>
+                    </Button>
+                  </div>
 
                 <div className="relative">
                   <Button
@@ -407,17 +562,25 @@ function AppContent() {
                   />
                 </div>
 
-                <div className="relative">
-                  <Button
-                    id="reset-conversation"
-                    variant="danger"
-                    onClick={resetConversation}
-                    size="sm"
-                    style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
-                  >
-                    <Icon.ArrowClockwise size={14} />
-                    <span className="d-none d-md-inline ms-1">Reset</span>
-                  </Button>
+                  <div className="relative">
+                    <Button
+                      id="reset-conversation"
+                      variant="primary"
+                      onClick={resetConversation}
+                      size="sm"
+                      style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
+                    >
+                      <Icon.PlusCircle size={14} />
+                      <span className="d-none d-md-inline ms-1">New Conversation</span>
+                    </Button>
+                  </div>
+                  
+                  {/* Sync indicator */}
+                  {isOneDriveAvailable && isSyncing && (
+                    <div className="d-flex align-items-center">
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                    </div>
+                  )}
                 </div>
               </Col>
             </Row>
