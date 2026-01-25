@@ -297,7 +297,8 @@ export const useConversationSync = (conversation = [], setConversation = null) =
   }, [isOneDriveAvailable, currentConversationId, setConversation]); // Removed conversation to prevent loops
   
   // Load conversations from OneDrive (only called once on initial check)
-  const loadConversationsFromOneDrive = useCallback(async () => {
+  // NOTE: syncCurrentConversation is defined later, but we'll access it via closure when needed
+  const loadConversationsFromOneDrive = useCallback(async (syncFn = null) => {
     // Prevent repeated loads - CRITICAL: Check and set flag immediately to prevent race conditions
     if (hasLoadedConversationsRef.current) {
       console.log('[useConversationSync] Conversations already loaded, skipping...');
@@ -352,12 +353,33 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                   remoteLength: remoteConvData.length,
                   mergedLength: mergedConversation.length,
                   hasLocalChanges,
-                  mergeProducedChanges
+                  mergeProducedChanges,
+                  localStr: localStr.substring(0, 200),
+                  remoteStr: remoteStr.substring(0, 200),
+                  mergedStr: mergedStr.substring(0, 200)
                 });
+                
+                // CRITICAL: Set lastSyncedConversationRef to REMOTE version BEFORE updating conversation
+                // This ensures syncCurrentConversation will detect the difference and sync merged changes back
+                lastSyncedConversationRef.current = remoteStr;
                 
                 // Set flag to prevent auto-save when updating localStorage
                 isLoadingFromOneDriveRef.current = true;
+                
+                // CRITICAL: Update localStorage with merged conversation
+                // setConversation will update localStorage synchronously, but we also ensure it here
+                console.log('[useConversationSync] Setting merged conversation to localStorage...', {
+                  mergedLength: mergedConversation.length,
+                  beforeLocalStorage: localStorage.getItem('conversation')?.substring(0, 100)
+                });
                 setConversation(mergedConversation);
+                
+                // Double-check that localStorage was updated
+                const afterLocalStorage = localStorage.getItem('conversation');
+                console.log('[useConversationSync] After setConversation, localStorage:', {
+                  afterLength: afterLocalStorage ? JSON.parse(afterLocalStorage).length : 0,
+                  afterStr: afterLocalStorage?.substring(0, 200)
+                });
                 
                 // Restore summaries
                 if (conversation_summaries && conversation_summaries.length > 0) {
@@ -369,10 +391,6 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                   setTrackedFiles(uploaded_files);
                 }
                 
-                // CRITICAL: Set lastSyncedConversationRef to REMOTE version, not merged version
-                // This ensures syncCurrentConversation will detect the difference and sync merged changes back
-                lastSyncedConversationRef.current = remoteStr;
-                
                 // If merge produced changes, set flag to trigger sync after loading completes
                 if (mergeProducedChanges) {
                   needsSyncAfterLoadRef.current = true;
@@ -383,6 +401,19 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                 setTimeout(() => {
                   isLoadingFromOneDriveRef.current = false;
                   console.log('[useConversationSync] Reset isLoadingFromOneDriveRef after loading conversation');
+                  
+                  // If merge produced changes, trigger sync to upload merged version to OneDrive
+                  if (mergeProducedChanges && syncFn) {
+                    console.log('[useConversationSync] Triggering sync to upload merged conversation to OneDrive...');
+                    // Additional delay to ensure conversationRef is updated
+                    setTimeout(() => {
+                      // Trigger sync by calling syncCurrentConversation
+                      // Since we set lastSyncedConversationRef to remoteStr, sync will detect the difference
+                      syncFn().catch(err => {
+                        console.error('[useConversationSync] Error syncing merged conversation:', err);
+                      });
+                    }, 500);
+                  }
                 }, 1000);
                 console.log('[useConversationSync] Loaded conversation from OneDrive:', latestConversationId);
               }
@@ -477,7 +508,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       // Reset flag on error so we can retry later
       hasLoadedConversationsRef.current = false;
     }
-  }, [conversation, setConversation]);
+  }, [conversation, setConversation]); // Note: syncCurrentConversation will be passed when calling this function
   
   // Check OneDrive availability function (reusable) - ONLY checks availability, doesn't load conversations
   const checkOneDriveAvailability = useCallback(async () => {
@@ -495,7 +526,9 @@ export const useConversationSync = (conversation = [], setConversation = null) =
         // Only load conversations on first check (when availability becomes true)
         if (!hasLoadedConversationsRef.current) {
           console.log('[useConversationSync] OneDrive available for first time, loading conversations...');
-          await loadConversationsFromOneDrive();
+          // We'll pass syncCurrentConversation after it's defined - for now pass null
+          // The function will handle it gracefully
+          await loadConversationsFromOneDrive(null);
         }
       }
     } catch (error) {
@@ -1201,6 +1234,20 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       })();
     }
   }, [currentConversationId]);
+  
+  // After syncCurrentConversation is defined, re-trigger load if needed
+  // This ensures sync function is available when merge happens
+  useEffect(() => {
+    if (needsSyncAfterLoadRef.current && !isLoadingFromOneDriveRef.current && isOneDriveAvailable && syncCurrentConversation) {
+      console.log('[useConversationSync] Triggering delayed sync after merge...');
+      needsSyncAfterLoadRef.current = false;
+      setTimeout(() => {
+        syncCurrentConversation().catch(err => {
+          console.error('[useConversationSync] Error in delayed sync after merge:', err);
+        });
+      }, 500);
+    }
+  }, [isOneDriveAvailable, syncCurrentConversation]);
   
   return {
     conversations,
