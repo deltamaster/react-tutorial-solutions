@@ -12,11 +12,20 @@ function ConversationSelector({
   conversations = [],
   currentConversationId,
   onSwitchConversation,
+  onDeleteConversation,
   isSyncing = false,
-  className = ''
+  className = '',
+  onDropdownToggle
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  // Notify parent when dropdown state changes
+  useEffect(() => {
+    if (onDropdownToggle) {
+      onDropdownToggle(isOpen);
+    }
+  }, [isOpen, onDropdownToggle]);
 
   // Sort conversations by updatedAt (most recent first)
   const sortedConversations = [...conversations].sort((a, b) => {
@@ -54,11 +63,30 @@ function ConversationSelector({
     }
   };
 
+  const handleDelete = async (e, conversationId) => {
+    e.stopPropagation(); // Prevent dropdown item click
+    if (window.confirm('Are you sure you want to delete this conversation?')) {
+      if (onDeleteConversation) {
+        await onDeleteConversation(conversationId);
+      }
+    }
+  };
+
   const currentConversation = conversations.find(c => c.id === currentConversationId);
 
   return (
-    <div className={`conversation-selector ${className}`} ref={dropdownRef}>
-      <Dropdown show={isOpen} onToggle={setIsOpen}>
+    <>
+      <style>{`
+        .delete-icon-wrapper:hover {
+          background-color: #ffebee !important;
+        }
+        .delete-icon-wrapper:hover svg {
+          color: #d32f2f !important;
+          transform: scale(1.15);
+        }
+      `}</style>
+      <div className={`conversation-selector ${className}`} ref={dropdownRef}>
+        <Dropdown show={isOpen} onToggle={setIsOpen}>
         <Dropdown.Toggle
           as={Button}
           variant="outline-secondary"
@@ -78,7 +106,39 @@ function ConversationSelector({
           )}
         </Dropdown.Toggle>
 
-        <Dropdown.Menu style={{ maxHeight: '400px', overflowY: 'auto', minWidth: '300px' }}>
+        <Dropdown.Menu 
+          style={{ 
+            maxHeight: '400px', 
+            overflowY: 'auto', 
+            width: '100%',
+            maxWidth: '100%',
+            backgroundColor: 'rgba(255, 255, 255, 0.5)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+            borderRadius: '12px',
+            marginTop: '4px'
+          }}
+          popperConfig={{
+            modifiers: [
+              {
+                name: 'preventOverflow',
+                options: {
+                  boundary: 'viewport',
+                  padding: 10
+                }
+              },
+              {
+                name: 'flip',
+                options: {
+                  boundary: 'viewport',
+                  padding: 10
+                }
+              }
+            ]
+          }}
+        >
           {sortedConversations.length === 0 ? (
             <Dropdown.Item disabled>
               <div className="text-muted text-center py-2">
@@ -99,29 +159,56 @@ function ConversationSelector({
                   className="d-flex flex-column align-items-start py-2"
                   style={{
                     cursor: 'pointer',
-                    backgroundColor: isActive ? '#e7f3ff' : 'transparent',
-                    color: isActive ? '#000000' : 'inherit' // Black text for selected item
+                    backgroundColor: isActive 
+                      ? 'rgba(13, 110, 253, 0.5)' 
+                      : 'transparent',
+                    backdropFilter: isActive ? 'blur(10px)' : 'none',
+                    WebkitBackdropFilter: isActive ? 'blur(10px)' : 'none',
+                    border: isActive 
+                      ? '1px solid rgba(13, 110, 253, 0.5)' 
+                      : '1px solid transparent',
+                    borderRadius: isActive ? '8px' : '0',
+                    color: isActive ? '#000000' : 'inherit',
+                    transition: 'all 0.2s ease'
                   }}
                 >
-                  <div className="d-flex justify-content-between align-items-center w-100">
+                  <div className="d-flex align-items-center w-100" style={{ gap: '8px' }}>
                     <span
                       className="fw-semibold text-truncate"
                       style={{ 
-                        maxWidth: '200px',
+                        flex: 1,
+                        minWidth: 0, // Allow truncation
                         color: isActive ? '#000000' : 'inherit' // Black text for selected item
                       }}
                       title={conv.name}
                     >
                       {conv.name || 'Untitled Conversation'}
                     </span>
-                    {isActive && (
-                      <Icon.CheckCircleFill size={14} className="text-primary ms-2" />
-                    )}
+                    <div
+                      className="delete-icon-wrapper"
+                      onClick={(e) => handleDelete(e, conv.id)}
+                      title="Delete conversation"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Icon.X
+                        size={14}
+                        className="text-danger flex-shrink-0"
+                        style={{
+                          transition: 'all 0.2s ease'
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="d-flex justify-content-between align-items-center w-100 mt-1">
-                    <small style={{ color: isActive ? '#666666' : undefined }}>
-                      {conv.messageCount || 0} messages
-                    </small>
+                  <div className="d-flex justify-content-end align-items-center w-100 mt-1">
                     <small style={{ color: isActive ? '#666666' : undefined }}>
                       {formattedDate}
                     </small>
@@ -133,6 +220,7 @@ function ConversationSelector({
         </Dropdown.Menu>
       </Dropdown>
     </div>
+    </>
   );
 }
 

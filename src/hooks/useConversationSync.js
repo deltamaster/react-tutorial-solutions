@@ -1,8 +1,52 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import conversationSyncService from '../utils/conversationSyncService';
-import { parseConversationData } from '../services/conversationService';
+import { parseConversationData, filterDeletedMessages } from '../services/conversationService';
 import { setTrackedFiles } from '../utils/fileTrackingService';
 import { useAuth } from '../contexts/AuthContext';
+
+/**
+ * Calculate the latest timestamp from conversation content
+ * Checks all messages and parts for their timestamp and lastUpdate values
+ * @param {Array} conversation - Conversation array
+ * @returns {string|null} - ISO timestamp string of the latest update, or null if conversation is empty
+ */
+function getLatestConversationTimestamp(conversation) {
+  if (!conversation || conversation.length === 0) {
+    return null;
+  }
+  
+  let latestTimestamp = 0;
+  
+  conversation.forEach(message => {
+    if (!message.deleted) {
+      // Check message-level timestamps
+      if (message.timestamp) {
+        latestTimestamp = Math.max(latestTimestamp, message.timestamp);
+      }
+      if (message.lastUpdate) {
+        latestTimestamp = Math.max(latestTimestamp, message.lastUpdate);
+      }
+      
+      // Check part-level timestamps
+      if (message.parts && Array.isArray(message.parts)) {
+        message.parts.forEach(part => {
+          if (part.timestamp) {
+            latestTimestamp = Math.max(latestTimestamp, part.timestamp);
+          }
+          if (part.lastUpdate) {
+            latestTimestamp = Math.max(latestTimestamp, part.lastUpdate);
+          }
+        });
+      }
+    }
+  });
+  
+  if (latestTimestamp === 0) {
+    return null;
+  }
+  
+  return new Date(latestTimestamp).toISOString();
+}
 
 /**
  * Custom hook for OneDrive conversation sync
@@ -34,21 +78,31 @@ export const useConversationSync = (conversation = [], setConversation = null) =
   });
   
   // Save currentConversationId to localStorage whenever it changes
+  // Only remove from localStorage if explicitly intended (via shouldClearLocalStorageRef flag)
   useEffect(() => {
     if (currentConversationId) {
       localStorage.setItem('onedrive_latest_conversation_id', currentConversationId);
-    } else {
+      shouldClearLocalStorageRef.current = false; // Reset flag after setting
+    } else if (shouldClearLocalStorageRef.current) {
+      // Only remove if explicitly intended (e.g., during reset)
       localStorage.removeItem('onedrive_latest_conversation_id');
+      shouldClearLocalStorageRef.current = false; // Reset flag after clearing
     }
+    // If currentConversationId is null but flag is false, don't clear - preserve existing localStorage value
   }, [currentConversationId]);
   
   // Save currentConversationTitle to localStorage whenever it changes
+  // Only remove from localStorage if explicitly intended (via shouldClearLocalStorageRef flag)
   useEffect(() => {
     if (currentConversationTitle && currentConversationTitle.trim()) {
       localStorage.setItem('onedrive_latest_conversation_title', currentConversationTitle);
-    } else {
+      shouldClearLocalStorageRef.current = false; // Reset flag after setting
+    } else if (shouldClearLocalStorageRef.current && currentConversationTitle === '') {
+      // Only remove if explicitly intended (e.g., during reset) and title is empty string
       localStorage.removeItem('onedrive_latest_conversation_title');
+      shouldClearLocalStorageRef.current = false; // Reset flag after clearing
     }
+    // If currentConversationTitle is empty but flag is false, don't clear - preserve existing localStorage value
   }, [currentConversationTitle]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
@@ -66,6 +120,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
   const lastSyncTimeRef = useRef(0); // Throttle sync calls
   const wasResetRef = useRef(false); // Track if reset happened - prevents reusing old ID
   const hasLoadedConversationsRef = useRef(false); // Prevent repeated conversation loading
+  const shouldClearLocalStorageRef = useRef(false); // Flag to allow clearing localStorage only when explicitly intended
   
   // Switch to a different conversation (defined early for use in useEffect)
   const switchConversation = useCallback(async (conversationId) => {
@@ -89,40 +144,61 @@ export const useConversationSync = (conversation = [], setConversation = null) =
         to: conversationId
       });
       
-      // CRITICAL: Save current conversation BEFORE switching (final save)
+      // CRITICAL: Save current conversation BEFORE switching ONLY if content has changed
       const currentConv = conversationRef.current;
       if (currentConversationId && currentConv && currentConv.length > 0) {
-        console.log('[switchConversation] Saving current conversation before switch...', {
-          conversationId: currentConversationId,
-          conversationLength: currentConv.length
-        });
+        // Check if conversation has changed by comparing with last synced version
+        const currentConvStr = JSON.stringify(currentConv);
+        const lastSyncedStr = lastSyncedConversationRef.current || '';
+        const conversationChanged = currentConvStr !== lastSyncedStr;
         
-        try {
-          const accessToken = await conversationSyncService.getOneDriveAccessToken();
-          if (accessToken) {
-            // Upload conversation content
-            await conversationSyncService.uploadConversation(
-              accessToken,
-              currentConversationId,
-              { conversation: currentConv, updatedAt: new Date().toISOString() }
-            );
-            
-            // Update index with final message count
-            const index = await conversationSyncService.fetchConversationsIndex(accessToken);
-            const conversationEntry = index.conversations.find(c => c.id === currentConversationId);
-            if (conversationEntry) {
-              conversationEntry.updatedAt = new Date().toISOString();
-              conversationEntry.messageCount = currentConv.length;
-              await conversationSyncService.uploadConversationsIndex(accessToken, index);
+        if (conversationChanged) {
+          console.log('[switchConversation] Saving current conversation before switch (content changed)...', {
+            conversationId: currentConversationId,
+            conversationLength: currentConv.length
+          });
+          
+          try {
+            const accessToken = await conversationSyncService.getOneDriveAccessToken();
+            if (accessToken) {
+              // Calculate updatedAt from conversation content (latest timestamp of parts)
+              const latestTimestamp = getLatestConversationTimestamp(currentConv);
+              const conversationData = {
+                conversation: currentConv
+              };
+              if (latestTimestamp) {
+                conversationData.updatedAt = latestTimestamp;
+              }
+              
+              // Upload conversation content
+              await conversationSyncService.uploadConversation(
+                accessToken,
+                currentConversationId,
+                conversationData
+              );
+              
+              // Update index with calculated updatedAt from conversation content
+              const index = await conversationSyncService.fetchConversationsIndex(accessToken);
+              const conversationEntry = index.conversations.find(c => c.id === currentConversationId);
+              if (conversationEntry && latestTimestamp) {
+                conversationEntry.updatedAt = latestTimestamp;
+                await conversationSyncService.uploadConversationsIndex(accessToken, index);
+                // Update conversations state
+                setConversations(index.conversations);
+              }
+              
+              console.log('[switchConversation] Current conversation saved successfully', {
+                updatedAt: latestTimestamp
+              });
+            } else {
+              console.warn('[switchConversation] No access token available, skipping save of current conversation');
             }
-            
-            console.log('[switchConversation] Current conversation saved successfully');
-          } else {
-            console.warn('[switchConversation] No access token available, skipping save of current conversation');
+          } catch (saveError) {
+            console.error('[switchConversation] Error saving current conversation:', saveError);
+            // Continue with switch even if save fails - user might want to switch anyway
           }
-        } catch (saveError) {
-          console.error('[switchConversation] Error saving current conversation:', saveError);
-          // Continue with switch even if save fails - user might want to switch anyway
+        } else {
+          console.log('[switchConversation] Current conversation unchanged, skipping save before switch');
         }
       } else {
         console.log('[switchConversation] No current conversation to save', {
@@ -147,14 +223,15 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       }
       
       // Parse conversation data
-      const { conversation: convData, conversation_summaries, uploaded_files } = 
+      const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
         parseConversationData(JSON.stringify(conversationData));
       
+      // When switching conversations, replace local with remote (no merge)
       // Set flag to prevent auto-save when updating localStorage
       isLoadingFromOneDriveRef.current = true;
       
       // Restore conversation to localStorage (localStorage is source of truth)
-      setConversation(convData || []);
+      setConversation(remoteConvData || []);
       
       // Restore summaries
       if (conversation_summaries && conversation_summaries.length > 0) {
@@ -182,9 +259,14 @@ export const useConversationSync = (conversation = [], setConversation = null) =
         localStorage.setItem('onedrive_latest_conversation_title', title);
         console.log('[switchConversation] Loaded conversation title:', title);
       } else {
-        // Conversation not found in index, use default title
-        setCurrentConversationTitle('New Conversation');
-        localStorage.setItem('onedrive_latest_conversation_title', 'New Conversation');
+        // Conversation not found in index, preserve title from localStorage if it exists
+        const existingTitle = localStorage.getItem('onedrive_latest_conversation_title');
+        if (existingTitle && existingTitle.trim()) {
+          setCurrentConversationTitle(existingTitle);
+        } else {
+          setCurrentConversationTitle('New Conversation');
+          localStorage.setItem('onedrive_latest_conversation_title', 'New Conversation');
+        }
       }
       
       // Update lastSyncedConversationRef to prevent immediate re-sync
@@ -235,12 +317,20 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                 latestConversationId
               );
               if (conversationData) {
-                const { conversation: convData, conversation_summaries, uploaded_files } = 
+                const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
                   parseConversationData(JSON.stringify(conversationData));
+                
+                // Merge local and remote conversations ONLY if it's the same conversation
+                // (same conversation ID means we might have local changes to merge)
+                const localConvData = conversationRef.current || conversation || [];
+                const mergedConversation = conversationSyncService.mergeConversations(
+                  localConvData,
+                  remoteConvData || []
+                );
                 
                 // Set flag to prevent auto-save when updating localStorage
                 isLoadingFromOneDriveRef.current = true;
-                setConversation(convData || []);
+                setConversation(mergedConversation);
                 
                 // Restore summaries
                 if (conversation_summaries && conversation_summaries.length > 0) {
@@ -257,18 +347,18 @@ export const useConversationSync = (conversation = [], setConversation = null) =
               }
             } catch (loadError) {
               console.error('[useConversationSync] Error loading conversation:', loadError);
-              // Conversation might not exist, clear the ID and title
-              localStorage.removeItem('onedrive_latest_conversation_id');
-              localStorage.removeItem('onedrive_latest_conversation_title');
-              setCurrentConversationId(null);
-              setCurrentConversationTitle('New Conversation');
+              // Don't clear localStorage or state on error - might be temporary network issue
+              // Keep the ID/title in localStorage and state so user can retry later
+              // The ID is already set from localStorage in initial state, so don't change it
+              // Don't update title - preserve what's in localStorage (already loaded in initial state)
             }
           } else {
-            console.log('[useConversationSync] Conversation not found in index, clearing localStorage ID and title');
-            localStorage.removeItem('onedrive_latest_conversation_id');
-            localStorage.removeItem('onedrive_latest_conversation_title');
-            setCurrentConversationId(null);
-            setCurrentConversationTitle('New Conversation');
+            console.log('[useConversationSync] Conversation not found in index, but keeping localStorage ID/title');
+            // Don't clear localStorage or state - conversation might exist but index not loaded yet
+            // Or user might be offline. Keep the ID/title for when OneDrive becomes available
+            // Ensure the ID is set in state (it should already be from initial state, but ensure it)
+            setCurrentConversationId(latestConversationId);
+            // Don't update title - preserve what's in localStorage (already loaded in initial state)
           }
         } else {
           // No conversation ID in localStorage - check if current conversation is empty
@@ -293,16 +383,18 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                   mostRecentConversation.id
                 );
                 if (conversationData) {
-                  const { conversation: convData, conversation_summaries, uploaded_files } = 
+                  const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
                     parseConversationData(JSON.stringify(conversationData));
                   
+                  // When loading most recent conversation (switching), replace local with remote
+                  // No merge - this is a different conversation
                   // Set flag to prevent auto-save when updating localStorage
                   isLoadingFromOneDriveRef.current = true;
                   
                   // Save conversation ID to localStorage (via setCurrentConversationId)
                   setCurrentConversationId(mostRecentConversation.id);
                   setCurrentConversationTitle(mostRecentConversation.name || 'New Conversation');
-                  setConversation(convData || []);
+                  setConversation(remoteConvData || []);
                   
                   // Restore summaries
                   if (conversation_summaries && conversation_summaries.length > 0) {
@@ -389,12 +481,20 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                     latestConversationId
                   );
                   if (conversationData) {
-                    const { conversation: convData, conversation_summaries, uploaded_files } = 
+                    const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
                       parseConversationData(JSON.stringify(conversationData));
+                    
+                    // Merge local and remote conversations ONLY if it's the same conversation
+                    // (same conversation ID means we might have local changes to merge)
+                    const localConvData = conversationRef.current || conversation || [];
+                    const mergedConversation = conversationSyncService.mergeConversations(
+                      localConvData,
+                      remoteConvData || []
+                    );
                     
                     // Set flag to prevent auto-save when updating localStorage
                     isLoadingFromOneDriveRef.current = true;
-                    setConversation(convData || []);
+                    setConversation(mergedConversation);
                     
                     // Restore summaries
                     if (conversation_summaries && conversation_summaries.length > 0) {
@@ -411,18 +511,17 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                   }
                 } catch (loadError) {
                   console.error('[useConversationSync] Error loading conversation:', loadError);
-                  // Conversation might not exist, clear the ID and title
-                  localStorage.removeItem('onedrive_latest_conversation_id');
-                  localStorage.removeItem('onedrive_latest_conversation_title');
-                  setCurrentConversationId(null);
-                  setCurrentConversationTitle('New Conversation');
+                  // Don't clear localStorage or state on error - might be temporary network issue
+                  // Keep the ID/title in localStorage and state so user can retry later
+                  // The ID is already set from localStorage in initial state, so don't change it
+                  // Don't update title - preserve what's in localStorage (already loaded in initial state)
                 }
               } else {
-                console.log('[useConversationSync] Conversation not found in index, clearing localStorage ID and title');
-                localStorage.removeItem('onedrive_latest_conversation_id');
-                localStorage.removeItem('onedrive_latest_conversation_title');
-                setCurrentConversationId(null);
-                setCurrentConversationTitle('New Conversation');
+                console.log('[useConversationSync] Conversation not found in index, but keeping localStorage ID/title');
+                // Don't clear localStorage or state - conversation might exist but index not loaded yet
+                // Ensure the ID is set in state (it should already be from initial state, but ensure it)
+                setCurrentConversationId(latestConversationId);
+                // Don't update title - preserve what's in localStorage (already loaded in initial state)
               }
             } else {
               // No conversation ID in localStorage - check if current conversation is empty
@@ -447,16 +546,18 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                       mostRecentConversation.id
                     );
                     if (conversationData) {
-                      const { conversation: convData, conversation_summaries, uploaded_files } = 
+                      const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
                         parseConversationData(JSON.stringify(conversationData));
                       
+                      // When loading most recent conversation (switching), replace local with remote
+                      // No merge - this is a different conversation
                       // Set flag to prevent auto-save when updating localStorage
                       isLoadingFromOneDriveRef.current = true;
                       
                       // Save conversation ID to localStorage (via setCurrentConversationId)
                       setCurrentConversationId(mostRecentConversation.id);
                       setCurrentConversationTitle(mostRecentConversation.name || 'New Conversation');
-                      setConversation(convData || []);
+                      setConversation(remoteConvData || []);
                       
                       // Restore summaries
                       if (conversation_summaries && conversation_summaries.length > 0) {
@@ -629,7 +730,14 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       // Switch to another conversation if current was deleted
       if (currentConversationId === conversationId) {
         if (index.conversations.length > 0) {
-          await switchConversation(index.conversations[0].id);
+          // Sort remaining conversations by updatedAt (most recent first)
+          const sortedConversations = [...index.conversations].sort((a, b) => {
+            const dateA = new Date(a.updatedAt || a.createdAt || 0);
+            const dateB = new Date(b.updatedAt || b.createdAt || 0);
+            return dateB - dateA; // Descending order (most recent first)
+          });
+          // Switch to the most recent conversation
+          await switchConversation(sortedConversations[0].id);
         } else {
           setCurrentConversationId(null); // This will also clear localStorage
           setConversation([]); // Update localStorage
@@ -666,7 +774,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       if (conversationEntry) {
         conversationEntry.name = newName;
         conversationEntry.autoTitle = false; // Stop auto-title updates
-        conversationEntry.updatedAt = new Date().toISOString();
+        // Don't update updatedAt for name changes - updatedAt should reflect content timestamps only
         
         await conversationSyncService.uploadConversationsIndex(accessToken, index);
         setConversations(index.conversations);
@@ -845,43 +953,81 @@ export const useConversationSync = (conversation = [], setConversation = null) =
         }
       }
       
+      // Calculate updatedAt from conversation content (latest timestamp of parts)
+      const latestTimestamp = getLatestConversationTimestamp(currentConv);
       const conversationData = {
-        conversation: currentConv,
-        updatedAt: new Date().toISOString()
+        conversation: currentConv
       };
+      
+      // Set updatedAt from conversation content
+      if (latestTimestamp) {
+        conversationData.updatedAt = latestTimestamp;
+      }
       
       // CRITICAL: Upload conversation content FIRST
       console.log('[Sync] Uploading conversation content to OneDrive...', {
         conversationId: conversationIdToUse,
         conversationLength: currentConv.length,
-        messageCount: currentConv.length
+        updatedAt: latestTimestamp
       });
       
-      await conversationSyncService.uploadConversation(
-        accessToken,
-        conversationIdToUse,
-        conversationData
-      );
+      try {
+        await conversationSyncService.uploadConversation(
+          accessToken,
+          conversationIdToUse,
+          conversationData
+        );
+        
+        console.log('[Sync] Conversation content uploaded successfully');
+      } catch (uploadError) {
+        console.error('[Sync] Error uploading conversation content:', uploadError);
+        throw uploadError; // Re-throw to be caught by outer try-catch
+      }
       
-      console.log('[Sync] Conversation content uploaded successfully');
+      // Update index with updatedAt AFTER uploading conversation
+      console.log('[Sync] Updating index...', {
+        conversationId: conversationIdToUse
+      });
       
-      // Update index with new message count and updatedAt AFTER uploading conversation
-      console.log('[Sync] Updating index with new message count...');
-      const index = await conversationSyncService.fetchConversationsIndex(accessToken);
+      let index;
+      try {
+        index = await conversationSyncService.fetchConversationsIndex(accessToken);
+        console.log('[Sync] Fetched conversations index, looking for entry:', conversationIdToUse);
+      } catch (indexError) {
+        console.error('[Sync] Error fetching conversations index:', indexError);
+        throw indexError; // Re-throw to be caught by outer try-catch
+      }
       const conversationEntry = index.conversations.find(c => c.id === conversationIdToUse);
+      console.log('[Sync] Looking for conversation entry in index:', {
+        conversationId: conversationIdToUse,
+        totalConversations: index.conversations.length,
+        found: !!conversationEntry,
+        conversationIds: index.conversations.map(c => c.id)
+      });
+      
       if (conversationEntry) {
-        conversationEntry.updatedAt = new Date().toISOString();
-        conversationEntry.messageCount = currentConv.length;
+        console.log('[Sync] Found conversation entry, updating index');
+        // Update updatedAt from conversation content (latest timestamp of parts)
+        if (latestTimestamp) {
+          conversationEntry.updatedAt = latestTimestamp;
+        }
         // Don't update currentConversationId in index - it's per-device in localStorage
-        await conversationSyncService.uploadConversationsIndex(accessToken, index);
-        console.log('[Sync] Index updated successfully', {
-          messageCount: conversationEntry.messageCount,
-          updatedAt: conversationEntry.updatedAt
-        });
-        // Only update conversations state if we created a new conversation (already done above)
-        // Don't update here for existing conversations to avoid re-renders and loops
+        try {
+          await conversationSyncService.uploadConversationsIndex(accessToken, index);
+          console.log('[Sync] Index updated successfully', {
+            updatedAt: conversationEntry.updatedAt
+          });
+          // Update conversations state
+          setConversations(index.conversations);
+        } catch (indexUploadError) {
+          console.error('[Sync] Error uploading conversations index:', indexUploadError);
+          throw indexUploadError; // Re-throw to be caught by outer try-catch
+        }
       } else {
-        console.warn('[Sync] Conversation entry not found in index, cannot update message count');
+        console.warn('[Sync] Conversation entry not found in index', {
+          conversationId: conversationIdToUse,
+          availableIds: index.conversations.map(c => c.id)
+        });
       }
       
       // Mark as synced using the FINAL conversation string (after re-reading ref)
@@ -889,7 +1035,6 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       console.log('[Sync] Successfully saved conversation to OneDrive', {
         conversationId: conversationIdToUse,
         conversationLength: currentConv.length,
-        messageCount: conversationEntry?.messageCount,
         finalConversationStr: finalConversationStr.substring(0, 100)
       });
     } catch (error) {
@@ -1013,7 +1158,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       // Update title in index
       if (conversationEntry) {
         conversationEntry.name = generatedTitle;
-        conversationEntry.updatedAt = new Date().toISOString();
+        // Don't update updatedAt for title changes - updatedAt should reflect content timestamps only
         conversationEntry.autoTitle = true; // Ensure autoTitle is set
       } else {
         // Create entry if it doesn't exist
@@ -1023,7 +1168,6 @@ export const useConversationSync = (conversation = [], setConversation = null) =
           autoTitle: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          messageCount: conversation.length,
           fileId: null,
           size: 0,
           tags: []
@@ -1063,6 +1207,9 @@ export const useConversationSync = (conversation = [], setConversation = null) =
     // Set reset flag FIRST - this ensures syncCurrentConversation will create a new ID
     wasResetRef.current = true;
     
+    // Set flag to allow clearing localStorage in useEffect
+    shouldClearLocalStorageRef.current = true;
+    
     // Clear localStorage FIRST to ensure immediate reset
     localStorage.removeItem('onedrive_latest_conversation_id');
     localStorage.removeItem('onedrive_latest_conversation_title');
@@ -1086,22 +1233,29 @@ export const useConversationSync = (conversation = [], setConversation = null) =
           const accessToken = await conversationSyncService.getOneDriveAccessToken();
           if (accessToken) {
             // Final save of the old conversation to preserve it
+            // Calculate updatedAt from conversation content
+            const latestTimestamp = getLatestConversationTimestamp(currentConv);
+            const conversationData = {
+              conversation: currentConv
+            };
+            if (latestTimestamp) {
+              conversationData.updatedAt = latestTimestamp;
+            }
+            
             await conversationSyncService.uploadConversation(
               accessToken,
               currentId,
-              { 
-                conversation: currentConv, 
-                updatedAt: new Date().toISOString() 
-              }
+              conversationData
             );
             
-            // Update index with final message count
+            // Update index with calculated updatedAt from conversation content
             const index = await conversationSyncService.fetchConversationsIndex(accessToken);
             const conversationEntry = index.conversations.find(c => c.id === currentId);
-            if (conversationEntry) {
-              conversationEntry.updatedAt = new Date().toISOString();
-              conversationEntry.messageCount = currentConv.length;
+            if (conversationEntry && latestTimestamp) {
+              conversationEntry.updatedAt = latestTimestamp;
               await conversationSyncService.uploadConversationsIndex(accessToken, index);
+              // Update conversations state
+              setConversations(index.conversations);
             }
             
             console.log('[useConversationSync] Saved old conversation to OneDrive');

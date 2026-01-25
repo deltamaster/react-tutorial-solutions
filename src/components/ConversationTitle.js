@@ -116,8 +116,10 @@ function ConversationTitle({
       <span 
         className="text-truncate"
         style={{ 
-          maxWidth: '300px',
-          fontWeight: '500'
+          maxWidth: '100%',
+          fontWeight: '500',
+          flex: 1,
+          minWidth: 0
         }}
         title={title}
       >

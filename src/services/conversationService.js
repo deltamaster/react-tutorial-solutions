@@ -5,6 +5,7 @@
 
 /**
  * Appends a message to the conversation
+ * Ensures all parts have timestamps
  * 
  * @param {Array} conversation - Current conversation array
  * @param {Object} message - Message to append
@@ -12,23 +13,64 @@
  */
 export const appendMessage = (conversation, message) => {
   const latestConversation = conversation || [];
-  return [...latestConversation, message];
+  const messageTimestamp = message.timestamp || Date.now();
+  
+  // Ensure all parts have timestamps
+  const messageWithTimestamps = {
+    ...message,
+    timestamp: messageTimestamp,
+    parts: (message.parts || []).map(part => {
+      // If part doesn't have timestamp, use message timestamp
+      // If part doesn't have lastUpdate, use timestamp as lastUpdate
+      const partTimestamp = part.timestamp || messageTimestamp;
+      const lastUpdate = part.lastUpdate || partTimestamp;
+      return {
+        ...part,
+        timestamp: partTimestamp,
+        lastUpdate: lastUpdate
+      };
+    })
+  };
+  
+  return [...latestConversation, messageWithTimestamps];
 };
 
 /**
- * Deletes messages at specified indices
+ * Filters out deleted messages from conversation
+ * 
+ * @param {Array} conversation - Current conversation array
+ * @returns {Array} Conversation array with deleted messages filtered out
+ */
+export const filterDeletedMessages = (conversation) => {
+  const safeConversation = Array.isArray(conversation) ? conversation : [];
+  return safeConversation.filter(message => !message.deleted);
+};
+
+/**
+ * Deletes messages at specified indices by marking them as deleted
  * 
  * @param {Array} conversation - Current conversation array
  * @param {Array} indicesToDelete - Array of indices to delete
- * @returns {Array} Updated conversation array
+ * @returns {Array} Updated conversation array with deleted messages marked
  */
 export const deleteMessages = (conversation, indicesToDelete) => {
   const safeConversation = Array.isArray(conversation) ? conversation : [];
-  return safeConversation.filter((_, i) => !indicesToDelete.includes(i));
+  const now = Date.now();
+  return safeConversation.map((message, index) => {
+    if (indicesToDelete.includes(index)) {
+      return {
+        ...message,
+        deleted: true,
+        lastUpdate: now
+      };
+    }
+    return message;
+  });
 };
 
 /**
  * Updates a specific part of a message in the conversation
+ * Adds timestamp to part if missing, and adds lastUpdate timestamp
  * 
  * @param {Array} conversation - Current conversation array
  * @param {number} messageIndex - Index of the message to update
@@ -38,13 +80,21 @@ export const deleteMessages = (conversation, indicesToDelete) => {
  */
 export const updateMessagePart = (conversation, messageIndex, partIndex, newText) => {
   const safeConversation = Array.isArray(conversation) ? conversation : [];
+  const now = Date.now();
   return safeConversation.map((message, index) => {
     if (index === messageIndex) {
       return {
         ...message,
         parts: message.parts.map((part, pIndex) => {
           if (pIndex === partIndex) {
-            return { ...part, text: newText };
+            // Ensure part has timestamp (use message timestamp if missing)
+            const partTimestamp = part.timestamp || message.timestamp || now;
+            return { 
+              ...part, 
+              text: newText,
+              timestamp: partTimestamp,
+              lastUpdate: now
+            };
           }
           return part;
         }),

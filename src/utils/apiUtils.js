@@ -2188,6 +2188,15 @@ const prepareContentsForRequest = async (contents, role) => {
     parts: content.parts,
   }));
 
+      // Helper function to clean parts for API (remove internal fields)
+      const cleanPartForApi = (part) => {
+        const { timestamp, lastUpdate, hide, ...cleanedPart } = part;
+        if (hide === true) {
+          // hide is already removed by destructuring
+        }
+        return cleanedPart;
+      };
+
       // Filter out thought contents before sending the request and process any image files
       const finalContents = [];
       for (const content of filteredContents) {
@@ -2197,21 +2206,21 @@ const prepareContentsForRequest = async (contents, role) => {
           for (const part of content.parts) {
             // Skip thought parts
             if (part.thought) continue;
-            if (part.hide === true) delete part.hide;
 
             // If file_data is already present (file already uploaded), use only file_data
             if (part.file_data && part.file_data.file_uri) {
-              // Create a copy without inline_data for API request
+              // Create a copy without inline_data and internal fields for API request
+              const cleanedPart = cleanPartForApi(part);
               const apiPart = {
                 file_data: {
                   mime_type: part.file_data.mime_type,
                   file_uri: part.file_data.file_uri,
                 },
               };
-              // Copy other properties except inline_data
-              Object.keys(part).forEach(key => {
+              // Copy other properties except inline_data and file_data
+              Object.keys(cleanedPart).forEach(key => {
                 if (key !== 'inline_data' && key !== 'file_data') {
-                  apiPart[key] = part[key];
+                  apiPart[key] = cleanedPart[key];
                 }
               });
               processedParts.push(apiPart);
@@ -2222,16 +2231,17 @@ const prepareContentsForRequest = async (contents, role) => {
                 // Upload file and get file URI
                 const fileUri = await uploadFile(part.inline_data.file, getSubscriptionKey());
                 // Create new part with file_data only (no inline_data in API request)
+                const cleanedPart = cleanPartForApi(part);
                 const apiPart = {
                   file_data: {
                     mime_type: part.inline_data.mime_type,
                     file_uri: fileUri,
                   },
                 };
-                // Copy other properties except inline_data
-                Object.keys(part).forEach(key => {
+                // Copy other properties except inline_data and file_data
+                Object.keys(cleanedPart).forEach(key => {
                   if (key !== 'inline_data' && key !== 'file_data') {
-                    apiPart[key] = part[key];
+                    apiPart[key] = cleanedPart[key];
                   }
                 });
                 processedParts.push(apiPart);
@@ -2244,8 +2254,8 @@ const prepareContentsForRequest = async (contents, role) => {
                 });
               }
             } else {
-              // Just add the part as is if it's not a thought or an image file
-              processedParts.push(part);
+              // Clean the part before adding (remove timestamp, lastUpdate, hide)
+              processedParts.push(cleanPartForApi(part));
             }
           }
 
@@ -2409,7 +2419,7 @@ export const fetchFromApi = async (
         conversationContents = [{
           role: "user",
           parts: visibleParts.map(part => {
-            const { hide, ...rest } = part;
+            const { hide, timestamp, lastUpdate, ...rest } = part;
             return rest;
           }),
         }];
@@ -2417,7 +2427,7 @@ export const fetchFromApi = async (
         // If all parts were hidden, include at least the first non-thought part
         const firstPart = lastUserMessage.parts.find(part => !part.thought);
         if (firstPart) {
-          const { hide, thought, ...rest } = firstPart;
+          const { hide, thought, timestamp, lastUpdate, ...rest } = firstPart;
           conversationContents = [{
             role: "user",
             parts: [rest],

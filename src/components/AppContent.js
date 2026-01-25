@@ -29,10 +29,50 @@ import { useFollowUpQuestions } from "../hooks/useFollowUpQuestions";
 import { useSettings } from "../hooks/useSettings";
 import { useChromeContent } from "../hooks/useChromeContent";
 import { useMessageEditing } from "../hooks/useMessageEditing";
-import { findFunctionResponseIndices, deleteMessages } from "../services/conversationService";
+import { findFunctionResponseIndices, deleteMessages, filterDeletedMessages, appendMessage } from "../services/conversationService";
 
 // Main application content component
 function AppContent() {
+  // State for floating menu
+  const [showFloatingMenu, setShowFloatingMenu] = useState(false);
+  const [isFloatingMenuOpen, setIsFloatingMenuOpen] = useState(false);
+  const [isConversationSelectorOpen, setIsConversationSelectorOpen] = useState(false);
+  const floatingMenuRef = useRef(null);
+  const conversationContainerRef = useRef(null);
+
+  // Detect scroll to show/hide floating menu
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY || window.pageYOffset;
+      // Show floating menu when scrolled down more than 100px
+      setShowFloatingMenu(scrollY > 100);
+      // Close menu when scrolling back to top
+      if (scrollY <= 100) {
+        setIsFloatingMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Close floating menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (floatingMenuRef.current && !floatingMenuRef.current.contains(event.target)) {
+        setIsFloatingMenuOpen(false);
+      }
+    };
+
+    if (isFloatingMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isFloatingMenuOpen]);
+
   // Use settings hook for managing application settings
   const {
     subscriptionKey,
@@ -113,9 +153,9 @@ function AppContent() {
     setConversation,
     appendMessage: (message) => {
       // setConversation wrapper already updates conversationRef.current immediately
-      // No need to manually update it here
+      // Use appendMessage service to ensure timestamps are added to parts
       setConversation((prevConversation) => {
-        return [...(prevConversation || []), message];
+        return appendMessage(prevConversation || [], message);
       });
     },
     onError: (error) => {
@@ -326,41 +366,37 @@ function AppContent() {
 
   // Reset conversation history, summaries and predicted questions
   const resetConversation = () => {
-    if (
-      window.confirm("Are you sure you want to reset the conversation history?")
-    ) {
-      // IMMEDIATELY reset UI and localStorage first (user sees instant feedback)
-      setConversation([]);
-      setFollowUpQuestions([]); // Clear predicted questions
-      
-      // Clear conversation summaries from localStorage
-      try {
-        localStorage.removeItem("conversation_summaries");
-        console.log("Conversation summaries cleared");
-      } catch (error) {
-        console.error("Error clearing conversation summaries:", error);
-      }
-      
-      // Reset OneDrive conversation ID and title immediately
-      if (syncHelpers?.resetCurrentConversation) {
-        // Reset immediately (saves old conversation to OneDrive in background)
-        syncHelpers.resetCurrentConversation().catch(err => {
-          console.error('[AppContent] Error saving old conversation during reset:', err);
-        });
-        console.log('[AppContent] Reset OneDrive conversation ID and title');
-      } else {
-        // Fallback: clear localStorage directly if reset function not available
-        try {
-          localStorage.removeItem("onedrive_latest_conversation_id");
-          localStorage.removeItem("onedrive_latest_conversation_title");
-          console.log('[AppContent] Cleared OneDrive conversation ID and title from localStorage (fallback)');
-        } catch (error) {
-          console.error("Error clearing OneDrive conversation ID:", error);
-        }
-      }
-      
-      console.log('[AppContent] Conversation reset complete - UI and localStorage cleared immediately');
+    // IMMEDIATELY reset UI and localStorage first (user sees instant feedback)
+    setConversation([]);
+    setFollowUpQuestions([]); // Clear predicted questions
+    
+    // Clear conversation summaries from localStorage
+    try {
+      localStorage.removeItem("conversation_summaries");
+      console.log("Conversation summaries cleared");
+    } catch (error) {
+      console.error("Error clearing conversation summaries:", error);
     }
+    
+    // Reset OneDrive conversation ID and title immediately
+    if (syncHelpers?.resetCurrentConversation) {
+      // Reset immediately (saves old conversation to OneDrive in background)
+      syncHelpers.resetCurrentConversation().catch(err => {
+        console.error('[AppContent] Error saving old conversation during reset:', err);
+      });
+      console.log('[AppContent] Reset OneDrive conversation ID and title');
+    } else {
+      // Fallback: clear localStorage directly if reset function not available
+      try {
+        localStorage.removeItem("onedrive_latest_conversation_id");
+        localStorage.removeItem("onedrive_latest_conversation_title");
+        console.log('[AppContent] Cleared OneDrive conversation ID and title from localStorage (fallback)');
+      } catch (error) {
+        console.error("Error clearing OneDrive conversation ID:", error);
+      }
+    }
+    
+    console.log('[AppContent] Conversation reset complete - UI and localStorage cleared immediately');
   };
 
   // Use conversation export hook
@@ -501,6 +537,15 @@ function AppContent() {
         </Col>
       </Row>
 
+      {/* Upload input - always available */}
+      <input
+        id="upload-conversation"
+        type="file"
+        accept=".json"
+        onChange={uploadConversation}
+        style={{ display: "none" }}
+      />
+
       <div ref={tabsRef}>
         <Tabs
           activeKey={currentTab}
@@ -510,10 +555,10 @@ function AppContent() {
         >
           <Tab eventKey="chatbot" title="Chatbot">
             <Row className="mb-3">
-              <Col xs={12} className="d-flex justify-content-between align-items-start gap-2">
+              <Col xs={12} className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
                 {/* Conversation Title and Selector - Left side */}
-                {isOneDriveAvailable && (
-                  <div className="flex-grow-1 d-flex flex-column gap-2">
+                {isOneDriveAvailable && !showFloatingMenu && (
+                  <div className="flex-grow-1 d-flex flex-column gap-2" style={{ minWidth: 0 }}>
                     <ConversationTitle
                       title={currentConversationTitle}
                       isAutoTitle={conversations.find(c => c.id === currentConversationId)?.autoTitle !== false}
@@ -524,70 +569,206 @@ function AppContent() {
                       conversations={conversations}
                       currentConversationId={currentConversationId}
                       onSwitchConversation={syncHelpers?.switchConversation}
+                      onDeleteConversation={syncHelpers?.deleteConversation}
                       isSyncing={isSyncing}
                     />
                   </div>
                 )}
                 
-                {/* Action Buttons - Right side (always on right) */}
-                <div className="d-flex gap-2 ms-auto">
-                  <div className="relative">
-                    <Button
-                      id="download-conversation"
-                      variant="primary"
-                      onClick={downloadConversation}
-                      size="sm"
-                      style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
-                    >
-                      <Icon.Download size={14} />
-                      <span className="d-none d-md-inline ms-1">Download</span>
-                    </Button>
-                  </div>
-
-                <div className="relative">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => document.getElementById('upload-conversation').click()}
-                  >
-                    <Icon.Upload size={14} />
-                    <span className="d-none d-md-inline ms-1">Upload</span>
-                  </Button>
-                  <input
-                    id="upload-conversation"
-                    type="file"
-                    accept=".json"
-                    onChange={uploadConversation}
-                    style={{ display: "none" }}
-                  />
-                </div>
-
-                  <div className="relative">
-                    <Button
-                      id="reset-conversation"
-                      variant="primary"
-                      onClick={resetConversation}
-                      size="sm"
-                      style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
-                    >
-                      <Icon.PlusCircle size={14} />
-                      <span className="d-none d-md-inline ms-1">New Conversation</span>
-                    </Button>
-                  </div>
-                  
-                  {/* Sync indicator */}
-                  {isOneDriveAvailable && isSyncing && (
-                    <div className="d-flex align-items-center">
-                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                {/* Action Buttons - Right side (wraps to next line on small screens, aligned right) */}
+                {!showFloatingMenu && (
+                  <div className="d-flex gap-2 ms-md-auto align-self-md-center" style={{ alignSelf: 'flex-end' }}>
+                    {/* Sync indicator - Left of buttons */}
+                    {isOneDriveAvailable && isSyncing && (
+                      <div className="d-flex align-items-center">
+                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                      </div>
+                    )}
+                    
+                    <div className="relative">
+                      <Button
+                        id="download-conversation"
+                        variant="primary"
+                        onClick={downloadConversation}
+                        size="sm"
+                        style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
+                      >
+                        <Icon.Download size={14} />
+                        <span className="d-none d-md-inline ms-1">Download</span>
+                      </Button>
                     </div>
-                  )}
-                </div>
+
+                    <div className="relative">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => document.getElementById('upload-conversation').click()}
+                      >
+                        <Icon.Upload size={14} />
+                        <span className="d-none d-md-inline ms-1">Upload</span>
+                      </Button>
+                    </div>
+
+                    <div className="relative">
+                      <Button
+                        id="reset-conversation"
+                        variant="primary"
+                        onClick={resetConversation}
+                        size="sm"
+                        style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
+                      >
+                        <Icon.PlusCircle size={14} />
+                        <span className="d-none d-md-inline ms-1">New Conversation</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </Col>
             </Row>
             <Row>
               <Col>
+                {/* Floating Hamburger Menu */}
+                {showFloatingMenu && (
+                  <div
+                    ref={floatingMenuRef}
+                    style={{
+                      position: 'fixed',
+                      top: '20px',
+                      left: '20px',
+                      zIndex: 1050,
+                      backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                      backdropFilter: 'blur(10px)',
+                      WebkitBackdropFilter: 'blur(10px)',
+                      borderRadius: '12px',
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+                      border: '1px solid rgba(255, 255, 255, 0.18)',
+                      width: isFloatingMenuOpen ? '450px' : 'auto',
+                      maxWidth: isFloatingMenuOpen ? '95vw' : 'auto',
+                      padding: isFloatingMenuOpen ? '16px' : '0',
+                      transition: 'all 0.3s ease',
+                      overflow: 'visible',
+                      zIndex: 1050
+                    }}
+                  >
+                    {/* Hamburger Button */}
+                    <Button
+                      variant="outline-secondary"
+                      onClick={() => setIsFloatingMenuOpen(!isFloatingMenuOpen)}
+                      style={{
+                        border: 'none',
+                        borderRadius: isFloatingMenuOpen ? '12px 12px 0 0' : '12px',
+                        padding: '10px 14px',
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.3s ease'
+                      }}
+                    >
+                      <Icon.List size={20} />
+                      {isFloatingMenuOpen && <span className="ms-2">Menu</span>}
+                    </Button>
+
+                    {/* Expanded Menu */}
+                    {isFloatingMenuOpen && (
+                      <div
+                        style={{
+                          padding: '16px',
+                          // borderTop: '1px solid rgba(255, 255, 255, 0.18)',
+                          overflow: 'visible',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          position: 'relative',
+                          minWidth: 0,
+                        }}
+                      >
+                        {/* Conversation Title */}
+                        {isOneDriveAvailable && (
+                          <div className="mb-3" style={{ width: '100%', minWidth: 0 }}>
+                            <ConversationTitle
+                              title={currentConversationTitle}
+                              isAutoTitle={conversations.find(c => c.id === currentConversationId)?.autoTitle !== false}
+                              isGeneratingTitle={isGeneratingTitle}
+                              onTitleChange={updateConversationTitle}
+                            />
+                          </div>
+                        )}
+
+                        {/* Conversation Selector */}
+                        {isOneDriveAvailable && (
+                          <div className="mb-3" style={{ width: '100%', minWidth: 0, position: 'static', zIndex: 1051, overflow: 'visible' }}>
+                            <ConversationSelector
+                              conversations={conversations}
+                              currentConversationId={currentConversationId}
+                              onSwitchConversation={syncHelpers?.switchConversation}
+                              onDeleteConversation={syncHelpers?.deleteConversation}
+                              isSyncing={isSyncing}
+                              onDropdownToggle={setIsConversationSelectorOpen}
+                            />
+                          </div>
+                        )}
+
+                        {/* Sync indicator */}
+                        {isOneDriveAvailable && isSyncing && (
+                          <div className="d-flex align-items-center mb-3">
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                            <span className="ms-2">Syncing...</span>
+                          </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="d-flex flex-row gap-2 justify-content-center">
+                          <Button
+                            variant="primary"
+                            onClick={downloadConversation}
+                            size="sm"
+                            style={{ 
+                              display: conversation.length > 0 ? "inline-flex" : "none",
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: '40px'
+                            }}
+                            title="Download"
+                          >
+                            <Icon.Download size={16} />
+                          </Button>
+
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => document.getElementById('upload-conversation').click()}
+                            style={{
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: '40px'
+                            }}
+                            title="Upload"
+                          >
+                            <Icon.Upload size={16} />
+                          </Button>
+
+                          <Button
+                            variant="primary"
+                            onClick={resetConversation}
+                            size="sm"
+                            style={{ 
+                              display: conversation.length > 0 ? "inline-flex" : "none",
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: '40px'
+                            }}
+                            title="New Conversation"
+                          >
+                            <Icon.PlusCircle size={16} />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <ConversationHistory
-                  history={conversation}
+                  history={filterDeletedMessages(conversation)}
                   onDelete={deleteConversationMessage}
                   onEdit={startEditing}
                   editingIndex={editingIndex}
@@ -672,12 +853,32 @@ function AppContent() {
             justifyContent: "center",
             maxWidth: "fit-content",
             margin: "0 auto",
+            backgroundColor: "rgba(255, 255, 255, 0.7)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            padding: "8px",
+            borderRadius: "12px",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
+            border: "1px solid rgba(255, 255, 255, 0.18)",
+            gap: "8px"
           }}
         >
           <Button
             variant={currentTab === "chatbot" ? "primary" : "outline-primary"}
             size="sm"
             onClick={() => setCurrentTab("chatbot")}
+            style={{
+              backgroundColor: currentTab === "chatbot" 
+                ? "rgba(13, 110, 253, 0.8)" 
+                : "rgba(255, 255, 255, 0.5)",
+              borderColor: currentTab === "chatbot" 
+                ? "rgba(13, 110, 253, 0.8)" 
+                : "rgba(13, 110, 253, 0.3)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              transition: "all 0.3s ease",
+              color: currentTab === "chatbot" ? "white" : "rgba(13, 110, 253, 0.9)"
+            }}
           >
             Chatbot
           </Button>
@@ -685,6 +886,18 @@ function AppContent() {
             variant={currentTab === "markdown" ? "primary" : "outline-primary"}
             size="sm"
             onClick={() => setCurrentTab("markdown")}
+            style={{
+              backgroundColor: currentTab === "markdown" 
+                ? "rgba(13, 110, 253, 0.8)" 
+                : "rgba(255, 255, 255, 0.5)",
+              borderColor: currentTab === "markdown" 
+                ? "rgba(13, 110, 253, 0.8)" 
+                : "rgba(13, 110, 253, 0.3)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              transition: "all 0.3s ease",
+              color: currentTab === "markdown" ? "white" : "rgba(13, 110, 253, 0.9)"
+            }}
           >
             Co-Edit
           </Button>
@@ -692,6 +905,18 @@ function AppContent() {
             variant={currentTab === "memory" ? "primary" : "outline-primary"}
             size="sm"
             onClick={() => setCurrentTab("memory")}
+            style={{
+              backgroundColor: currentTab === "memory" 
+                ? "rgba(13, 110, 253, 0.8)" 
+                : "rgba(255, 255, 255, 0.5)",
+              borderColor: currentTab === "memory" 
+                ? "rgba(13, 110, 253, 0.8)" 
+                : "rgba(13, 110, 253, 0.3)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              transition: "all 0.3s ease",
+              color: currentTab === "memory" ? "white" : "rgba(13, 110, 253, 0.9)"
+            }}
           >
             Memory
           </Button>

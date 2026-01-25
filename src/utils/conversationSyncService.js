@@ -425,11 +425,40 @@ export async function uploadConversation(accessToken, conversationId, conversati
   // Create export data structure
   const exportData = createExportData(conversationData.conversation || [], summaries, trackedFiles);
   
+  // Determine updatedAt: use provided value, or preserve existing if file exists, or use current time for new files
+  let updatedAt = conversationData.updatedAt;
+  if (!updatedAt && cachedFileId) {
+    // Try to fetch existing file to preserve its updatedAt
+    try {
+      const downloadUrl = `${GRAPH_API_BASE}/me/drive/items/${cachedFileId}/content`;
+      const response = await fetch(downloadUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (response.ok) {
+        const existingData = await response.json();
+        if (existingData.metadata && existingData.metadata.updatedAt) {
+          updatedAt = existingData.metadata.updatedAt;
+        }
+      }
+    } catch (error) {
+      // If we can't fetch existing file, use current time
+      console.log('[uploadConversation] Could not fetch existing file to preserve updatedAt, using current time');
+    }
+  }
+  
+  // If still no updatedAt, use current time (for new files or if fetch failed)
+  if (!updatedAt) {
+    updatedAt = new Date().toISOString();
+  }
+  
   // Add metadata
   exportData.id = conversationId;
   exportData.metadata = {
     createdAt: conversationData.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: updatedAt,
     lastSyncedAt: new Date().toISOString()
   };
   
@@ -563,7 +592,6 @@ export async function createNewConversation(accessToken, name = "New Conversatio
     autoTitle: true,
     createdAt: now,
     updatedAt: now,
-    messageCount: initialData.conversation?.length || 0,
     fileId: getCachedId(`onedrive_conversation_${conversationId}_file_id`),
     size: 0,
     tags: []
@@ -702,6 +730,155 @@ export async function isConversationSyncConfigured() {
   }
 }
 
+/**
+ * Merge local and remote conversation versions
+ * Uses timestamps and lastUpdate to determine the latest version of each message and part
+ * 
+ * @param {Array} localConversation - Local conversation array
+ * @param {Array} remoteConversation - Remote conversation array
+ * @returns {Array} Merged conversation array
+ */
+export function mergeConversations(localConversation = [], remoteConversation = []) {
+  // Create maps for quick lookup by message timestamp
+  const localMessages = new Map();
+  const remoteMessages = new Map();
+  
+  // Index local messages by timestamp
+  (localConversation || []).forEach(msg => {
+    if (msg.timestamp) {
+      localMessages.set(msg.timestamp, msg);
+    }
+  });
+  
+  // Index remote messages by timestamp
+  (remoteConversation || []).forEach(msg => {
+    if (msg.timestamp) {
+      remoteMessages.set(msg.timestamp, msg);
+    }
+  });
+  
+  // Get all unique timestamps
+  const allTimestamps = new Set([
+    ...localMessages.keys(),
+    ...remoteMessages.keys()
+  ]);
+  
+  const merged = [];
+  
+  // Process each message timestamp
+  for (const timestamp of Array.from(allTimestamps).sort((a, b) => a - b)) {
+    const localMsg = localMessages.get(timestamp);
+    const remoteMsg = remoteMessages.get(timestamp);
+    
+    // If only one exists, use it (unless deleted)
+    if (!localMsg && remoteMsg) {
+      // Use remote if not deleted, or if deleted but local doesn't have it
+      merged.push(remoteMsg);
+    } else if (localMsg && !remoteMsg) {
+      // Use local if not deleted
+      if (!localMsg.deleted) {
+        merged.push(localMsg);
+      }
+    } else if (localMsg && remoteMsg) {
+      // Both exist - merge them
+      const localLastUpdate = localMsg.lastUpdate || localMsg.timestamp || 0;
+      const remoteLastUpdate = remoteMsg.lastUpdate || remoteMsg.timestamp || 0;
+      
+      // If one is deleted and the other isn't, use the non-deleted one
+      if (localMsg.deleted && !remoteMsg.deleted) {
+        merged.push(remoteMsg);
+      } else if (!localMsg.deleted && remoteMsg.deleted) {
+        merged.push(localMsg);
+      } else if (localMsg.deleted && remoteMsg.deleted) {
+        // Both deleted - use the one with later lastUpdate
+        if (localLastUpdate >= remoteLastUpdate) {
+          merged.push(localMsg);
+        } else {
+          merged.push(remoteMsg);
+        }
+      } else {
+        // Neither deleted - merge parts
+        const mergedMsg = mergeMessageParts(localMsg, remoteMsg);
+        merged.push(mergedMsg);
+      }
+    }
+  }
+  
+  return merged;
+}
+
+/**
+ * Merge parts of a message
+ * Uses part timestamps and lastUpdate to determine the latest version
+ * 
+ * @param {Object} localMsg - Local message
+ * @param {Object} remoteMsg - Remote message
+ * @returns {Object} Merged message
+ */
+function mergeMessageParts(localMsg, remoteMsg) {
+  // Use the message with the latest lastUpdate as base
+  const localLastUpdate = localMsg.lastUpdate || localMsg.timestamp || 0;
+  const remoteLastUpdate = remoteMsg.lastUpdate || remoteMsg.timestamp || 0;
+  const baseMsg = localLastUpdate >= remoteLastUpdate ? localMsg : remoteMsg;
+  const otherMsg = baseMsg === localMsg ? remoteMsg : localMsg;
+  
+  // Create maps for parts by timestamp
+  const baseParts = new Map();
+  const otherParts = new Map();
+  
+  (baseMsg.parts || []).forEach(part => {
+    const partTimestamp = part.timestamp || baseMsg.timestamp;
+    if (partTimestamp) {
+      baseParts.set(partTimestamp, part);
+    }
+  });
+  
+  (otherMsg.parts || []).forEach(part => {
+    const partTimestamp = part.timestamp || otherMsg.timestamp;
+    if (partTimestamp) {
+      otherParts.set(partTimestamp, part);
+    }
+  });
+  
+  // Get all unique part timestamps
+  const allPartTimestamps = new Set([
+    ...baseParts.keys(),
+    ...otherParts.keys()
+  ]);
+  
+  const mergedParts = [];
+  
+  // Process each part timestamp
+  for (const partTimestamp of Array.from(allPartTimestamps).sort((a, b) => a - b)) {
+    const basePart = baseParts.get(partTimestamp);
+    const otherPart = otherParts.get(partTimestamp);
+    
+    if (!basePart && otherPart) {
+      mergedParts.push(otherPart);
+    } else if (basePart && !otherPart) {
+      mergedParts.push(basePart);
+    } else if (basePart && otherPart) {
+      // Both exist - use the one with later lastUpdate
+      const basePartLastUpdate = basePart.lastUpdate || basePart.timestamp || 0;
+      const otherPartLastUpdate = otherPart.lastUpdate || otherPart.timestamp || 0;
+      
+      if (basePartLastUpdate >= otherPartLastUpdate) {
+        mergedParts.push(basePart);
+      } else {
+        mergedParts.push(otherPart);
+      }
+    }
+  }
+  
+  // Return merged message with merged parts
+  return {
+    ...baseMsg,
+    parts: mergedParts,
+    // Update lastUpdate to the latest of both messages
+    lastUpdate: Math.max(localLastUpdate, remoteLastUpdate)
+  };
+}
+
 export default {
   fetchConversationsIndex,
   uploadConversationsIndex,
@@ -714,4 +891,5 @@ export default {
   getOrCreateConversationsFolder,
   clearConversationCache,
   getOneDriveAccessToken,
+  mergeConversations,
 };
