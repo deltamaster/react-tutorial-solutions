@@ -134,8 +134,22 @@ function AppContent() {
     setEditingText,
     startEditing,
     cancelEditing,
-    saveEditing,
+    saveEditing: originalSaveEditing,
   } = useMessageEditing(setConversation);
+
+  // Wrap saveEditing to trigger sync after part edits
+  const saveEditing = useCallback(() => {
+    originalSaveEditing();
+    // Trigger sync after editing parts
+    if (syncHelpers?.syncCurrentConversation) {
+      setTimeout(() => {
+        console.log('[AppContent] Triggering sync after part edit...');
+        syncHelpers.syncCurrentConversation().catch(err => {
+          console.error('[AppContent] Error syncing conversation after part edit:', err);
+        });
+      }, 500);
+    }
+  }, [originalSaveEditing, syncHelpers]);
 
   const [currentTab, setCurrentTab] = useState("chatbot");
   const [errorMessage, setErrorMessage] = useState("");
@@ -481,8 +495,18 @@ function AppContent() {
         messageTimestamp: messageToDelete.timestamp
       });
       setConversation(updatedConversation);
+      
+      // Trigger sync after deleting messages
+      if (syncHelpers?.syncCurrentConversation) {
+        setTimeout(() => {
+          console.log('[AppContent] Triggering sync after message deletion...');
+          syncHelpers.syncCurrentConversation().catch(err => {
+            console.error('[AppContent] Error syncing conversation after deletion:', err);
+          });
+        }, 500);
+      }
     }
-  }, [setConversation]);
+  }, [setConversation, syncHelpers]);
 
   // Message editing functions are now provided by useMessageEditing hook
 
