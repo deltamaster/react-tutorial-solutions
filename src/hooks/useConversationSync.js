@@ -1146,25 +1146,31 @@ export const useConversationSync = (conversation = [], setConversation = null) =
         return;
       }
       
-      // Generate title using conversationRef.current (always up-to-date)
-      console.log('[Auto-title] Generating conversation title...', { 
+      // Generate title, summary, and next questions using combined API call
+      console.log('[Auto-title] Generating conversation metadata (title, summary, next questions)...', { 
         conversationLength: currentConv.length,
         conversationId: conversationIdToUse,
         usingRef: true
       });
-      const generatedTitle = await conversationSyncService.generateConversationTitle(currentConv);
-      console.log('[Auto-title] Generated title:', generatedTitle);
+      const metadata = await conversationSyncService.generateConversationMetadataFromConversation(currentConv);
+      console.log('[Auto-title] Generated metadata:', {
+        title: metadata.title,
+        summary: metadata.summary,
+        nextQuestionsCount: metadata.nextQuestions?.length || 0
+      });
       
-      // Update title in index
+      // Update title and summary in index
       if (conversationEntry) {
-        conversationEntry.name = generatedTitle;
-        // Don't update updatedAt for title changes - updatedAt should reflect content timestamps only
+        conversationEntry.name = metadata.title;
+        conversationEntry.summary = metadata.summary; // Save summary to index.json
+        // Don't update updatedAt for title/summary changes - updatedAt should reflect content timestamps only
         conversationEntry.autoTitle = true; // Ensure autoTitle is set
       } else {
         // Create entry if it doesn't exist
         index.conversations.push({
           id: conversationIdToUse,
-          name: generatedTitle,
+          name: metadata.title,
+          summary: metadata.summary, // Save summary to index.json
           autoTitle: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -1178,12 +1184,16 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       await conversationSyncService.uploadConversationsIndex(accessToken, index);
       // Only update conversations state if it actually changed
       setConversations(index.conversations);
-      setCurrentConversationTitle(generatedTitle);
+      setCurrentConversationTitle(metadata.title);
       
       setIsGeneratingTitle(false);
+      
+      // Return metadata including nextQuestions for use by follow-up questions
+      return metadata;
     } catch (error) {
       console.error('Error generating title:', error);
       setIsGeneratingTitle(false);
+      return null;
     }
   }, [isOneDriveAvailable, currentConversationId, conversations]); // Removed conversation prop - using ref instead
   

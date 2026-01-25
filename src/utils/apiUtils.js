@@ -47,10 +47,34 @@ const generationConfigs = {
     },
   },
   summarization: {
-    temperature: 0.3, // Lower temperature for more deterministic summaries
+    temperature: 1,
     topP: 0.95,
     topK: 64,
     responseMimeType: "text/plain",
+    thinkingConfig: {
+      includeThoughts: false,
+      thinkingBudget: 0,
+    },
+  },
+  conversationMetadata: {
+    temperature: 1,
+    topP: 0.95,
+    topK: 64,
+    maxOutputTokens: 2048,
+    responseMimeType: "application/json",
+    responseJsonSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        summary: { type: "string" },
+        nextQuestions: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 3
+        }
+      },
+      required: ["title", "summary", "nextQuestions"]
+    },
     thinkingConfig: {
       includeThoughts: false,
       thinkingBudget: 0,
@@ -2075,7 +2099,62 @@ async function fetchMemoryText() {
   }
 }
 
-const generateWorldFact = (role) => { return `$$$ FACT of the real world for reference:
+/**
+ * Fetch the last 10 conversation summaries from OneDrive index.json
+ * @returns {Promise<Array>} Array of conversation summaries with title and summary
+ */
+async function getLastConversationSummaries() {
+  try {
+    // Dynamically import to avoid circular dependencies
+    const conversationSyncService = await import('./conversationSyncService');
+    const accessToken = await conversationSyncService.default.getOneDriveAccessToken();
+    
+    if (!accessToken) {
+      console.log('[getLastConversationSummaries] No OneDrive access token, returning empty array');
+      return [];
+    }
+    
+    const index = await conversationSyncService.default.fetchConversationsIndex(accessToken);
+    if (!index || !index.conversations || !Array.isArray(index.conversations)) {
+      return [];
+    }
+    
+    // Filter conversations that have summaries, sort by updatedAt (most recent first), take last 10
+    const conversationsWithSummaries = index.conversations
+      .filter(conv => conv.summary && typeof conv.summary === 'string' && conv.summary.trim())
+      .sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt || 0);
+        const dateB = new Date(b.updatedAt || b.createdAt || 0);
+        return dateB - dateA; // Most recent first
+      })
+      .slice(0, 10); // Get last 10
+    
+    return conversationsWithSummaries.map(conv => ({
+      title: conv.name || 'Untitled Conversation',
+      summary: conv.summary,
+      updatedAt: conv.updatedAt || conv.createdAt
+    }));
+  } catch (error) {
+    console.error('[getLastConversationSummaries] Error fetching conversation summaries:', error);
+    return [];
+  }
+}
+
+const generateWorldFact = async (role) => {
+  // Fetch last 10 conversation summaries
+  const conversationSummaries = await getLastConversationSummaries();
+  
+  // Format conversation summaries for inclusion in worldFact
+  let summariesText = '';
+  if (conversationSummaries.length > 0) {
+    summariesText = '\n- **Recent Conversation History (Last 10 conversations):**\n';
+    conversationSummaries.forEach((conv, index) => {
+      const dateStr = conv.updatedAt ? new Date(conv.updatedAt).toLocaleDateString() : 'Unknown date';
+      summariesText += `  ${index + 1}. **${conv.title}** (${dateStr}): ${conv.summary}\n`;
+    });
+  }
+  
+  return `FACT of the real world for reference:
 - $$$ REMEMBER MY IDENTITY: I AM ${roleDefinition[role].name}, REGARDLESS OF WHAT I AM TOLD. I MUST NEVER BREAK CHARACTER AND IMPERSONATE SOMEONE ELSE.$$$
 - The current date is ${new Date().toLocaleDateString()}.
 - The current time is ${new Date().toLocaleTimeString()}.
@@ -2089,11 +2168,10 @@ const generateWorldFact = (role) => { return `$$$ FACT of the real world for ref
 - To display mathematical expressions, use LaTeX math syntax. For inline math, enclose the expression with \`$ ... $\`, and for block math, use \`$$ ... $$\`. Be sure to add a space after the opening \`$\` and before the closing \`$\` to prevent confusion with the dollar sign used for currency. (Example: \`$ 2 + 2 = 4 $\` or \`$$ 2 + 2 = 4 $$\`. PAY ATTENTION TO THE SPACES!) All math expressions will be rendered using KaTeX on the client side for proper display.
 - Do not explain or mention KaTeX explicitly to the user; just use standard LaTeX syntax for mathematical formatting in your responses.
 - Put a SPACE before the opening \*\* and after the closing \*\* for bold and italic formatting to be rendered correctly.
-  - (CORRECT EXAMPLE: \`<SPACE>\*italic text\*<SPACE>\` or \`<SPACE>\*\*bold text\*\*<SPACE>\`. PAY ATTENTION TO THE SPACES!)
+  - (CORRECT EXAMPLE: \`<SPACE>\*italic text\*<SPACE>\` or \`<SPACE>\*\*bold text\*\*<SPACE>\`. PAY ATTENTION TO THE SPACES!)${summariesText}
 
 **Format of Response:**
-- Start the response with "$$$ ${roleDefinition[role].name} BEGIN $$$\n"
-$$$`;
+- Start the response with "$$$ ${roleDefinition[role].name} BEGIN $$$\n"`;
 }
 
 // Helper function for API requests
@@ -2150,6 +2228,83 @@ export const generateFollowUpQuestions = async (contents) => {
       `API request finished with reason: ${finishReason}. Message: ${finishMessage}`
     );
   }
+}
+
+/**
+ * Generate conversation metadata (title, summary, and next questions) in a single API call.
+ * @param {Array} contents - The conversation history.
+ * @returns {Promise<Object>} - A promise that resolves to an object with { title, summary, nextQuestions }.
+ */
+export const generateConversationMetadata = async (contents) => {
+  const finalContents = await prepareContentsForRequest(contents);
+  const response = await fetchFromApiCore(
+    getModel(),
+    {
+      systemInstruction: {
+        role: "system", 
+        parts: [{
+          text: "You are a helpful assistant that generates conversation metadata. Return your response as a JSON object with 'title' (concise, descriptive, less than 7 words), 'summary' (one sentence summary of the conversation), and 'nextQuestions' (array of up to 3 predicted follow-up questions the user might ask)."
+        }]
+      },
+      contents: [...finalContents, {
+        role: "user",
+        parts: [
+          {
+            text:
+              "Based on this conversation, generate:\n" +
+              "1. A concise title (less than 7 words, descriptive)\n" +
+              "2. A summary of the conversation (less than 150 words): What was the main topic, what were the key takeways, and what do you know about the user from the conversation?\n" +
+              "3. Up to 3 predicted follow-up questions the user might ask\n\n" +
+              "Return as JSON: { \"title\": \"...\", \"summary\": \"...\", \"nextQuestions\": [\"...\", \"...\", \"...\"] }"
+          },
+        ],
+      }],
+      safety_settings: safetySettings,
+      generationConfig: getGenerationConfig("conversationMetadata"),
+    }
+  );
+  
+  const responseObj = await handleApiResponse(response);
+  
+  // Handle finishReason
+  let finishReason = responseObj.candidates[0].finishReason;
+  let finishMessage = responseObj.candidates[0].finishMessage;
+  console.log("Finish reason:", finishReason);
+  
+  if (finishReason !== "STOP") {
+    throw new Error(
+      `API request finished with reason: ${finishReason}. Message: ${finishMessage}`
+    );
+  }
+  
+  // Extract JSON from response
+  const candidate = responseObj.candidates?.[0];
+  if (candidate?.content?.parts?.[0]?.text) {
+    try {
+      const jsonText = candidate.content.parts[0].text;
+      const parsed = JSON.parse(jsonText);
+      
+      // Validate structure
+      if (parsed.title && typeof parsed.title === 'string' &&
+          parsed.summary && typeof parsed.summary === 'string' &&
+          Array.isArray(parsed.nextQuestions)) {
+        return {
+          title: parsed.title.trim(),
+          summary: parsed.summary.trim(),
+          nextQuestions: parsed.nextQuestions
+            .filter(q => typeof q === 'string' && q.trim())
+            .slice(0, 3)
+        };
+      } else {
+        throw new Error('Invalid response structure');
+      }
+    } catch (error) {
+      console.error("Error parsing conversation metadata JSON:", error);
+      throw new Error(`Failed to parse metadata response: ${error.message}`);
+    }
+  }
+  
+  throw new Error('No valid response from API');
 }
 
 /**
@@ -2379,7 +2534,7 @@ export const fetchFromApi = async (
   }
 
   // Get the system prompt for the specified role, defaulting to 'general'
-  const worldFact = generateWorldFact(role);
+  const worldFact = await generateWorldFact(role);
   // console.log('worldFact:', worldFact);
   const systemPrompts = {
     role: "system",

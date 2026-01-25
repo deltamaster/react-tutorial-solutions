@@ -4,7 +4,7 @@
  */
 
 import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalConfig';
-import { generateFollowUpQuestions } from './apiUtils';
+import { generateFollowUpQuestions, generateConversationMetadata } from './apiUtils';
 import { createExportData } from '../services/conversationService';
 import { getAllTrackedFiles } from './fileTrackingService';
 
@@ -606,22 +606,12 @@ export async function createNewConversation(accessToken, name = "New Conversatio
 }
 
 /**
- * Generate conversation title using question prediction feature
+ * Generate conversation metadata (title, summary, and next questions) using combined API call
+ * @param {Array} conversation - The conversation array
+ * @returns {Promise<Object>} - Object with { title, summary, nextQuestions }
  */
-export async function generateConversationTitle(conversation) {
+export async function generateConversationMetadataFromConversation(conversation) {
   try {
-    // Import necessary modules
-    const { fetchFromApiCore } = await import('./apiUtils');
-    const { getModel } = await import('./settingsService');
-    const { getGenerationConfig } = await import('./apiUtils');
-    
-    const safetySettings = [
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-    ];
-    
     // Prepare contents - filter out thoughts and hidden parts, keep only text
     const finalContents = conversation
       .filter(content => content.parts && content.parts.length > 0)
@@ -634,67 +624,34 @@ export async function generateConversationTitle(conversation) {
       .filter(content => content.parts.length > 0);
     
     if (finalContents.length === 0) {
-      return "New Conversation";
+      return {
+        title: "New Conversation",
+        summary: "",
+        nextQuestions: []
+      };
     }
     
-    // Create request for title generation
-    const response = await fetchFromApiCore(
-      getModel(),
-      {
-        systemInstruction: {
-          role: "system", 
-          parts: [{
-            text: "You are a helpful assistant that generates conversation summaries. Return your response as a JSON object with 'summary' (one sentence)."
-          }]
-        },
-        contents: [...finalContents, {
-          role: "user",
-          parts: [{
-            text: "Based on this conversation, generate a summary (concise, descriptive) in less than 7 words"
-          }]
-        }],
-        safety_settings: safetySettings,
-        generationConfig: {
-          ...getGenerationConfig("followUpQuestions"),
-          responseJsonSchema: {
-            type: "object",
-            properties: {
-              summary: { type: "string" }
-            },
-            required: ["summary"]
-          }
-        },
-      }
-    );
-    
-    // Handle response
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
-    }
-    
-    const responseData = await response.json();
-    const candidate = responseData.candidates?.[0];
-    
-    if (candidate?.content?.parts?.[0]?.text) {
-      try {
-        const jsonText = candidate.content.parts[0].text;
-        const parsed = JSON.parse(jsonText);
-        if (parsed.summary && typeof parsed.summary === 'string') {
-          return parsed.summary.trim();
-        }
-      } catch (error) {
-        console.error("Error parsing title generation response:", error);
-        // Try to extract summary from text if JSON parsing fails
-        const text = candidate.content.parts[0].text;
-        const summaryMatch = text.match(/summary["\s:]+["']([^"']+)["']/i);
-        if (summaryMatch) {
-          return summaryMatch[1].trim();
-        }
-      }
-    }
-    
-    // Fallback
-    return "New Conversation";
+    // Use the combined metadata generation function from apiUtils
+    const metadata = await generateConversationMetadata(finalContents);
+    return metadata;
+  } catch (error) {
+    console.error("Error generating conversation metadata:", error);
+    return {
+      title: "New Conversation",
+      summary: "",
+      nextQuestions: []
+    };
+  }
+}
+
+/**
+ * Generate conversation title using question prediction feature
+ * @deprecated Use generateConversationMetadataFromConversation instead for better efficiency
+ */
+export async function generateConversationTitle(conversation) {
+  try {
+    const metadata = await generateConversationMetadataFromConversation(conversation);
+    return metadata.title || "New Conversation";
   } catch (error) {
     console.error("Error generating conversation title:", error);
     return "New Conversation";
@@ -887,6 +844,7 @@ export default {
   deleteConversation,
   createNewConversation,
   generateConversationTitle,
+  generateConversationMetadataFromConversation,
   isConversationSyncConfigured,
   getOrCreateConversationsFolder,
   clearConversationCache,

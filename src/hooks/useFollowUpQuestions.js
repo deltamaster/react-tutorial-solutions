@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { generateFollowUpQuestions } from "../utils/apiUtils";
+import { generateFollowUpQuestions, generateConversationMetadata } from "../utils/apiUtils";
 
 /**
  * Custom hook for managing follow-up questions
@@ -56,38 +56,42 @@ export const useFollowUpQuestions = ({ conversationRef, activeTypers = [] }) => 
 
     (async () => {
       try {
-        const nextQuestionResponseData = await generateFollowUpQuestions(
-          conversationSnapshot
-        );
+        // Use combined metadata generation function (generates title, summary, and next questions)
+        // Prepare contents - filter out thoughts and hidden parts, keep only text
+        const finalContents = conversationSnapshot
+          .filter(content => content.parts && content.parts.length > 0)
+          .map(content => ({
+            role: content.role,
+            parts: content.parts
+              .filter(part => !part.thought && part.hide !== true && part.text)
+              .map(part => ({ text: part.text }))
+          }))
+          .filter(content => content.parts.length > 0);
+        
+        if (finalContents.length === 0) {
+          setFollowUpQuestions([]);
+          return;
+        }
+        
+        const metadata = await generateConversationMetadata(finalContents);
         if (id !== followUpRequestIdRef.current) {
           return;
         }
 
-        // Extract JSON array from structured output
-        const candidate = nextQuestionResponseData?.candidates?.[0];
-        if (candidate?.content?.parts?.[0]?.text) {
-          try {
-            const jsonText = candidate.content.parts[0].text;
-            const questions = JSON.parse(jsonText);
-            if (Array.isArray(questions)) {
-              // Filter out empty strings and limit to 3
-              const validQuestions = questions
-                .filter((q) => typeof q === "string" && q.trim())
-                .slice(0, 3);
-              setFollowUpQuestions(validQuestions);
-            } else {
-              setFollowUpQuestions([]);
-            }
-          } catch (error) {
-            console.error("Error parsing follow-up questions JSON:", error);
-            setFollowUpQuestions([]);
-          }
+        // Extract nextQuestions from metadata
+        if (metadata.nextQuestions && Array.isArray(metadata.nextQuestions)) {
+          // Filter out empty strings and limit to 3
+          const validQuestions = metadata.nextQuestions
+            .filter((q) => typeof q === "string" && q.trim())
+            .slice(0, 3);
+          setFollowUpQuestions(validQuestions);
         } else {
           setFollowUpQuestions([]);
         }
       } catch (error) {
         if (id === followUpRequestIdRef.current) {
           console.error("Error generating follow-up questions:", error);
+          setFollowUpQuestions([]);
         }
       } finally {
         if (id === followUpRequestIdRef.current) {

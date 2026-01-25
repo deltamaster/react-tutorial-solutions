@@ -163,17 +163,15 @@ function AppContent() {
       setErrorMessage(userMessage);
     },
     onAllRequestsComplete: () => {
-      scheduleFollowUpQuestions();
       // Trigger auto-save and title generation after model responses
+      // generateAndUpdateTitle now generates title, summary, and next questions in ONE API call
       console.log('[AppContent] onAllRequestsComplete called', {
         hasSyncHelpers: !!syncHelpers,
         isOneDriveAvailable: syncHelpers?.isOneDriveAvailable,
-        conversationLength: conversation?.length,
-        nextQuestionLoading: nextQuestionLoading
+        conversationLength: conversation?.length
       });
       
       // CRITICAL: Always sync when model response is received (both user request and model response)
-      // Don't skip sync even if follow-up questions are being generated - we still need to save the conversation
       // Add a small delay to ensure conversationRef.current is updated with the latest model response
       console.log('[AppContent] Model response complete, triggering OneDrive sync...', {
         conversationLength: conversation?.length,
@@ -186,47 +184,76 @@ function AppContent() {
           console.log('[AppContent] Delayed sync - ensuring conversationRef is up-to-date', {
             conversationRefLength: conversationRef?.current?.length
           });
-          // Sync first, then generate title after sync completes (to ensure conversation ID exists)
+          // Sync first, then generate metadata (title, summary, next questions) after sync completes
           syncHelpers.syncCurrentConversation()
             .then(() => {
-              // Generate title after sync completes successfully
-              // This ensures conversation ID is created before title generation
-              // Only generate title if NOT generating follow-up questions (to avoid duplicate API calls)
-              if (!nextQuestionLoading && syncHelpers?.generateAndUpdateTitle) {
-                console.log('[AppContent] Sync completed, triggering auto-title generation...');
+              // Generate metadata (title, summary, next questions) after sync completes successfully
+              // This ensures conversation ID is created before metadata generation
+              if (syncHelpers?.generateAndUpdateTitle) {
+                console.log('[AppContent] Sync completed, triggering combined metadata generation (title, summary, next questions)...');
                 // Small delay to ensure state is updated
                 setTimeout(() => {
-                  console.log('[AppContent] Calling generateAndUpdateTitle...');
-                  syncHelpers.generateAndUpdateTitle().catch(err => {
-                    console.error('[AppContent] Error generating title:', err);
-                  });
+                  console.log('[AppContent] Calling generateAndUpdateTitle (combined API call)...');
+                  syncHelpers.generateAndUpdateTitle()
+                    .then((metadata) => {
+                      // Use the nextQuestions from the combined API call
+                      if (metadata && metadata.nextQuestions && Array.isArray(metadata.nextQuestions)) {
+                        const validQuestions = metadata.nextQuestions
+                          .filter((q) => typeof q === "string" && q.trim())
+                          .slice(0, 3);
+                        setFollowUpQuestions(validQuestions);
+                        console.log('[AppContent] Set follow-up questions from combined metadata:', validQuestions);
+                      }
+                    })
+                    .catch(err => {
+                      console.error('[AppContent] Error generating metadata:', err);
+                    });
                 }, 500);
-              } else if (nextQuestionLoading) {
-                console.log('[AppContent] Sync completed, but skipping auto-title (follow-up questions in progress)');
               }
             })
             .catch(err => {
               console.error('[AppContent] Error syncing conversation:', err);
-              // Still try to generate title even if sync fails (might have existing ID)
-              // But only if not generating follow-up questions
-              if (!nextQuestionLoading && syncHelpers?.generateAndUpdateTitle) {
+              // Still try to generate metadata even if sync fails (might have existing ID)
+              if (syncHelpers?.generateAndUpdateTitle) {
                 setTimeout(() => {
-                  console.log('[AppContent] Sync failed, but trying auto-title anyway...');
-                  syncHelpers.generateAndUpdateTitle().catch(titleErr => {
-                    console.error('[AppContent] Error generating title:', titleErr);
-                  });
+                  console.log('[AppContent] Sync failed, but trying metadata generation anyway...');
+                  syncHelpers.generateAndUpdateTitle()
+                    .then((metadata) => {
+                      // Use the nextQuestions from the combined API call
+                      if (metadata && metadata.nextQuestions && Array.isArray(metadata.nextQuestions)) {
+                        const validQuestions = metadata.nextQuestions
+                          .filter((q) => typeof q === "string" && q.trim())
+                          .slice(0, 3);
+                        setFollowUpQuestions(validQuestions);
+                        console.log('[AppContent] Set follow-up questions from combined metadata:', validQuestions);
+                      }
+                    })
+                    .catch(titleErr => {
+                      console.error('[AppContent] Error generating metadata:', titleErr);
+                    });
                 }, 500);
               }
             });
         }, 300); // Small delay to ensure conversationRef.current is updated
       } else {
-        // No sync helpers available, try title generation anyway (if not generating follow-up questions)
-        if (!nextQuestionLoading && syncHelpers?.generateAndUpdateTitle) {
+        // No sync helpers available, try metadata generation anyway
+        if (syncHelpers?.generateAndUpdateTitle) {
           setTimeout(() => {
             console.log('[AppContent] No sync helpers, calling generateAndUpdateTitle directly...');
-            syncHelpers.generateAndUpdateTitle().catch(err => {
-              console.error('[AppContent] Error generating title:', err);
-            });
+            syncHelpers.generateAndUpdateTitle()
+              .then((metadata) => {
+                // Use the nextQuestions from the combined API call
+                if (metadata && metadata.nextQuestions && Array.isArray(metadata.nextQuestions)) {
+                  const validQuestions = metadata.nextQuestions
+                    .filter((q) => typeof q === "string" && q.trim())
+                    .slice(0, 3);
+                  setFollowUpQuestions(validQuestions);
+                  console.log('[AppContent] Set follow-up questions from combined metadata:', validQuestions);
+                }
+              })
+              .catch(err => {
+                console.error('[AppContent] Error generating metadata:', err);
+              });
           }, 500);
         }
       }
@@ -785,7 +812,7 @@ function AppContent() {
                 <FollowUpQuestions
                   questions={followUpQuestions}
                   onQuestionClick={handleFollowUpClick}
-                  isLoading={nextQuestionLoading}
+                  isLoading={isGeneratingTitle}
                 />
 
                 {/* 错误消息显示，带关闭按钮 */}
