@@ -434,20 +434,33 @@ function AppContent() {
   );
 
   // Delete a conversation message
-  const deleteConversationMessage = useCallback((index) => {
-    const currentConversation = conversationRef.current || [];
-    const messageToDelete = currentConversation[index];
+  const deleteConversationMessage = useCallback((filteredIndex) => {
+    // Get the filtered conversation (without deleted messages) to find the message at filteredIndex
+    const filteredConversation = filterDeletedMessages(conversationRef.current || []);
+    const messageToDelete = filteredConversation[filteredIndex];
     
-    if (!messageToDelete) {
+    if (!messageToDelete || !messageToDelete.timestamp) {
+      console.warn('[deleteConversationMessage] Message not found at filtered index:', filteredIndex);
       return;
     }
     
-    let indicesToDelete = [index];
+    // Find the actual index in the full conversation array using timestamp
+    const currentConversation = conversationRef.current || [];
+    const actualIndex = currentConversation.findIndex(msg => 
+      msg.timestamp === messageToDelete.timestamp && !msg.deleted
+    );
+    
+    if (actualIndex === -1) {
+      console.warn('[deleteConversationMessage] Message not found in full conversation:', messageToDelete.timestamp);
+      return;
+    }
+    
+    let indicesToDelete = [actualIndex];
     let confirmMessage = "Are you sure you want to delete this message?";
     
     // If deleting a model response, also find following functionResponse messages
     if (messageToDelete.role === "model") {
-      indicesToDelete = findFunctionResponseIndices(currentConversation, index);
+      indicesToDelete = findFunctionResponseIndices(currentConversation, actualIndex);
       
       // Update confirmation message if functionResponse messages will also be deleted
       const functionResponseCount = indicesToDelete.length - 1;
@@ -458,7 +471,16 @@ function AppContent() {
     
     // Show confirmation and delete if confirmed
     if (window.confirm(confirmMessage)) {
-      setConversation((prev) => deleteMessages(prev, indicesToDelete));
+      // Use conversationRef.current directly to ensure we're working with the latest state
+      const updatedConversation = deleteMessages(currentConversation, indicesToDelete);
+      console.log('[deleteConversationMessage] Deleting messages at indices:', indicesToDelete, {
+        filteredIndex,
+        actualIndex,
+        beforeLength: currentConversation.length,
+        afterLength: updatedConversation.length,
+        messageTimestamp: messageToDelete.timestamp
+      });
+      setConversation(updatedConversation);
     }
   }, [setConversation]);
 

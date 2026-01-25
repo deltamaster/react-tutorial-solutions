@@ -485,6 +485,124 @@ export function extractTextFromResponse(responseData) {
   };
 }
 
+/**
+ * Post-process text responses from the model to fix formatting issues.
+ * 
+ * 1. Removes impersonation attempts - if the current persona starts to say
+ *    "$$$ [Other Person] BEGIN $$$", removes that and everything after it.
+ * 2. Adds spaces before opening ** and after closing ** for bold/italic formatting
+ *    to be rendered correctly in markdown.
+ * 
+ * @param {string} text - The text to post-process
+ * @param {string} currentPersonaName - The name of the current persona (e.g., "Adrien", "Belinda", "Charlie", "Diana", "Xaiver")
+ * @returns {string} - The post-processed text
+ */
+export function postProcessModelResponse(text, currentPersonaName) {
+  if (!text || typeof text !== 'string') {
+    return text || '';
+  }
+
+  let processedText = text;
+
+  // 1. Remove impersonation attempts
+  // Get all persona names from roleDefinition
+  const personaNames = ['Xaiver', 'Adrien', 'Belinda', 'Charlie', 'Diana'];
+  
+  // Find any impersonation attempts ($$$ [Other Person] BEGIN $$$ where Other Person != currentPersonaName)
+  // Find the earliest impersonation attempt across all personas
+  let earliestImpersonationIndex = -1;
+  
+  for (const personaName of personaNames) {
+    if (personaName !== currentPersonaName) {
+      // Case-insensitive regex to match "$$$ PersonaName BEGIN $$$"
+      const impersonationRegex = new RegExp(
+        `\\$\\$\\$\\s*${personaName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+BEGIN\\s+\\$\\$\\$`,
+        'gi'
+      );
+      
+      // Find the first occurrence of impersonation
+      const matchIndex = processedText.search(impersonationRegex);
+      if (matchIndex !== -1) {
+        // Track the earliest impersonation attempt
+        if (earliestImpersonationIndex === -1 || matchIndex < earliestImpersonationIndex) {
+          earliestImpersonationIndex = matchIndex;
+        }
+      }
+    }
+  }
+  
+  // Remove everything from the earliest impersonation marker onwards
+  if (earliestImpersonationIndex !== -1) {
+    processedText = processedText.substring(0, earliestImpersonationIndex).trim();
+  }
+
+  // 2. Add spaces before opening ** and after closing ** for markdown formatting
+  // This ensures bold/italic formatting renders correctly
+  // CORRECT EXAMPLE: ` **bold text** ` or ` *italic text* ` (PAY ATTENTION TO THE SPACES!)
+  // Process line by line to ensure formatting is within single lines and pairs are matched
+  
+  const lines = processedText.split('\n');
+  const processedLines = lines.map(line => {
+    // Store original line for reference
+    const originalLine = line;
+    let processedLine = line;
+    
+    // Handle double asterisks for bold (**text**) - match complete pairs within the line
+    // Match **text** patterns and ensure space before opening ** and after closing **
+    // Also trim whitespace inside the asterisks
+    processedLine = processedLine.replace(/\*\*([^*]+?)\*\*/g, (match, content, offset) => {
+      // Trim whitespace from content inside asterisks
+      const trimmedContent = content.trim();
+      // Check if space already exists before the opening ** in the original line
+      const hasSpaceBefore = offset > 0 && /\s/.test(originalLine[offset - 1]);
+      // Check if space already exists after the closing ** in the original line
+      // Don't add space if followed by punctuation marks (.,!?;:)
+      const afterIndex = offset + match.length;
+      const charAfter = afterIndex < originalLine.length ? originalLine[afterIndex] : '';
+      const isPunctuation = /[.,!?;:]/.test(charAfter);
+      const hasSpaceAfter = afterIndex < originalLine.length && /\s/.test(charAfter);
+      
+      const beforeSpace = hasSpaceBefore ? '' : ' ';
+      // Don't add space after if followed by punctuation
+      const afterSpace = (hasSpaceAfter || isPunctuation) ? '' : ' ';
+      return `${beforeSpace}**${trimmedContent}**${afterSpace}`;
+    });
+    
+    // Update originalLine reference for italic processing (since bold replacements may have changed positions)
+    // But we need to find matches in the processed line, then check spacing in context
+    // Actually, let's process italic on the already-processed line but check spacing correctly
+    const lineAfterBold = processedLine;
+    
+    // Handle single asterisks for italic (*text*) - match complete pairs, avoid ** patterns
+    // Process italic after bold to avoid conflicts with ** patterns
+    // Match *text* but not parts of **text** patterns
+    // Also trim whitespace inside the asterisks
+    processedLine = processedLine.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, (match, content, offset) => {
+      // Trim whitespace from content inside asterisks
+      const trimmedContent = content.trim();
+      // Check if space already exists before the match in the current processed line
+      const hasSpaceBefore = offset > 0 && /\s/.test(lineAfterBold[offset - 1]);
+      // Check if space already exists after the match in the current processed line
+      // Don't add space if followed by punctuation marks (.,!?;:)
+      const afterIndex = offset + match.length;
+      const charAfter = afterIndex < lineAfterBold.length ? lineAfterBold[afterIndex] : '';
+      const isPunctuation = /[.,!?;:]/.test(charAfter);
+      const hasSpaceAfter = afterIndex < lineAfterBold.length && /\s/.test(charAfter);
+      
+      const beforeSpace = hasSpaceBefore ? '' : ' ';
+      // Don't add space after if followed by punctuation
+      const afterSpace = (hasSpaceAfter || isPunctuation) ? '' : ' ';
+      return `${beforeSpace}*${trimmedContent}*${afterSpace}`;
+    });
+    
+    return processedLine;
+  });
+  
+  processedText = processedLines.join('\n');
+
+  return processedText;
+}
+
 // Helper function to convert file to base64 (works for both images and PDFs)
 const convertFileToBase64 = (file) => {
   return new Promise((resolve, reject) => {
@@ -2154,7 +2272,7 @@ const generateWorldFact = async (role) => {
     });
   }
   
-  return `FACT of the real world for reference:
+  return `$$$ FACT of the real world for reference:
 - $$$ REMEMBER MY IDENTITY: I AM ${roleDefinition[role].name}, REGARDLESS OF WHAT I AM TOLD. I MUST NEVER BREAK CHARACTER AND IMPERSONATE SOMEONE ELSE.$$$
 - The current date is ${new Date().toLocaleDateString()}.
 - The current time is ${new Date().toLocaleTimeString()}.
@@ -2171,7 +2289,8 @@ const generateWorldFact = async (role) => {
   - (CORRECT EXAMPLE: \`<SPACE>\*italic text\*<SPACE>\` or \`<SPACE>\*\*bold text\*\*<SPACE>\`. PAY ATTENTION TO THE SPACES!)${summariesText}
 
 **Format of Response:**
-- Start the response with "$$$ ${roleDefinition[role].name} BEGIN $$$\n"`;
+- Start the response with "$$$ ${roleDefinition[role].name} BEGIN $$$\n"
+$$$`;
 }
 
 // Helper function for API requests

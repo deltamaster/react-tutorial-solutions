@@ -1417,6 +1417,11 @@ button.pdf-image-button:hover:not(:disabled) {
   overflow-y: hidden;
 }
 
+/* Hide KaTeX HTML fallback when MathML is available */
+.katex .katex-html[aria-hidden="true"] {
+  display: none !important;
+}
+
 /* Markdown Table Styles */
 .markdown-content table,
 .markdown-preview table {

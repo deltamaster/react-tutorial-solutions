@@ -1,7 +1,7 @@
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { normalizeBeginMarker } from "../utils/responseUtils";
 import { extractMentionedRolesFromParts } from "../utils/textProcessing/mentionUtils";
-import { fetchFromApi, toolbox } from "../utils/apiUtils";
+import { fetchFromApi, toolbox, postProcessModelResponse } from "../utils/apiUtils";
 
 /**
  * Role Request Service
@@ -9,27 +9,6 @@ import { fetchFromApi, toolbox } from "../utils/apiUtils";
  */
 
 const MAX_CONCURRENT_ROLE_REQUESTS = 3;
-
-/**
- * Reorders response parts - puts executable code and images at the end
- * 
- * @param {Array} parts - Response parts array
- * @returns {Array} Reordered parts array
- */
-export const reorderResponseParts = (parts = []) => {
-  const regularParts = [];
-  const deferredParts = [];
-
-  parts.forEach((part) => {
-    if (part?.executableCode || part?.inlineData || part?.inline_data) {
-      deferredParts.push(part);
-    } else {
-      regularParts.push(part);
-    }
-  });
-
-  return [...regularParts, ...deferredParts];
-};
 
 /**
  * Processes a role request task
@@ -110,15 +89,33 @@ export const processRoleRequest = async (
       if (task.cancelled) {
         return;
       }
-      const orderedParts = reorderResponseParts(textParts);
       const normalizedParts = normalizeBeginMarker(
-        orderedParts,
+        textParts,
         roleDefinition[role]?.name
       );
+      
+      // Post-process text parts to fix formatting issues
+      // Skip processing for code blocks (executableCode, codeExecutionResult)
+      const personaName = roleDefinition[role]?.name || "Adrien";
+      const processedParts = normalizedParts.map((part) => {
+        // Skip post-processing for code blocks
+        if (part.executableCode || part.codeExecutionResult) {
+          return part;
+        }
+        // Only process regular text parts
+        if (part.text && typeof part.text === 'string') {
+          return {
+            ...part,
+            text: postProcessModelResponse(part.text, personaName),
+          };
+        }
+        return part;
+      });
+      
       const botResponse = {
         role: "model",
-        name: roleDefinition[role]?.name || "Adrien",
-        parts: normalizedParts,
+        name: personaName,
+        parts: processedParts,
         timestamp: Date.now(),
         groundingChunks:
           candidate?.groundingMetadata?.groundingChunks || [],
@@ -131,7 +128,7 @@ export const processRoleRequest = async (
       }
 
       const mentionedRoles = extractMentionedRolesFromParts(
-        normalizedParts,
+        processedParts,
         mentionRoleMap
       ).filter((roleKey) => roleKey !== role);
 

@@ -741,10 +741,17 @@ export function mergeConversations(localConversation = [], remoteConversation = 
       const localLastUpdate = localMsg.lastUpdate || localMsg.timestamp || 0;
       const remoteLastUpdate = remoteMsg.lastUpdate || remoteMsg.timestamp || 0;
       
-      // If one is deleted and the other isn't, use the non-deleted one
+      // If local is deleted, mark remote as deleted too (local deletion takes precedence)
       if (localMsg.deleted && !remoteMsg.deleted) {
-        merged.push(remoteMsg);
+        // Local deletion should propagate to remote - mark remote as deleted
+        const deletedRemoteMsg = {
+          ...remoteMsg,
+          deleted: true,
+          lastUpdate: localLastUpdate // Use local deletion timestamp
+        };
+        merged.push(deletedRemoteMsg);
       } else if (!localMsg.deleted && remoteMsg.deleted) {
+        // Remote is deleted but local is not - use local (non-deleted takes precedence)
         merged.push(localMsg);
       } else if (localMsg.deleted && remoteMsg.deleted) {
         // Both deleted - use the one with later lastUpdate
@@ -773,56 +780,77 @@ export function mergeConversations(localConversation = [], remoteConversation = 
  * @returns {Object} Merged message
  */
 function mergeMessageParts(localMsg, remoteMsg) {
-  // Use the message with the latest lastUpdate as base
-  const localLastUpdate = localMsg.lastUpdate || localMsg.timestamp || 0;
-  const remoteLastUpdate = remoteMsg.lastUpdate || remoteMsg.timestamp || 0;
-  const baseMsg = localLastUpdate >= remoteLastUpdate ? localMsg : remoteMsg;
-  const otherMsg = baseMsg === localMsg ? remoteMsg : localMsg;
-  
   // Create maps for parts by timestamp
-  const baseParts = new Map();
-  const otherParts = new Map();
+  const localParts = new Map();
+  const remoteParts = new Map();
   
-  (baseMsg.parts || []).forEach(part => {
-    const partTimestamp = part.timestamp || baseMsg.timestamp;
+  (localMsg.parts || []).forEach(part => {
+    const partTimestamp = part.timestamp || localMsg.timestamp;
     if (partTimestamp) {
-      baseParts.set(partTimestamp, part);
+      localParts.set(partTimestamp, part);
     }
   });
   
-  (otherMsg.parts || []).forEach(part => {
-    const partTimestamp = part.timestamp || otherMsg.timestamp;
+  (remoteMsg.parts || []).forEach(part => {
+    const partTimestamp = part.timestamp || remoteMsg.timestamp;
     if (partTimestamp) {
-      otherParts.set(partTimestamp, part);
+      remoteParts.set(partTimestamp, part);
     }
   });
   
   // Get all unique part timestamps
   const allPartTimestamps = new Set([
-    ...baseParts.keys(),
-    ...otherParts.keys()
+    ...localParts.keys(),
+    ...remoteParts.keys()
   ]);
   
   const mergedParts = [];
   
   // Process each part timestamp
   for (const partTimestamp of Array.from(allPartTimestamps).sort((a, b) => a - b)) {
-    const basePart = baseParts.get(partTimestamp);
-    const otherPart = otherParts.get(partTimestamp);
+    const localPart = localParts.get(partTimestamp);
+    const remotePart = remoteParts.get(partTimestamp);
     
-    if (!basePart && otherPart) {
-      mergedParts.push(otherPart);
-    } else if (basePart && !otherPart) {
-      mergedParts.push(basePart);
-    } else if (basePart && otherPart) {
-      // Both exist - use the one with later lastUpdate
-      const basePartLastUpdate = basePart.lastUpdate || basePart.timestamp || 0;
-      const otherPartLastUpdate = otherPart.lastUpdate || otherPart.timestamp || 0;
+    if (!localPart && remotePart) {
+      // Only remote exists - use it (unless it's deleted, then skip)
+      if (!remotePart.deleted) {
+        mergedParts.push(remotePart);
+      }
+    } else if (localPart && !remotePart) {
+      // Only local exists - use it (unless it's deleted, then skip)
+      if (!localPart.deleted) {
+        mergedParts.push(localPart);
+      }
+    } else if (localPart && remotePart) {
+      // Both exist - check if local part is deleted
+      const localPartLastUpdate = localPart.lastUpdate || localPart.timestamp || 0;
+      const remotePartLastUpdate = remotePart.lastUpdate || remotePart.timestamp || 0;
       
-      if (basePartLastUpdate >= otherPartLastUpdate) {
-        mergedParts.push(basePart);
+      // If local part is deleted, mark remote part as deleted too (local deletion takes precedence)
+      if (localPart.deleted && !remotePart.deleted) {
+        const deletedRemotePart = {
+          ...remotePart,
+          deleted: true,
+          lastUpdate: localPartLastUpdate
+        };
+        mergedParts.push(deletedRemotePart);
+      } else if (!localPart.deleted && remotePart.deleted) {
+        // Remote part is deleted but local is not - use local (non-deleted takes precedence)
+        mergedParts.push(localPart);
+      } else if (localPart.deleted && remotePart.deleted) {
+        // Both deleted - use the one with later lastUpdate
+        if (localPartLastUpdate >= remotePartLastUpdate) {
+          mergedParts.push(localPart);
+        } else {
+          mergedParts.push(remotePart);
+        }
       } else {
-        mergedParts.push(otherPart);
+        // Neither deleted - use the one with later lastUpdate
+        if (localPartLastUpdate >= remotePartLastUpdate) {
+          mergedParts.push(localPart);
+        } else {
+          mergedParts.push(remotePart);
+        }
       }
     }
   }
