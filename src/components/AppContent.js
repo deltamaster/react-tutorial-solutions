@@ -631,20 +631,22 @@ function AppContent() {
               <Col xs={12} className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
                 {/* Conversation Title and Selector - Left side */}
                 {isOneDriveAvailable && !showFloatingMenu && (
-                  <div className="flex-grow-1 d-flex flex-column gap-2" style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+                  <div className="flex-grow-1 d-flex flex-column gap-2" style={{ minWidth: 0, maxWidth: '100%' }}>
                     <ConversationTitle
                       title={currentConversationTitle}
                       isAutoTitle={conversations.find(c => c.id === currentConversationId)?.autoTitle !== false}
                       isGeneratingTitle={isGeneratingTitle}
                       onTitleChange={updateConversationTitle}
                     />
-                    <ConversationSelector
-                      conversations={conversations}
-                      currentConversationId={currentConversationId}
-                      onSwitchConversation={syncHelpers?.switchConversation}
-                      onDeleteConversation={syncHelpers?.deleteConversation}
-                      isSyncing={isSyncing}
-                    />
+                    <div style={{ position: 'relative', zIndex: 1050, overflow: 'visible' }}>
+                      <ConversationSelector
+                        conversations={conversations}
+                        currentConversationId={currentConversationId}
+                        onSwitchConversation={syncHelpers?.switchConversation}
+                        onDeleteConversation={syncHelpers?.deleteConversation}
+                        isSyncing={isSyncing}
+                      />
+                    </div>
                   </div>
                 )}
                 

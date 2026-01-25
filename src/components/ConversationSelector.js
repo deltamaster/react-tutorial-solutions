@@ -162,16 +162,19 @@ function ConversationSelector({
             boxSizing: 'border-box'
           }}
           popperConfig={{
-            strategy: 'fixed',
+            placement: 'bottom-start',
             modifiers: [
+              {
+                name: 'offset',
+                options: {
+                  offset: [0, 4]
+                }
+              },
               {
                 name: 'preventOverflow',
                 options: {
                   boundary: 'viewport',
-                  padding: 10,
-                  altBoundary: true,
-                  rootBoundary: 'viewport',
-                  tether: false
+                  padding: 10
                 }
               },
               {
@@ -179,21 +182,7 @@ function ConversationSelector({
                 options: {
                   boundary: 'viewport',
                   padding: 10,
-                  fallbackPlacements: ['top', 'bottom'],
-                  rootBoundary: 'viewport'
-                }
-              },
-              {
-                name: 'computeStyles',
-                options: {
-                  gpuAcceleration: false,
-                  adaptive: false
-                }
-              },
-              {
-                name: 'offset',
-                options: {
-                  offset: [0, 4]
+                  fallbackPlacements: ['top-start', 'bottom-start']
                 }
               },
               {
