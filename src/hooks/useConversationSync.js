@@ -335,7 +335,28 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                 
                 // Merge local and remote conversations ONLY if it's the same conversation
                 // (same conversation ID means we might have local changes to merge)
-                const localConvData = conversationRef.current || conversation || [];
+                // CRITICAL: Read directly from localStorage to ensure we get the latest data
+                // conversationRef.current might be empty at page load before localStorage loads
+                let localConvData = [];
+                try {
+                  const localStorageConv = localStorage.getItem('conversation');
+                  if (localStorageConv) {
+                    const parsed = JSON.parse(localStorageConv);
+                    if (Array.isArray(parsed)) {
+                      localConvData = parsed;
+                    }
+                  }
+                } catch (error) {
+                  console.error('[useConversationSync] Error reading conversation from localStorage:', error);
+                  // Fallback to ref/prop if localStorage read fails
+                  localConvData = conversationRef.current || conversation || [];
+                }
+                
+                // If localStorage was empty but ref/prop has data, use that instead
+                if (localConvData.length === 0) {
+                  localConvData = conversationRef.current || conversation || [];
+                }
+                
                 const mergedConversation = conversationSyncService.mergeConversations(
                   localConvData,
                   remoteConvData || []

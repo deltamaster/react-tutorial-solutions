@@ -722,8 +722,22 @@ export function mergeConversations(localConversation = [], remoteConversation = 
   
   const merged = [];
   
+  // Debug: Log the timestamps array
+  const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+  console.log('[mergeConversations] Debug info:', {
+    localMessagesCount: localMessages.size,
+    remoteMessagesCount: remoteMessages.size,
+    allTimestampsSize: allTimestamps.size,
+    sortedTimestampsLength: sortedTimestamps.length,
+    sortedTimestamps: sortedTimestamps.slice(0, 5) // First 5 for debugging
+  });
+  
   // Process each message timestamp
-  for (const timestamp of Array.from(allTimestamps).sort((a, b) => a - b)) {
+  let iterationCount = 0;
+  for (const timestamp of sortedTimestamps) {
+    iterationCount++;
+    console.log(`[mergeConversations] Iteration ${iterationCount}/${sortedTimestamps.length}, timestamp: ${timestamp}`);
+    
     const localMsg = localMessages.get(timestamp);
     const remoteMsg = remoteMessages.get(timestamp);
     
@@ -762,11 +776,25 @@ export function mergeConversations(localConversation = [], remoteConversation = 
         }
       } else {
         // Neither deleted - merge parts
-        const mergedMsg = mergeMessageParts(localMsg, remoteMsg);
-        merged.push(mergedMsg);
+        try {
+          const mergedMsg = mergeMessageParts(localMsg, remoteMsg);
+          merged.push(mergedMsg);
+        } catch (error) {
+          console.error(`[mergeConversations] Error merging message parts at timestamp ${timestamp}:`, error);
+          // Fallback: use the one with later lastUpdate
+          const localLastUpdate = localMsg.lastUpdate || localMsg.timestamp || 0;
+          const remoteLastUpdate = remoteMsg.lastUpdate || remoteMsg.timestamp || 0;
+          if (localLastUpdate >= remoteLastUpdate) {
+            merged.push(localMsg);
+          } else {
+            merged.push(remoteMsg);
+          }
+        }
       }
     }
   }
+  
+  console.log(`[mergeConversations] Loop completed. Total iterations: ${iterationCount}, merged count: ${merged.length}`);
   
   return merged;
 }
@@ -780,6 +808,13 @@ export function mergeConversations(localConversation = [], remoteConversation = 
  * @returns {Object} Merged message
  */
 function mergeMessageParts(localMsg, remoteMsg) {
+  // Calculate message-level lastUpdate values
+  const localMsgLastUpdate = localMsg.lastUpdate || localMsg.timestamp || 0;
+  const remoteMsgLastUpdate = remoteMsg.lastUpdate || remoteMsg.timestamp || 0;
+  
+  // Determine which message to use as base (the one with later lastUpdate)
+  const baseMsg = localMsgLastUpdate >= remoteMsgLastUpdate ? localMsg : remoteMsg;
+  
   // Create maps for parts by timestamp
   const localParts = new Map();
   const remoteParts = new Map();
@@ -822,35 +857,15 @@ function mergeMessageParts(localMsg, remoteMsg) {
         mergedParts.push(localPart);
       }
     } else if (localPart && remotePart) {
-      // Both exist - check if local part is deleted
+      // Both exist - treat deletion as just another type of update
+      // Use the one with the larger lastUpdate timestamp, regardless of deletion status
       const localPartLastUpdate = localPart.lastUpdate || localPart.timestamp || 0;
       const remotePartLastUpdate = remotePart.lastUpdate || remotePart.timestamp || 0;
       
-      // If local part is deleted, mark remote part as deleted too (local deletion takes precedence)
-      if (localPart.deleted && !remotePart.deleted) {
-        const deletedRemotePart = {
-          ...remotePart,
-          deleted: true,
-          lastUpdate: localPartLastUpdate
-        };
-        mergedParts.push(deletedRemotePart);
-      } else if (!localPart.deleted && remotePart.deleted) {
-        // Remote part is deleted but local is not - use local (non-deleted takes precedence)
+      if (localPartLastUpdate >= remotePartLastUpdate) {
         mergedParts.push(localPart);
-      } else if (localPart.deleted && remotePart.deleted) {
-        // Both deleted - use the one with later lastUpdate
-        if (localPartLastUpdate >= remotePartLastUpdate) {
-          mergedParts.push(localPart);
-        } else {
-          mergedParts.push(remotePart);
-        }
       } else {
-        // Neither deleted - use the one with later lastUpdate
-        if (localPartLastUpdate >= remotePartLastUpdate) {
-          mergedParts.push(localPart);
-        } else {
-          mergedParts.push(remotePart);
-        }
+        mergedParts.push(remotePart);
       }
     }
   }
@@ -860,7 +875,7 @@ function mergeMessageParts(localMsg, remoteMsg) {
     ...baseMsg,
     parts: mergedParts,
     // Update lastUpdate to the latest of both messages
-    lastUpdate: Math.max(localLastUpdate, remoteLastUpdate)
+    lastUpdate: Math.max(localMsgLastUpdate, remoteMsgLastUpdate)
   };
 }
 
