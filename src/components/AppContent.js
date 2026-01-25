@@ -631,7 +631,7 @@ function AppContent() {
               <Col xs={12} className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-2">
                 {/* Conversation Title and Selector - Left side */}
                 {isOneDriveAvailable && !showFloatingMenu && (
-                  <div className="flex-grow-1 d-flex flex-column gap-2" style={{ minWidth: 0 }}>
+                  <div className="flex-grow-1 d-flex flex-column gap-2" style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
                     <ConversationTitle
                       title={currentConversationTitle}
                       isAutoTitle={conversations.find(c => c.id === currentConversationId)?.autoTitle !== false}
@@ -720,7 +720,8 @@ function AppContent() {
                       padding: isFloatingMenuOpen ? '16px' : '0',
                       transition: 'all 0.3s ease',
                       overflow: 'visible',
-                      zIndex: 1050
+                      overflowY: 'visible',
+                      overflowX: 'visible'
                     }}
                   >
                     {/* Hamburger Button */}
@@ -749,6 +750,8 @@ function AppContent() {
                           padding: '16px',
                           // borderTop: '1px solid rgba(255, 255, 255, 0.18)',
                           overflow: 'visible',
+                          overflowY: 'visible',
+                          overflowX: 'visible',
                           width: '100%',
                           boxSizing: 'border-box',
                           position: 'relative',
@@ -757,7 +760,7 @@ function AppContent() {
                       >
                         {/* Conversation Title */}
                         {isOneDriveAvailable && (
-                          <div className="mb-3" style={{ width: '100%', minWidth: 0 }}>
+                          <div className="mb-3" style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
                             <ConversationTitle
                               title={currentConversationTitle}
                               isAutoTitle={conversations.find(c => c.id === currentConversationId)?.autoTitle !== false}
@@ -769,7 +772,7 @@ function AppContent() {
 
                         {/* Conversation Selector */}
                         {isOneDriveAvailable && (
-                          <div className="mb-3" style={{ width: '100%', minWidth: 0, position: 'static', zIndex: 1051, overflow: 'visible' }}>
+                          <div className="mb-3" style={{ width: '100%', minWidth: 0, maxWidth: '100%', position: 'relative', zIndex: 1052, overflow: 'visible' }}>
                             <ConversationSelector
                               conversations={conversations}
                               currentConversationId={currentConversationId}

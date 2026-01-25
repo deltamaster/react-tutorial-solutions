@@ -85,7 +85,17 @@ function ConversationSelector({
           transform: scale(1.15);
         }
       `}</style>
-      <div className={`conversation-selector ${className}`} ref={dropdownRef}>
+      <div 
+        className={`conversation-selector ${className}`} 
+        ref={dropdownRef}
+        style={{
+          width: '100%',
+          minWidth: 0,
+          maxWidth: '100%',
+          position: 'relative',
+          zIndex: 1052
+        }}
+      >
         <Dropdown show={isOpen} onToggle={setIsOpen}>
         <Dropdown.Toggle
           as={Button}
@@ -93,47 +103,116 @@ function ConversationSelector({
           size="sm"
           disabled={isSyncing || conversations.length === 0}
           className="d-flex align-items-center gap-2"
+          id="conversation-selector-toggle"
+          style={{
+            width: '100%',
+            minWidth: 0,
+            maxWidth: '100%',
+            overflow: 'hidden'
+          }}
         >
-          <Icon.Folder size={14} />
-          <span className="d-none d-md-inline">
+          <Icon.Folder size={14} className="flex-shrink-0" />
+          <span 
+            className="d-none d-md-inline text-truncate"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+            title={currentConversation?.name || 'Select Conversation'}
+          >
             {currentConversation?.name || 'Select Conversation'}
           </span>
-          <span className="d-md-none">
+          <span 
+            className="d-md-none text-truncate"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+            title={currentConversation?.name || 'Select'}
+          >
             {currentConversation?.name || 'Select'}
           </span>
           {isSyncing && (
-            <span className="spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true" />
+            <span className="spinner-border spinner-border-sm ms-1 flex-shrink-0" role="status" aria-hidden="true" />
           )}
         </Dropdown.Toggle>
 
         <Dropdown.Menu 
           style={{ 
             maxHeight: '400px', 
-            overflowY: 'auto', 
+            overflowY: 'auto',
+            overflowX: 'hidden',
             width: '100%',
             maxWidth: '100%',
+            minWidth: 0,
             backgroundColor: 'rgba(255, 255, 255, 0.5)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
             border: '1px solid rgba(255, 255, 255, 0.18)',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
             borderRadius: '12px',
-            marginTop: '4px'
+            marginTop: '4px',
+            zIndex: 1053,
+            boxSizing: 'border-box'
           }}
           popperConfig={{
+            strategy: 'fixed',
             modifiers: [
               {
                 name: 'preventOverflow',
                 options: {
                   boundary: 'viewport',
-                  padding: 10
+                  padding: 10,
+                  altBoundary: true,
+                  rootBoundary: 'viewport',
+                  tether: false
                 }
               },
               {
                 name: 'flip',
                 options: {
                   boundary: 'viewport',
-                  padding: 10
+                  padding: 10,
+                  fallbackPlacements: ['top', 'bottom'],
+                  rootBoundary: 'viewport'
+                }
+              },
+              {
+                name: 'computeStyles',
+                options: {
+                  gpuAcceleration: false,
+                  adaptive: false
+                }
+              },
+              {
+                name: 'offset',
+                options: {
+                  offset: [0, 4]
+                }
+              },
+              {
+                name: 'size',
+                enabled: true,
+                phase: 'beforeWrite',
+                requires: ['preventOverflow'],
+                fn({ state }) {
+                  // Match dropdown width to toggle button width
+                  const toggleElement = document.getElementById('conversation-selector-toggle');
+                  if (toggleElement) {
+                    const toggleWidth = toggleElement.getBoundingClientRect().width;
+                    state.styles.popper.width = `${toggleWidth}px`;
+                    state.styles.popper.maxWidth = `${toggleWidth}px`;
+                  }
+                  // Ensure it doesn't exceed viewport
+                  const viewportWidth = window.innerWidth;
+                  const maxWidth = Math.min(toggleElement ? toggleElement.getBoundingClientRect().width : viewportWidth, viewportWidth - 20);
+                  state.styles.popper.maxWidth = `${maxWidth}px`;
                 }
               }
             ]
@@ -169,16 +248,23 @@ function ConversationSelector({
                       : '1px solid transparent',
                     borderRadius: isActive ? '8px' : '0',
                     color: isActive ? '#000000' : 'inherit',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    width: '100%',
+                    maxWidth: '100%',
+                    minWidth: 0,
+                    boxSizing: 'border-box'
                   }}
                 >
-                  <div className="d-flex align-items-center w-100" style={{ gap: '8px' }}>
+                  <div className="d-flex align-items-center w-100" style={{ gap: '8px', minWidth: 0, overflow: 'hidden' }}>
                     <span
-                      className="fw-semibold text-truncate"
+                      className="fw-semibold"
                       style={{ 
                         flex: 1,
-                        minWidth: 0, // Allow truncation
-                        color: isActive ? '#000000' : 'inherit' // Black text for selected item
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        color: isActive ? '#000000' : 'inherit'
                       }}
                       title={conv.name}
                     >
@@ -208,8 +294,17 @@ function ConversationSelector({
                       />
                     </div>
                   </div>
-                  <div className="d-flex justify-content-end align-items-center w-100 mt-1">
-                    <small style={{ color: isActive ? '#666666' : undefined }}>
+                  <div className="d-flex justify-content-end align-items-center w-100 mt-1" style={{ minWidth: 0, overflow: 'hidden' }}>
+                    <small 
+                      style={{ 
+                        color: isActive ? '#666666' : undefined,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        maxWidth: '100%'
+                      }}
+                      title={formattedDate}
+                    >
                       {formattedDate}
                     </small>
                   </div>

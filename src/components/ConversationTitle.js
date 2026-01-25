@@ -64,7 +64,7 @@ function ConversationTitle({
   
   if (isEditing) {
     return (
-      <div className={`d-flex align-items-center gap-2 ${className}`}>
+      <div className={`d-flex align-items-center gap-2 ${className}`} style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}>
         <input
           ref={inputRef}
           type="text"
@@ -74,8 +74,10 @@ function ConversationTitle({
           onKeyDown={handleKeyDown}
           className="form-control form-control-sm"
           style={{ 
-            minWidth: '200px',
-            maxWidth: '400px'
+            minWidth: 0,
+            maxWidth: '100%',
+            width: '100%',
+            flex: 1
           }}
           placeholder="Conversation title"
         />
@@ -104,7 +106,13 @@ function ConversationTitle({
   return (
     <div 
       className={`d-flex align-items-center gap-2 ${className}`}
-      style={{ cursor: 'pointer' }}
+      style={{ 
+        cursor: 'pointer',
+        width: '100%',
+        minWidth: 0,
+        maxWidth: '100%',
+        overflow: 'hidden'
+      }}
       onClick={handleClick}
       onMouseEnter={(e) => {
         e.currentTarget.style.opacity = '0.8';
@@ -119,18 +127,21 @@ function ConversationTitle({
           maxWidth: '100%',
           fontWeight: '500',
           flex: 1,
-          minWidth: 0
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
         }}
         title={title}
       >
         {title || 'New Conversation'}
       </span>
       {isGeneratingTitle && (
-        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+        <span className="spinner-border spinner-border-sm flex-shrink-0" role="status" aria-hidden="true" />
       )}
       {isAutoTitle && !isGeneratingTitle && (
         <span 
-          className="badge bg-secondary"
+          className="badge bg-secondary flex-shrink-0"
           style={{ fontSize: '0.65rem' }}
           title="Title is auto-generated"
         >
@@ -139,7 +150,7 @@ function ConversationTitle({
       )}
       <Icon.Pencil 
         size={12} 
-        className="text-muted"
+        className="text-muted flex-shrink-0"
         style={{ opacity: 0.6 }}
       />
     </div>
