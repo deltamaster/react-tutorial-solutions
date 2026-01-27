@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Redirect</title>
+</head>
+<body>
+    <script>
+        // This page handles the redirect from Azure AD and sends the auth result back to the extension
+        (function() {
+            // Check if we're in a popup window (from MSAL popup flow)
+            if (window.opener && window.opener !== window) {
+                // Extract hash parameters from URL
+                const hash = window.location.hash.substring(1);
+                const params = new URLSearchParams(hash);
+                
+                // Send the auth result back to the opener window via postMessage
+                // Use '*' as targetOrigin to allow communication with chrome-extension:// origins
+                if (params.has('code') || params.has('access_token') || params.has('id_token')) {
+                    window.opener.postMessage({
+                        type: 'msal:auth-result',
+                        hash: hash,
+                        url: window.location.href
+                    }, '*'); // '*' allows communication with chrome-extension:// origins
+                    
+                    // Close the popup after a short delay
+                    setTimeout(() => {
+                        window.close();
+                    }, 100);
+                } else if (params.has('error')) {
+                    // Handle error
+                    window.opener.postMessage({
+                        type: 'msal:auth-error',
+                        error: params.get('error'),
+                        errorDescription: params.get('error_description')
+                    }, '*'); // '*' allows communication with chrome-extension:// origins
+                    
+                    setTimeout(() => {
+                        window.close();
+                    }, 100);
+                }
+            } else {
+                // If not in a popup, try to redirect back to extension
+                // This handles the case where redirect flow is used
+                const hash = window.location.hash.substring(1);
+                if (hash) {
+                    // Try to find the extension ID from chrome.runtime
+                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+                        // We're in the extension context, redirect to extension page
+                        window.location.href = chrome.runtime.getURL('index.html') + '#' + hash;
+                    } else {
+                        // Not in extension context, show message
+                        document.body.innerHTML = '<p>Authentication complete. Please return to the extension.</p>';
+                    }
+                }
+            }
+        })();
+    </script>
+</body>
+</html>

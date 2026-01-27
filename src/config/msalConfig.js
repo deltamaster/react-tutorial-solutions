@@ -10,11 +10,29 @@ const isIOSDevice = () => {
          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 };
 
+// Detect Chrome extension environment
+const isChromeExtension = () => {
+  return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+};
+
+// Get redirect URI - for Chrome extensions, use a hosted redirect handler page
+// This page receives the auth code and communicates back to the extension via postMessage
+const getRedirectUri = () => {
+  if (isChromeExtension()) {
+    // For Chrome extensions, use a redirect handler page hosted on production domain
+    // This page must be registered in Azure AD under "Single-page application" platform
+    // The handler page uses postMessage to send auth result back to extension
+    // This works for all users who install the extension
+    return 'https://answer.hansenh.xyz/auth-redirect.html';
+  }
+  return window.location.origin;
+};
+
 export const msalConfig = {
   auth: {
     clientId: CLIENT_ID,
     authority: "https://login.microsoftonline.com/consumers", // Use 'consumers' for personal Microsoft accounts (Consumer audience)
-    redirectUri: window.location.origin, // Redirect URI after login
+    redirectUri: getRedirectUri(), // Redirect URI after login
   },
   cache: {
     // Use localStorage on iOS for better persistence (sessionStorage can be cleared aggressively)

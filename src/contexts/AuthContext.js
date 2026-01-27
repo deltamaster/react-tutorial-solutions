@@ -27,6 +27,11 @@ export const AuthProvider = ({ children }) => {
              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     };
 
+    // Helper function to detect Chrome extension environment
+    const isChromeExtension = () => {
+      return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+    };
+
     // Check if MSAL is configured
     const configured = isMsalConfigured();
     setIsConfigured(configured);
@@ -36,15 +41,71 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
+    // For Chrome extensions, listen for postMessage from auth redirect handler
+    if (isChromeExtension()) {
+      const handleMessage = async (event) => {
+        // Only accept messages from our redirect handler domain
+        if (event.origin !== 'https://answer.hansenh.xyz') {
+          return;
+        }
+
+        if (event.data && event.data.type === 'msal:auth-result') {
+          // We received auth result from redirect handler
+          // Update the URL hash so MSAL can process it
+          const currentHash = window.location.hash;
+          window.location.hash = event.data.hash;
+          
+          // Give MSAL a moment to process, then handle redirect promise
+          setTimeout(async () => {
+            try {
+              const redirectResponse = await msalInstance.handleRedirectPromise();
+              if (redirectResponse) {
+                setUser(redirectResponse.account);
+                setIsAuthenticated(true);
+                setIsLoading(false);
+                
+                // Clear hash
+                if (window.history && window.history.replaceState) {
+                  window.history.replaceState(null, '', window.location.pathname);
+                }
+              }
+            } catch (error) {
+              console.error('[AuthContext] Error handling redirect from postMessage:', error);
+            }
+          }, 100);
+        } else if (event.data && event.data.type === 'msal:auth-error') {
+          console.error('[AuthContext] Auth error from redirect handler:', event.data.error, event.data.errorDescription);
+          setIsLoading(false);
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+      return () => {
+        window.removeEventListener('message', handleMessage);
+      };
+    }
+
+    // Check if we're coming back from a redirect (check URL for hash or query params)
+    const urlParams = new URLSearchParams(window.location.search);
+    const hash = window.location.hash;
+    const hasRedirectParams = hash.includes('code=') || hash.includes('access_token=') || hash.includes('id_token=') || urlParams.has('code');
+    
+    console.log('[AuthContext] Initializing MSAL, redirect params detected:', hasRedirectParams, { hash, search: window.location.search });
+
     // Initialize MSAL
     msalInstance
       .initialize()
       .then(async () => {
-        // Handle redirect response first (for iOS redirect flow)
+        console.log('[AuthContext] MSAL initialized, handling redirect promise...');
+        
+        // Handle redirect response first (for iOS and Chrome extension redirect flow)
         try {
           const redirectResponse = await msalInstance.handleRedirectPromise();
+          console.log('[AuthContext] Redirect promise result:', redirectResponse ? 'SUCCESS' : 'NO_RESPONSE', redirectResponse);
+          
           if (redirectResponse) {
             // User just completed redirect login
+            console.log('[AuthContext] Redirect login successful, account:', redirectResponse.account);
             setUser(redirectResponse.account);
             setIsAuthenticated(true);
             setIsLoading(false);
@@ -77,17 +138,48 @@ export const AuthProvider = ({ children }) => {
               }
             }
             
+            // Clear URL hash/params after successful redirect handling
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', window.location.pathname);
+            }
+            
             return; // Exit early, don't try silent login
+          } else if (hasRedirectParams) {
+            // We have redirect params but handleRedirectPromise didn't catch them
+            // This might be a timing issue - try again after a short delay
+            console.warn('[AuthContext] Redirect params detected but handleRedirectPromise returned null, retrying...');
+            setTimeout(async () => {
+              try {
+                const retryResponse = await msalInstance.handleRedirectPromise();
+                if (retryResponse) {
+                  console.log('[AuthContext] Retry successful, account:', retryResponse.account);
+                  setUser(retryResponse.account);
+                  setIsAuthenticated(true);
+                  setIsLoading(false);
+                  if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, '', window.location.pathname);
+                  }
+                  return;
+                }
+              } catch (retryError) {
+                console.error('[AuthContext] Retry failed:', retryError);
+              }
+            }, 500);
           }
         } catch (redirectError) {
           // Redirect promise failed or no redirect response, continue with normal flow
-          console.log("No redirect response or redirect error:", redirectError?.errorCode || redirectError?.message);
+          console.error("[AuthContext] Redirect error:", redirectError?.errorCode || redirectError?.message, redirectError);
         }
         
         // Check if user is already logged in (cached account)
+        // Also check if a new account appeared after redirect (even if handleRedirectPromise didn't catch it)
         const accounts = msalInstance.getAllAccounts();
+        console.log('[AuthContext] All accounts after initialization:', accounts.length, accounts);
+        
         if (accounts.length > 0) {
           const account = accounts[0];
+          console.log('[AuthContext] Found account, attempting silent token acquisition:', account.username);
+          
           // Try to acquire token silently to verify the account is still valid
           msalInstance
             .acquireTokenSilent({
@@ -96,6 +188,7 @@ export const AuthProvider = ({ children }) => {
             })
             .then(async (response) => {
               // Silent token acquisition successful, user is authenticated
+              console.log('[AuthContext] Silent token acquisition successful');
               setUser(response.account);
               setIsAuthenticated(true);
               setIsLoading(false);
@@ -216,15 +309,23 @@ export const AuthProvider = ({ children }) => {
              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     };
     
+    // Helper function to detect Chrome extension environment
+    const isChromeExtension = () => {
+      return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+    };
+    
     try {
-      // Use redirect on iOS (popups are often blocked), popup on other platforms
+      // Use redirect flow only for iOS (popups are often blocked)
+      // For Chrome extensions, use popup flow with HTTP redirect URI (registered in SPA platform)
+      // Popup flow uses postMessage, so it works even though the redirect URI is HTTP
       if (isIOSDevice()) {
         // On iOS, use redirect flow (more reliable than popup)
         await msalInstance.loginRedirect(loginRequest);
         // Note: After redirect, handleRedirectPromise() in useEffect will handle the response
         return;
       } else {
-        // On non-iOS, use popup flow
+        // On other platforms including Chrome extensions, use popup flow
+        // For Chrome extensions, popup flow redirects to HTTP URL but uses postMessage to communicate back
         const response = await msalInstance.loginPopup(loginRequest);
         setUser(response.account);
         setIsAuthenticated(true);

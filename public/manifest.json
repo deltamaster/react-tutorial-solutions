@@ -28,14 +28,17 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://jp-gw2.azure-api.net/*"
+    "https://jp-gw2.azure-api.net/*",
+    "https://login.microsoftonline.com/*",
+    "https://login.live.com/*",
+    "https://graph.microsoft.com/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self';"
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self' https://login.microsoftonline.com https://login.live.com;"
   },
   "web_accessible_resources": [
     {
-      "resources": ["favicon-16x16.png", "favicon-32x32.png", "avatar-belinda.jpg", "avatar-user-female.jpg", "avatar-user-male.jpg", "avator-adrien.jpg", "avatar-charlie.jpg", "avatar-diana.jpg"],
+      "resources": ["index.html", "favicon-16x16.png", "favicon-32x32.png", "avatar-belinda.jpg", "avatar-user-female.jpg", "avatar-user-male.jpg", "avator-adrien.jpg", "avatar-charlie.jpg", "avatar-diana.jpg"],
       "matches": ["<all_urls>"]
     }
   ]

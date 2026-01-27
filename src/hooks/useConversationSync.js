@@ -122,6 +122,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
   const hasLoadedConversationsRef = useRef(false); // Prevent repeated conversation loading
   const shouldClearLocalStorageRef = useRef(false); // Flag to allow clearing localStorage only when explicitly intended
   const needsSyncAfterLoadRef = useRef(false); // Flag to trigger sync after loading/merging conversations
+  const resetInProgressRef = useRef(false); // Flag to prevent OneDrive load from overwriting after reset
   
   // Switch to a different conversation (defined early for use in useEffect)
   const switchConversation = useCallback(async (conversationId) => {
@@ -333,6 +334,19 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                 const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
                   parseConversationData(JSON.stringify(conversationData));
                 
+                // CRITICAL: Check if reset happened before loading completes (race condition prevention)
+                // Also check if conversation ID has changed (user might have reset)
+                // Read directly from localStorage to get the latest state
+                const currentIdAfterLoad = localStorage.getItem('onedrive_latest_conversation_id');
+                if (resetInProgressRef.current || currentIdAfterLoad !== latestConversationId) {
+                  console.log('[useConversationSync] Reset happened during load or conversation ID changed, skipping conversation update to prevent race condition', {
+                    resetInProgress: resetInProgressRef.current,
+                    originalId: latestConversationId,
+                    currentId: currentIdAfterLoad
+                  });
+                  return;
+                }
+                
                 // Merge local and remote conversations ONLY if it's the same conversation
                 // (same conversation ID means we might have local changes to merge)
                 // CRITICAL: Read directly from localStorage to ensure we get the latest data
@@ -478,6 +492,18 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                 if (conversationData) {
                   const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
                     parseConversationData(JSON.stringify(conversationData));
+                  
+                  // CRITICAL: Check if reset happened before loading completes (race condition prevention)
+                  // Also check if conversation ID has changed (user might have reset)
+                  const currentIdAfterLoad = localStorage.getItem('onedrive_latest_conversation_id');
+                  if (resetInProgressRef.current || (currentIdAfterLoad !== null && currentIdAfterLoad !== mostRecentConversation.id)) {
+                    console.log('[useConversationSync] Reset happened during load or conversation ID changed, skipping most recent conversation load to prevent race condition', {
+                      resetInProgress: resetInProgressRef.current,
+                      expectedId: mostRecentConversation.id,
+                      currentId: currentIdAfterLoad
+                    });
+                    return;
+                  }
                   
                   // When loading most recent conversation (switching), replace local with remote
                   // No merge - this is a different conversation
@@ -1195,6 +1221,10 @@ export const useConversationSync = (conversation = [], setConversation = null) =
     // Set reset flag FIRST - this ensures syncCurrentConversation will create a new ID
     wasResetRef.current = true;
     
+    // CRITICAL: Set resetInProgressRef to prevent OneDrive load from overwriting
+    resetInProgressRef.current = true;
+    console.log('[useConversationSync] Set resetInProgressRef to prevent OneDrive load race condition');
+    
     // Set flag to allow clearing localStorage in useEffect
     shouldClearLocalStorageRef.current = true;
     
@@ -1209,7 +1239,14 @@ export const useConversationSync = (conversation = [], setConversation = null) =
     // Clear last synced conversation ref so next sync will create a new conversation
     lastSyncedConversationRef.current = JSON.stringify([]);
     
-    console.log('[useConversationSync] Reset complete - UI and localStorage cleared immediately, title reset, reset flag set');
+            console.log('[useConversationSync] Reset complete - UI and localStorage cleared immediately, title reset, reset flag set');
+    
+    // Clear resetInProgressRef after a delay to allow any pending OneDrive loads to complete
+    // This ensures we don't block legitimate loads that started before reset
+    setTimeout(() => {
+      resetInProgressRef.current = false;
+      console.log('[useConversationSync] Cleared resetInProgressRef after delay');
+    }, 2000);
     
     // Save old conversation to OneDrive in background (non-blocking)
     // This preserves the old conversation but doesn't block the UI reset
