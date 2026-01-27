@@ -5,7 +5,7 @@
 
 import memoryService from './memoryService';
 import { getSystemPrompts, getAllSystemPromptsWithDeleted, setSystemPrompts, getSubscriptionKey, getUserAvatar, getModel, setSyncingFromRemote, setSyncingSystemPrompts } from './settingsService';
-import { msalInstance, onedriveScopes, isMsalConfigured } from '../config/msalConfig';
+import { msalInstance, onedriveScopes, isMsalConfigured, msalConfig } from '../config/msalConfig';
 
 const FOLDER_NAME = '.chatsphere';
 const PROFILE_FILENAME = 'profile.json';
@@ -78,12 +78,134 @@ async function getOneDriveAccessToken() {
     console.log('getOneDriveAccessToken: MSAL not configured');
     return null;
   }
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length === 0) {
+  
+  // Check both getAllAccounts() and getActiveAccount()
+  // For Chrome extensions with manually stored accounts, getActiveAccount() might work
+  // even if getAllAccounts() doesn't return anything
+  // Wrap in try-catch because MSAL might fail if our manually stored account format doesn't match exactly
+  let accounts = [];
+  let activeAccount = null;
+  try {
+    accounts = msalInstance.getAllAccounts();
+    activeAccount = msalInstance.getActiveAccount();
+  } catch (error) {
+    console.warn('getOneDriveAccessToken: Error calling MSAL methods, will check cache:', error);
+  }
+  
+  // If MSAL doesn't find accounts, check cache directly for manually stored accounts
+  let account = activeAccount || (accounts.length > 0 ? accounts[0] : null);
+  
+  if (!account) {
+    // Check cache directly for manually stored account
+    const cacheLocation = msalConfig?.cache?.cacheLocation || 'sessionStorage';
+    const storage = cacheLocation === 'localStorage' ? localStorage : sessionStorage;
+    const clientId = msalConfig?.auth?.clientId;
+    
+    if (clientId) {
+      // Check for account list in cache
+      const accountListKey = `msal.account.${clientId}`;
+      const accountListStr = storage.getItem(accountListKey);
+      
+      if (accountListStr) {
+        try {
+          const accountList = JSON.parse(accountListStr);
+          if (accountList.length > 0) {
+            // Get the first account from cache
+            const accountKey = `msal.account.${clientId}.${accountList[0]}`;
+            const accountStr = storage.getItem(accountKey);
+            if (accountStr) {
+              account = JSON.parse(accountStr);
+              console.log('getOneDriveAccessToken: Found account in cache');
+            }
+          }
+        } catch (e) {
+          console.warn('getOneDriveAccessToken: Failed to parse account from cache:', e);
+        }
+      }
+    }
+  }
+  
+  if (!account) {
     console.log('getOneDriveAccessToken: No accounts found');
     return null;
   }
-  const account = accounts[0];
+  
+  // For Chrome extensions, MSAL's acquireTokenSilent uses iframe which is blocked by CSP
+  // So we'll use cached tokens directly first
+  const cacheLocation = msalConfig?.cache?.cacheLocation || 'sessionStorage';
+  const storage = cacheLocation === 'localStorage' ? localStorage : sessionStorage;
+  const clientId = msalConfig?.auth?.clientId;
+  
+  // Try to get access token from cache first
+  // The token might be stored with broader scopes (e.g., User.Read Files.ReadWrite)
+  // but it will work for OneDrive operations if it includes Files.ReadWrite
+  if (clientId && account.homeAccountId) {
+    const realm = account.realm || account.tenantId || 'consumers';
+    const requiredScopes = onedriveScopes.scopes;
+    
+    // Try exact scope match first
+    let accessTokenKey = `msal.accesstoken.${clientId}.${account.homeAccountId}.${realm}.${requiredScopes.join(' ')}`;
+    let cachedTokenStr = storage.getItem(accessTokenKey);
+    
+    // If not found, search for tokens with broader scopes that include our required scopes
+    if (!cachedTokenStr) {
+      // Get all MSAL cache keys
+      const allKeys = Object.keys(storage);
+      const tokenKeys = allKeys.filter(key => 
+        key.startsWith(`msal.accesstoken.${clientId}.${account.homeAccountId}.${realm}.`)
+      );
+      
+      // Check each token to see if its scopes include our required scopes
+      for (const key of tokenKeys) {
+        try {
+          const tokenStr = storage.getItem(key);
+          if (tokenStr) {
+            const token = JSON.parse(tokenStr);
+            const tokenScopes = token.target ? token.target.split(' ') : [];
+            // Check if token scopes include all required scopes
+            const hasRequiredScopes = requiredScopes.every(scope => tokenScopes.includes(scope));
+            
+            if (hasRequiredScopes) {
+              cachedTokenStr = tokenStr;
+              accessTokenKey = key;
+              console.log('getOneDriveAccessToken: Found token with broader scopes:', tokenScopes);
+              break;
+            }
+          }
+        } catch (e) {
+          // Skip invalid tokens
+        }
+      }
+    }
+    
+    if (cachedTokenStr) {
+      try {
+        const cachedToken = JSON.parse(cachedTokenStr);
+        const expiresOn = parseInt(cachedToken.expiresOn, 10);
+        const now = Date.now();
+        
+        // Check if token is still valid (with 5 minute buffer)
+        if (expiresOn > now + 300000) {
+          console.log('getOneDriveAccessToken: Using cached access token');
+          return cachedToken.secret;
+        } else if (cachedToken.extendedExpiresOn) {
+          // Check extended expiry
+          const extendedExpiresOn = parseInt(cachedToken.extendedExpiresOn, 10);
+          if (extendedExpiresOn > now + 300000) {
+            console.log('getOneDriveAccessToken: Using cached access token (extended expiry)');
+            return cachedToken.secret;
+          }
+        }
+        
+        console.log('getOneDriveAccessToken: Cached token expired');
+      } catch (e) {
+        console.warn('getOneDriveAccessToken: Failed to parse cached token:', e);
+      }
+    } else {
+      console.log('getOneDriveAccessToken: No cached token found for scopes:', requiredScopes);
+    }
+  }
+  
   console.log('getOneDriveAccessToken: Attempting silent token acquisition...');
   
   try {
@@ -94,6 +216,12 @@ async function getOneDriveAccessToken() {
     console.log('getOneDriveAccessToken: Silent acquisition successful');
     return response.accessToken;
   } catch (error) {
+    // For Chrome extensions, iframe-based silent token acquisition is blocked by CSP
+    if (error.message && (error.message.includes('frame-src') || error.message.includes('CSP') || error.message.includes('timeout'))) {
+      console.log('getOneDriveAccessToken: Silent token acquisition blocked by CSP/timeout (expected for Chrome extensions)');
+      return null;
+    }
+    
     console.log('getOneDriveAccessToken: Silent acquisition failed:', error.errorCode, error.message);
     // Check if this is a consent-related error that requires user interaction
     if (error.errorCode === 'interaction_required' || 
@@ -126,37 +254,78 @@ export async function requestOneDriveConsent() {
   if (!isMsalConfigured() || !msalInstance) {
     throw new Error('MSAL is not configured');
   }
+  
+  // Check both getAllAccounts() and getActiveAccount()
+  // Wrap in try-catch because MSAL might fail if our manually stored account format doesn't match exactly
+  let accounts = [];
+  let activeAccount = null;
   try {
-    const accounts = msalInstance.getAllAccounts();
-    if (accounts.length === 0) {
-      throw new Error('User must be logged in to request OneDrive access');
-    }
-    const account = accounts[0];
+    accounts = msalInstance.getAllAccounts();
+    activeAccount = msalInstance.getActiveAccount();
+  } catch (error) {
+    console.warn('requestOneDriveConsent: Error calling MSAL methods, will check cache:', error);
+  }
+  
+  // If MSAL doesn't find accounts, check cache directly
+  let account = activeAccount || (accounts.length > 0 ? accounts[0] : null);
+  
+  if (!account) {
+    // Check cache directly for manually stored account
+    const cacheLocation = msalConfig?.cache?.cacheLocation || 'sessionStorage';
+    const storage = cacheLocation === 'localStorage' ? localStorage : sessionStorage;
+    const clientId = msalConfig?.auth?.clientId;
     
-    // First try silent acquisition - if it works, no need to prompt
-    try {
-      const silentResponse = await msalInstance.acquireTokenSilent({
+    if (clientId) {
+      const accountListKey = `msal.account.${clientId}`;
+      const accountListStr = storage.getItem(accountListKey);
+      
+      if (accountListStr) {
+        try {
+          const accountList = JSON.parse(accountListStr);
+          if (accountList.length > 0) {
+            const accountKey = `msal.account.${clientId}.${accountList[0]}`;
+            const accountStr = storage.getItem(accountKey);
+            if (accountStr) {
+              account = JSON.parse(accountStr);
+            }
+          }
+        } catch (e) {
+          console.warn('requestOneDriveConsent: Failed to parse account from cache:', e);
+        }
+      }
+    }
+  }
+  
+  if (!account) {
+    throw new Error('User must be logged in to request OneDrive access');
+  }
+  
+  // First try to get cached token
+  const token = await getOneDriveAccessToken();
+  if (token) {
+    return token;
+  }
+  
+  // If no cached token, try silent acquisition
+  try {
+    const silentResponse = await msalInstance.acquireTokenSilent({
+      ...onedriveScopes,
+      account: account,
+    });
+    return silentResponse.accessToken;
+  } catch (silentError) {
+    // Only prompt if silent acquisition failed due to consent issues
+    if (silentError.errorCode === 'interaction_required' || 
+        silentError.errorCode === 'consent_required' ||
+        silentError.errorCode === 'login_required') {
+      const response = await msalInstance.acquireTokenPopup({
         ...onedriveScopes,
         account: account,
       });
-      return silentResponse.accessToken;
-    } catch (silentError) {
-      // Only prompt if silent acquisition failed due to consent issues
-      if (silentError.errorCode === 'interaction_required' || 
-          silentError.errorCode === 'consent_required' ||
-          silentError.errorCode === 'login_required') {
-        const response = await msalInstance.acquireTokenPopup({
-          ...onedriveScopes,
-          account: account,
-        });
-        return response.accessToken;
-      }
-      // Re-throw if it's a different error
-      throw silentError;
+      return response.accessToken;
     }
-  } catch (error) {
-    console.error("Error requesting OneDrive consent:", error);
-    throw error;
+    // Re-throw if it's a different error
+    throw silentError;
   }
 }
 
@@ -716,12 +885,57 @@ export async function isSyncConfigured() {
     console.log('isSyncConfigured: MSAL not configured');
     return false;
   }
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length === 0) {
+  // Check both getAllAccounts() and getActiveAccount()
+  // For Chrome extensions with manually stored accounts, getActiveAccount() might work
+  // even if getAllAccounts() doesn't return anything
+  // Wrap in try-catch because MSAL might fail if our manually stored account format doesn't match exactly
+  let accounts = [];
+  let activeAccount = null;
+  try {
+    accounts = msalInstance.getAllAccounts();
+    activeAccount = msalInstance.getActiveAccount();
+  } catch (error) {
+    console.warn('getOneDriveAccessToken: Error calling MSAL methods, will check cache:', error);
+  }
+  
+  // If MSAL doesn't find accounts, check cache directly
+  let account = activeAccount || (accounts.length > 0 ? accounts[0] : null);
+  
+  if (!account) {
+    // Check cache directly for manually stored account
+    const cacheLocation = msalConfig?.cache?.cacheLocation || 'sessionStorage';
+    const storage = cacheLocation === 'localStorage' ? localStorage : sessionStorage;
+    const clientId = msalConfig?.auth?.clientId;
+    
+    if (clientId) {
+      // Check for account list in cache
+      const accountListKey = `msal.account.${clientId}`;
+      const accountListStr = storage.getItem(accountListKey);
+      
+      if (accountListStr) {
+        try {
+          const accountList = JSON.parse(accountListStr);
+          if (accountList.length > 0) {
+            // Get the first account from cache
+            const accountKey = `msal.account.${clientId}.${accountList[0]}`;
+            const accountStr = storage.getItem(accountKey);
+            if (accountStr) {
+              account = JSON.parse(accountStr);
+              console.log('isSyncConfigured: Found account in cache');
+            }
+          }
+        } catch (e) {
+          console.warn('isSyncConfigured: Failed to parse account from cache:', e);
+        }
+      }
+    }
+  }
+  
+  if (!account) {
     console.log('isSyncConfigured: No accounts found');
     return false;
   }
-  console.log('isSyncConfigured: Found', accounts.length, 'account(s), attempting to get token...');
+  console.log('isSyncConfigured: Found account, attempting to get token...');
   const token = await getOneDriveAccessToken();
   const configured = token !== null;
   console.log('isSyncConfigured: Token acquired:', configured);

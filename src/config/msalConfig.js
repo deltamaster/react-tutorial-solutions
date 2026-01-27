@@ -18,16 +18,24 @@ const isChromeExtension = () => {
 // Get redirect URI - for Chrome extensions, use a hosted redirect handler page
 // This page receives the auth code and communicates back to the extension via postMessage
 const getRedirectUri = () => {
-  if (isChromeExtension()) {
-    // For Chrome extensions, use a redirect handler page hosted on production domain
-    // This page must be registered in Azure AD under "Single-page application" platform
-    // The handler page uses postMessage to send auth result back to extension
-    // This works for all users who install the extension
+  try {
+    if (isChromeExtension()) {
+      // For Chrome extensions, use a redirect handler page hosted on production domain
+      // This page must be registered in Azure AD under "Single-page application" platform
+      // The handler page uses postMessage to send auth result back to extension
+      // This works for all users who install the extension
+      return 'https://answer.hansenh.xyz/auth-redirect.html';
+    }
+    return window.location.origin;
+  } catch (error) {
+    console.error('[msalConfig] Error getting redirect URI:', error);
+    // Fallback to production domain
     return 'https://answer.hansenh.xyz/auth-redirect.html';
   }
-  return window.location.origin;
 };
 
+// Create config object - don't call getRedirectUri() at module load time
+// It will be called when MSAL initializes
 export const msalConfig = {
   auth: {
     clientId: CLIENT_ID,
@@ -35,8 +43,9 @@ export const msalConfig = {
     redirectUri: getRedirectUri(), // Redirect URI after login
   },
   cache: {
-    // Use localStorage on iOS for better persistence (sessionStorage can be cleared aggressively)
-    cacheLocation: isIOSDevice() ? "localStorage" : "sessionStorage",
+    // Use localStorage for iOS and Chrome extensions for better persistence
+    // sessionStorage can be cleared aggressively, especially in Chrome extensions
+    cacheLocation: (isIOSDevice() || isChromeExtension()) ? "localStorage" : "sessionStorage",
     storeAuthStateInCookie: false, // Set this to "true" if you are having issues on IE11 or Edge
   },
 };
@@ -57,8 +66,26 @@ export const isMsalConfigured = () => {
   return CLIENT_ID && CLIENT_ID !== "YOUR_CLIENT_ID_HERE" && CLIENT_ID.trim() !== "";
 };
 
+console.log('[msalConfig] Config created:', {
+  clientId: CLIENT_ID,
+  redirectUri: msalConfig.auth.redirectUri,
+  isConfigured: isMsalConfigured()
+});
+
 // Create the main myMSALObj instance
 // Only create if client ID is configured
-export const msalInstance = isMsalConfigured() 
-  ? new PublicClientApplication(msalConfig)
-  : null;
+let msalInstance = null;
+try {
+  if (isMsalConfigured()) {
+    console.log('[msalConfig] Creating MSAL instance...');
+    msalInstance = new PublicClientApplication(msalConfig);
+    console.log('[msalConfig] MSAL instance created successfully');
+  } else {
+    console.warn('[msalConfig] MSAL not configured - CLIENT_ID is missing or invalid');
+  }
+} catch (error) {
+  console.error('[msalConfig] Error creating MSAL instance:', error);
+  msalInstance = null;
+}
+
+export { msalInstance };
