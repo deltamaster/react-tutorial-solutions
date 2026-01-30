@@ -4,8 +4,26 @@
  */
 
 /**
+ * Generate a UUID for conversation parts
+ * Uses crypto.randomUUID if available, otherwise falls back to a simple implementation
+ * 
+ * @returns {string} UUID string
+ */
+export const generatePartUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback implementation
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
+/**
  * Appends a message to the conversation
- * Ensures all parts have timestamps
+ * Ensures all parts have timestamps and UUIDs
  * 
  * @param {Array} conversation - Current conversation array
  * @param {Object} message - Message to append
@@ -15,19 +33,22 @@ export const appendMessage = (conversation, message) => {
   const latestConversation = conversation || [];
   const messageTimestamp = message.timestamp || Date.now();
   
-  // Ensure all parts have timestamps
+  // Ensure all parts have timestamps and UUIDs
   const messageWithTimestamps = {
     ...message,
     timestamp: messageTimestamp,
     parts: (message.parts || []).map(part => {
       // If part doesn't have timestamp, use message timestamp
       // If part doesn't have lastUpdate, use timestamp as lastUpdate
+      // If part doesn't have uuid, generate one
       const partTimestamp = part.timestamp || messageTimestamp;
       const lastUpdate = part.lastUpdate || partTimestamp;
+      const uuid = part.uuid || generatePartUUID();
       return {
         ...part,
         timestamp: partTimestamp,
-        lastUpdate: lastUpdate
+        lastUpdate: lastUpdate,
+        uuid: uuid
       };
     })
   };
@@ -87,13 +108,15 @@ export const updateMessagePart = (conversation, messageIndex, partIndex, newText
         ...message,
         parts: message.parts.map((part, pIndex) => {
           if (pIndex === partIndex) {
-            // Ensure part has timestamp (use message timestamp if missing)
+            // Ensure part has timestamp and uuid (use message timestamp if missing)
             const partTimestamp = part.timestamp || message.timestamp || now;
+            const uuid = part.uuid || generatePartUUID();
             return { 
               ...part, 
               text: newText,
               timestamp: partTimestamp,
-              lastUpdate: now
+              lastUpdate: now,
+              uuid: uuid
             };
           }
           return part;

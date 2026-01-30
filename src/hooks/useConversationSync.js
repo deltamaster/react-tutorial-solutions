@@ -334,6 +334,16 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                 const { conversation: remoteConvData, conversation_summaries, uploaded_files } = 
                   parseConversationData(JSON.stringify(conversationData));
                 
+                // Count thoughts in remote conversation to verify they're being downloaded
+                const remoteThoughtCount = (remoteConvData || []).reduce((count, msg) => {
+                  return count + (msg.parts || []).filter(part => part.thought === true).length;
+                }, 0);
+                console.log('[useConversationSync] Loaded conversation from OneDrive:', {
+                  conversationId: latestConversationId,
+                  remoteLength: remoteConvData?.length || 0,
+                  remoteThoughtCount: remoteThoughtCount
+                });
+                
                 // CRITICAL: Check if reset happened before loading completes (race condition prevention)
                 // Also check if conversation ID has changed (user might have reset)
                 // Read directly from localStorage to get the latest state
@@ -376,6 +386,19 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                   remoteConvData || []
                 );
                 
+                // Count thoughts in merged conversation to verify they're preserved
+                const mergedThoughtCount = (mergedConversation || []).reduce((count, msg) => {
+                  return count + (msg.parts || []).filter(part => part.thought === true).length;
+                }, 0);
+                const localThoughtCount = (localConvData || []).reduce((count, msg) => {
+                  return count + (msg.parts || []).filter(part => part.thought === true).length;
+                }, 0);
+                console.log('[useConversationSync] Merge result (thoughts):', {
+                  localThoughtCount: localThoughtCount,
+                  remoteThoughtCount: remoteThoughtCount,
+                  mergedThoughtCount: mergedThoughtCount
+                });
+                
                 // Check if merge resulted in changes (local had additional content)
                 const mergedStr = JSON.stringify(mergedConversation || []);
                 const remoteStr = JSON.stringify(remoteConvData || []);
@@ -403,11 +426,36 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                 
                 // CRITICAL: Update localStorage with merged conversation
                 // setConversation will update localStorage synchronously, but we also ensure it here
+                // Verify thoughts are present BEFORE calling setConversation
+                const thoughtsBeforeSet = (mergedConversation || []).reduce((count, msg) => {
+                  return count + (msg.parts || []).filter(part => part.thought === true).length;
+                }, 0);
                 console.log('[useConversationSync] Setting merged conversation to localStorage...', {
                   mergedLength: mergedConversation.length,
+                  thoughtsBeforeSet: thoughtsBeforeSet,
                   beforeLocalStorage: localStorage.getItem('conversation')?.substring(0, 100)
                 });
                 setConversation(mergedConversation);
+                
+                // Verify thoughts are present AFTER calling setConversation
+                setTimeout(() => {
+                  const afterLocalStorage = localStorage.getItem('conversation');
+                  if (afterLocalStorage) {
+                    try {
+                      const parsed = JSON.parse(afterLocalStorage);
+                      const thoughtsAfterSet = (parsed || []).reduce((count, msg) => {
+                        return count + (msg.parts || []).filter(part => part.thought === true).length;
+                      }, 0);
+                      console.log('[useConversationSync] After setConversation, localStorage thoughts:', {
+                        thoughtsAfterSet: thoughtsAfterSet,
+                        thoughtsBeforeSet: thoughtsBeforeSet,
+                        thoughtsLost: thoughtsBeforeSet - thoughtsAfterSet
+                      });
+                    } catch (error) {
+                      console.error('[useConversationSync] Error parsing localStorage after setConversation:', error);
+                    }
+                  }
+                }, 100);
                 
                 // Double-check that localStorage was updated
                 const afterLocalStorage = localStorage.getItem('conversation');
@@ -510,10 +558,50 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                   // Set flag to prevent auto-save when updating localStorage
                   isLoadingFromOneDriveRef.current = true;
                   
+                  // Count thoughts in remote conversation to verify they're being downloaded
+                  const remoteThoughtCount = (remoteConvData || []).reduce((count, msg) => {
+                    return count + (msg.parts || []).filter(part => part.thought === true).length;
+                  }, 0);
+                  console.log('[useConversationSync] Loading most recent conversation (thoughts):', {
+                    conversationId: mostRecentConversation.id,
+                    remoteLength: remoteConvData?.length || 0,
+                    remoteThoughtCount: remoteThoughtCount
+                  });
+                  
+                  // Verify thoughts are present BEFORE calling setConversation
+                  const thoughtsBeforeSet = (remoteConvData || []).reduce((count, msg) => {
+                    return count + (msg.parts || []).filter(part => part.thought === true).length;
+                  }, 0);
+                  console.log('[useConversationSync] Setting most recent conversation to localStorage...', {
+                    conversationId: mostRecentConversation.id,
+                    remoteLength: remoteConvData?.length || 0,
+                    thoughtsBeforeSet: thoughtsBeforeSet
+                  });
+                  
                   // Save conversation ID to localStorage (via setCurrentConversationId)
                   setCurrentConversationId(mostRecentConversation.id);
                   setCurrentConversationTitle(mostRecentConversation.name || 'New Conversation');
                   setConversation(remoteConvData || []);
+                  
+                  // Verify thoughts are present AFTER calling setConversation
+                  setTimeout(() => {
+                    const afterLocalStorage = localStorage.getItem('conversation');
+                    if (afterLocalStorage) {
+                      try {
+                        const parsed = JSON.parse(afterLocalStorage);
+                        const thoughtsAfterSet = (parsed || []).reduce((count, msg) => {
+                          return count + (msg.parts || []).filter(part => part.thought === true).length;
+                        }, 0);
+                        console.log('[useConversationSync] After setConversation (most recent), localStorage thoughts:', {
+                          thoughtsAfterSet: thoughtsAfterSet,
+                          thoughtsBeforeSet: thoughtsBeforeSet,
+                          thoughtsLost: thoughtsBeforeSet - thoughtsAfterSet
+                        });
+                      } catch (error) {
+                        console.error('[useConversationSync] Error parsing localStorage after setConversation:', error);
+                      }
+                    }
+                  }, 100);
                   
                   // Restore summaries
                   if (conversation_summaries && conversation_summaries.length > 0) {
@@ -969,9 +1057,14 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       }
       
       // CRITICAL: Upload conversation content FIRST
+      // Count thoughts in conversation to verify they're being uploaded
+      const thoughtCount = currentConv.reduce((count, msg) => {
+        return count + (msg.parts || []).filter(part => part.thought === true).length;
+      }, 0);
       console.log('[Sync] Uploading conversation content to OneDrive...', {
         conversationId: conversationIdToUse,
         conversationLength: currentConv.length,
+        thoughtCount: thoughtCount,
         updatedAt: latestTimestamp
       });
       

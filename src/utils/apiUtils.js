@@ -6,6 +6,20 @@ import {
 } from './roleConfig.js';
 import { getSubscriptionKey, getSystemPrompt, getThinkingEnabled, getModel } from "./settingsService";
 import { removeExpiredFilesFromContents, markFileExpired, extractFileIdFromError } from "./fileTrackingService";
+import mermaid from "mermaid";
+
+// Initialize Mermaid for parsing (minimal config, just for validation)
+// This ensures mermaid.parse() is available
+if (typeof mermaid !== 'undefined' && mermaid.initialize) {
+  try {
+    mermaid.initialize({
+      startOnLoad: false,
+      suppressErrorRendering: true,
+    });
+  } catch (error) {
+    console.warn("Failed to initialize Mermaid for validation:", error);
+  }
+}
 
 const safetySettings = [
   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -486,12 +500,50 @@ export function extractTextFromResponse(responseData) {
 }
 
 /**
+ * Validates Mermaid diagram syntax
+ * 
+ * @param {string} mermaidCode - The Mermaid code to validate
+ * @returns {boolean} - True if valid, false otherwise
+ */
+function isValidMermaidCode(mermaidCode) {
+  if (!mermaidCode || typeof mermaidCode !== 'string') {
+    return false;
+  }
+  
+  const trimmedCode = mermaidCode.trim();
+  if (!trimmedCode) {
+    return false;
+  }
+  
+  try {
+    // Check if mermaid.parse() is available (should be in mermaid v11+)
+    if (typeof mermaid !== 'undefined' && typeof mermaid.parse === 'function') {
+      // Use mermaid.parse() to validate the syntax
+      // If parsing succeeds without throwing, the code is valid
+      mermaid.parse(trimmedCode);
+      return true;
+    } else {
+      // If parse() is not available, we can't validate reliably
+      // In this case, assume valid to avoid false positives
+      // The rendering will fail later if it's actually invalid
+      console.debug("Mermaid.parse() not available, skipping validation");
+      return true;
+    }
+  } catch (error) {
+    // If parsing fails, the code is invalid
+    console.debug("Mermaid syntax validation failed:", error.message);
+    return false;
+  }
+}
+
+/**
  * Post-process text responses from the model to fix formatting issues.
  * 
  * 1. Removes impersonation attempts - if the current persona starts to say
  *    "$$$ [Other Person] BEGIN $$$", removes that and everything after it.
  * 2. Adds spaces before opening ** and after closing ** for bold/italic formatting
  *    to be rendered correctly in markdown.
+ * 3. Validates Mermaid code blocks - if invalid, converts them to regular code blocks.
  * 
  * @param {string} text - The text to post-process
  * @param {string} currentPersonaName - The name of the current persona (e.g., "Adrien", "Belinda", "Charlie", "Diana", "Xaiver")
@@ -503,6 +555,22 @@ export function postProcessModelResponse(text, currentPersonaName) {
   }
 
   let processedText = text;
+  
+  // 3. Validate Mermaid code blocks and convert invalid ones to regular code blocks
+  // Match ```mermaid blocks and validate their content
+  // Pattern matches: ```mermaid followed by optional whitespace/newline, then content, then ```
+  const mermaidBlockRegex = /```mermaid\s*\n?([\s\S]*?)```/g;
+  processedText = processedText.replace(mermaidBlockRegex, (match, mermaidCode) => {
+    // Validate the Mermaid code
+    if (isValidMermaidCode(mermaidCode)) {
+      // Valid Mermaid code - keep as is
+      return match;
+    } else {
+      // Invalid Mermaid code - convert to regular code block
+      console.debug("Converting invalid Mermaid block to regular code block");
+      return `\`\`\`\n${mermaidCode}\`\`\``;
+    }
+  });
 
   // 1. Remove impersonation attempts
   // Get all persona names from roleDefinition
@@ -2463,8 +2531,9 @@ const prepareContentsForRequest = async (contents, role) => {
   }));
 
       // Helper function to clean parts for API (remove internal fields)
+      // Remove uuid, timestamp, lastUpdate, and hide - these are internal fields not recognized by the API
       const cleanPartForApi = (part) => {
-        const { timestamp, lastUpdate, hide, ...cleanedPart } = part;
+        const { uuid, timestamp, lastUpdate, hide, ...cleanedPart } = part;
         if (hide === true) {
           // hide is already removed by destructuring
         }

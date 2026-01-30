@@ -8,6 +8,7 @@ mermaid.initialize({
   startOnLoad: false,
   theme: "default",
   securityLevel: "loose", // Allow more features
+  suppressErrorRendering: true, // Prevent error messages from being appended to the DOM
 });
 
 /**

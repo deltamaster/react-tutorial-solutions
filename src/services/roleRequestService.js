@@ -2,6 +2,7 @@ import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { normalizeBeginMarker } from "../utils/responseUtils";
 import { extractMentionedRolesFromParts } from "../utils/textProcessing/mentionUtils";
 import { fetchFromApi, toolbox, postProcessModelResponse } from "../utils/apiUtils";
+import { generatePartUUID } from "../services/conversationService";
 
 /**
  * Role Request Service
@@ -112,10 +113,16 @@ export const processRoleRequest = async (
         return part;
       });
       
+      // Ensure all parts have UUIDs
+      const partsWithUUIDs = processedParts.map(part => ({
+        ...part,
+        uuid: part.uuid || generatePartUUID()
+      }));
+      
       const botResponse = {
         role: "model",
         name: personaName,
-        parts: processedParts,
+        parts: partsWithUUIDs,
         timestamp: Date.now(),
         groundingChunks:
           candidate?.groundingMetadata?.groundingChunks || [],

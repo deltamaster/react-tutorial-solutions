@@ -29,7 +29,7 @@ import { useFollowUpQuestions } from "../hooks/useFollowUpQuestions";
 import { useSettings } from "../hooks/useSettings";
 import { useChromeContent } from "../hooks/useChromeContent";
 import { useMessageEditing } from "../hooks/useMessageEditing";
-import { findFunctionResponseIndices, deleteMessages, filterDeletedMessages, appendMessage } from "../services/conversationService";
+import { findFunctionResponseIndices, deleteMessages, filterDeletedMessages, appendMessage, generatePartUUID } from "../services/conversationService";
 
 // Main application content component
 function AppContent() {
@@ -111,17 +111,6 @@ function AppContent() {
   const isOneDriveAvailable = syncHelpers?.isOneDriveAvailable || false;
   const conversations = syncHelpers?.conversations || [];
   const currentConversationId = syncHelpers?.currentConversationId;
-  
-  // Debug: Log OneDrive status
-  useEffect(() => {
-    console.log('[AppContent] OneDrive status:', {
-      hasSyncHelpers: !!syncHelpers,
-      isOneDriveAvailable,
-      currentConversationId,
-      conversationLength: conversation?.length,
-      syncConversationLength: syncHelpers?.conversation?.length
-    });
-  }, [syncHelpers, isOneDriveAvailable, currentConversationId, conversation?.length]);
 
   // Use Chrome content hook for retrieving content from Chrome storage or URL
   const { question, setQuestion } = useChromeContent();
@@ -308,9 +297,18 @@ function AppContent() {
     const { displayContentParts, filesToUpload } = await processFilesForUpload(contentParts);
 
     // Step 2: Show user message immediately with inline_data
+    // Ensure all parts have UUIDs immediately when creating the message
+    const partsWithUUIDs = [
+      { text: "$$$ USER BEGIN $$$\n", hide: true, uuid: generatePartUUID() },
+      ...displayContentParts.map(part => ({
+        ...part,
+        uuid: part.uuid || generatePartUUID()
+      }))
+    ];
+    
     const newUserMessage = {
       role: "user",
-      parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...displayContentParts],
+      parts: partsWithUUIDs,
       timestamp: Date.now(),
     };
 
@@ -357,6 +355,7 @@ function AppContent() {
         const updatedParts = updatePartsWithFileUris(displayContentParts, filesToUpload, uploadedFiles);
 
         // Update the user message in conversation with file_data
+        // Ensure all parts have UUIDs when updating with file_data
         setConversation((prevConversation) => {
           const latestConversation = prevConversation || [];
           const messageIndex = latestConversation.findIndex(
@@ -364,9 +363,24 @@ function AppContent() {
           );
           if (messageIndex >= 0) {
             const updatedConversation = [...latestConversation];
+            const existingMessage = updatedConversation[messageIndex];
+            
+            // Preserve existing UUIDs from the message, generate new ones only if missing
+            const existingBeginPart = existingMessage.parts?.find(p => p.text === "$$$ USER BEGIN $$$\n");
+            const beginPartUUID = existingBeginPart?.uuid || generatePartUUID();
+            
+            // Ensure all updated parts have UUIDs, preserving existing ones
+            const updatedPartsWithUUIDs = [
+              { text: "$$$ USER BEGIN $$$\n", hide: true, uuid: beginPartUUID },
+              ...updatedParts.map(part => ({
+                ...part,
+                uuid: part.uuid || generatePartUUID()
+              }))
+            ];
+            
             updatedConversation[messageIndex] = {
               ...updatedConversation[messageIndex],
-              parts: [{ text: "$$$ USER BEGIN $$$\n", hide: true }, ...updatedParts],
+              parts: updatedPartsWithUUIDs,
             };
             // setConversation wrapper will update ref automatically
             console.log('[AppContent] Updated conversation with file_data', {

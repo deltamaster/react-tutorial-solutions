@@ -31,12 +31,43 @@ export const useConversation = (storageKey = "conversation") => {
     // CRITICAL: Update localStorage IMMEDIATELY and SYNCHRONOUSLY (before React state update)
     // This ensures localStorage is always up-to-date when user sends request or model responds
     try {
+      // Count thoughts before saving to verify they're preserved
+      const thoughtsBeforeSave = convArray.reduce((count, msg) => {
+        return count + (msg.parts || []).filter(part => part.thought === true).length;
+      }, 0);
+      
       const stringified = JSON.stringify(convArray);
       localStorage.setItem(storageKey, stringified);
+      
+      // Verify thoughts are preserved after saving
+      const afterSave = localStorage.getItem(storageKey);
+      let thoughtsAfterSave = 0;
+      if (afterSave) {
+        try {
+          const parsed = JSON.parse(afterSave);
+          thoughtsAfterSave = (parsed || []).reduce((count, msg) => {
+            return count + (msg.parts || []).filter(part => part.thought === true).length;
+          }, 0);
+        } catch (error) {
+          // Ignore parsing errors
+        }
+      }
+      
       console.log('[useConversation] localStorage updated IMMEDIATELY (synchronously)', {
         conversationLength: convArray.length,
+        thoughtsBeforeSave: thoughtsBeforeSave,
+        thoughtsAfterSave: thoughtsAfterSave,
+        thoughtsLost: thoughtsBeforeSave - thoughtsAfterSave,
         storageKey
       });
+      
+      if (thoughtsBeforeSave > 0 && thoughtsAfterSave < thoughtsBeforeSave) {
+        console.error('[useConversation] WARNING: Thoughts were lost during localStorage save!', {
+          thoughtsBeforeSave,
+          thoughtsAfterSave,
+          lost: thoughtsBeforeSave - thoughtsAfterSave
+        });
+      }
     } catch (error) {
       console.error('[useConversation] Error updating localStorage synchronously:', error);
     }
