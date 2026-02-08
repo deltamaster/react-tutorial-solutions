@@ -1,6 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import Button from "react-bootstrap/Button";
-import Alert from "react-bootstrap/Alert";
+import { useState, useMemo, useCallback } from "react";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
@@ -9,7 +7,6 @@ import Tabs from "react-bootstrap/Tabs";
 import * as Icon from "react-bootstrap-icons";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "../styles.css";
-import ConversationHistory from "./ConversationHistory";
 import ConversationSelector from "./ConversationSelector";
 import QuestionInput from "./QuestionInput";
 import Settings from "./Settings";
@@ -18,6 +15,9 @@ import Memory from "./Memory";
 import MarkdownEditor from "./MarkdownEditor";
 import LoginButton from "./LoginButton";
 import ConversationTitle from "./ConversationTitle";
+import ConversationContainer from "./ConversationContainer";
+import ConversationActions from "./ConversationActions";
+import FloatingTabs from "./FloatingTabs";
 import { roleDefinition } from "../utils/roleConfig";
 import { buildUserFacingErrorMessage } from "../services/errorService";
 import { extractMentionedRolesFromParts } from "../utils/textProcessing/mentionUtils";
@@ -29,49 +29,21 @@ import { useFollowUpQuestions } from "../hooks/useFollowUpQuestions";
 import { useSettings } from "../hooks/useSettings";
 import { useChromeContent } from "../hooks/useChromeContent";
 import { useMessageEditing } from "../hooks/useMessageEditing";
+import { useFloatingMenu } from "../hooks/useFloatingMenu";
+import { useTabs } from "../hooks/useTabs";
 import { findFunctionResponseIndices, deleteMessages, filterDeletedMessages, appendMessage, generatePartUUID } from "../services/conversationService";
 
 // Main application content component
 function AppContent() {
-  // State for floating menu
-  const [showFloatingMenu, setShowFloatingMenu] = useState(false);
-  const [isFloatingMenuOpen, setIsFloatingMenuOpen] = useState(false);
-  const [isConversationSelectorOpen, setIsConversationSelectorOpen] = useState(false);
-  const floatingMenuRef = useRef(null);
-  const conversationContainerRef = useRef(null);
-
-  // Detect scroll to show/hide floating menu
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollY = window.scrollY || window.pageYOffset;
-      // Show floating menu when scrolled down more than 100px
-      setShowFloatingMenu(scrollY > 100);
-      // Close menu when scrolling back to top
-      if (scrollY <= 100) {
-        setIsFloatingMenuOpen(false);
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Close floating menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (floatingMenuRef.current && !floatingMenuRef.current.contains(event.target)) {
-        setIsFloatingMenuOpen(false);
-      }
-    };
-
-    if (isFloatingMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isFloatingMenuOpen]);
+  // Use floating menu hook
+  const {
+    showFloatingMenu,
+    isFloatingMenuOpen,
+    setIsFloatingMenuOpen,
+    isConversationSelectorOpen,
+    setIsConversationSelectorOpen,
+    floatingMenuRef,
+  } = useFloatingMenu();
 
   // Use settings hook for managing application settings
   const {
@@ -140,15 +112,18 @@ function AppContent() {
     }
   }, [originalSaveEditing, syncHelpers]);
 
-  const [currentTab, setCurrentTab] = useState("chatbot");
   const [errorMessage, setErrorMessage] = useState("");
 
   // State for controlling visibility of top settings
   const [showTopSettings, setShowTopSettings] = useState(false);
 
-  // State for floating tabs visibility
-  const [showFloatingTabs, setShowFloatingTabs] = useState(false);
-  const tabsRef = useRef(null);
+  // Use tabs hook
+  const {
+    currentTab,
+    setCurrentTab,
+    showFloatingTabs,
+    tabsRef,
+  } = useTabs("chatbot");
 
   // Use role requests hook for managing request queue
   const { activeTypers, enqueueRoleRequests } = useRoleRequests({
@@ -524,23 +499,6 @@ function AppContent() {
 
   // Message editing functions are now provided by useMessageEditing hook
 
-  // Handle scroll to show/hide floating tabs
-  useEffect(() => {
-    const handleScroll = () => {
-      if (tabsRef.current) {
-        const tabsRect = tabsRef.current.getBoundingClientRect();
-        // Show floating tabs when tabs are not fully visible at the top
-        setShowFloatingTabs(tabsRect.top < 0);
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    // Initial check with timeout to ensure DOM is fully rendered
-    setTimeout(handleScroll, 100);
-
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
   return (
     <Container className="App">
       {/* Login button at the top */}
@@ -666,212 +624,48 @@ function AppContent() {
                 
                 {/* Action Buttons - Right side (wraps to next line on small screens, aligned right) */}
                 {!showFloatingMenu && (
-                  <div className="d-flex gap-2 ms-md-auto align-self-md-center" style={{ alignSelf: 'flex-end' }}>
-                    {/* Sync indicator - Left of buttons */}
-                    {isOneDriveAvailable && isSyncing && (
-                      <div className="d-flex align-items-center">
-                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
-                      </div>
-                    )}
-                    
-                    <div className="relative">
-                      <Button
-                        id="download-conversation"
-                        variant="primary"
-                        onClick={downloadConversation}
-                        size="sm"
-                        style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
-                      >
-                        <Icon.Download size={14} />
-                        <span className="d-none d-md-inline ms-1">Download</span>
-                      </Button>
-                    </div>
-
-                    <div className="relative">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => document.getElementById('upload-conversation').click()}
-                      >
-                        <Icon.Upload size={14} />
-                        <span className="d-none d-md-inline ms-1">Upload</span>
-                      </Button>
-                    </div>
-
-                    <div className="relative">
-                      <Button
-                        id="reset-conversation"
-                        variant="primary"
-                        onClick={resetConversation}
-                        size="sm"
-                        style={{ display: conversation.length > 0 ? "inline-flex" : "none" }}
-                      >
-                        <Icon.PlusCircle size={14} />
-                        <span className="d-none d-md-inline ms-1">New Conversation</span>
-                      </Button>
-                    </div>
-                  </div>
+                  <ConversationActions
+                    onDownload={downloadConversation}
+                    onUpload={() => document.getElementById('upload-conversation').click()}
+                    onReset={resetConversation}
+                    conversation={conversation}
+                    isSyncing={isSyncing}
+                    isOneDriveAvailable={isOneDriveAvailable}
+                    variant="inline"
+                  />
                 )}
               </Col>
             </Row>
-            <Row>
-              <Col>
-                {/* Floating Hamburger Menu */}
-                {showFloatingMenu && (
-                  <div
-                    ref={floatingMenuRef}
-                    style={{
-                      position: 'fixed',
-                      top: '20px',
-                      left: '20px',
-                      zIndex: 1050,
-                      backgroundColor: 'rgba(255, 255, 255, 0.3)',
-                      backdropFilter: 'blur(10px)',
-                      WebkitBackdropFilter: 'blur(10px)',
-                      borderRadius: '12px',
-                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-                      border: '1px solid rgba(255, 255, 255, 0.18)',
-                      width: isFloatingMenuOpen ? '450px' : 'auto',
-                      maxWidth: isFloatingMenuOpen ? '95vw' : 'auto',
-                      padding: isFloatingMenuOpen ? '16px' : '0',
-                      transition: 'all 0.3s ease',
-                      overflow: 'visible',
-                      overflowY: 'visible',
-                      overflowX: 'visible'
-                    }}
-                  >
-                    {/* Hamburger Button */}
-                    <Button
-                      variant="outline-secondary"
-                      onClick={() => setIsFloatingMenuOpen(!isFloatingMenuOpen)}
-                      style={{
-                        border: 'none',
-                        borderRadius: isFloatingMenuOpen ? '12px 12px 0 0' : '12px',
-                        padding: '10px 14px',
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.3s ease'
-                      }}
-                    >
-                      <Icon.List size={20} />
-                      {isFloatingMenuOpen && <span className="ms-2">Menu</span>}
-                    </Button>
-
-                    {/* Expanded Menu */}
-                    {isFloatingMenuOpen && (
-                      <div
-                        style={{
-                          padding: '16px',
-                          // borderTop: '1px solid rgba(255, 255, 255, 0.18)',
-                          overflow: 'visible',
-                          overflowY: 'visible',
-                          overflowX: 'visible',
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          position: 'relative',
-                          minWidth: 0,
-                        }}
-                      >
-                        {/* Conversation Title */}
-                        {isOneDriveAvailable && (
-                          <div className="mb-3" style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
-                            <ConversationTitle
-                              title={currentConversationTitle}
-                              isAutoTitle={conversations.find(c => c.id === currentConversationId)?.autoTitle !== false}
-                              isGeneratingTitle={isGeneratingTitle}
-                              onTitleChange={updateConversationTitle}
-                            />
-                          </div>
-                        )}
-
-                        {/* Conversation Selector */}
-                        {isOneDriveAvailable && (
-                          <div className="mb-3" style={{ width: '100%', minWidth: 0, maxWidth: '100%', position: 'relative', zIndex: 1052, overflow: 'visible' }}>
-                            <ConversationSelector
-                              conversations={conversations}
-                              currentConversationId={currentConversationId}
-                              onSwitchConversation={syncHelpers?.switchConversation}
-                              onDeleteConversation={syncHelpers?.deleteConversation}
-                              isSyncing={isSyncing}
-                              onDropdownToggle={setIsConversationSelectorOpen}
-                            />
-                          </div>
-                        )}
-
-                        {/* Sync indicator */}
-                        {isOneDriveAvailable && isSyncing && (
-                          <div className="d-flex align-items-center mb-3">
-                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
-                            <span className="ms-2">Syncing...</span>
-                          </div>
-                        )}
-
-                        {/* Action Buttons */}
-                        <div className="d-flex flex-row gap-2 justify-content-center">
-                          <Button
-                            variant="primary"
-                            onClick={downloadConversation}
-                            size="sm"
-                            style={{ 
-                              display: conversation.length > 0 ? "inline-flex" : "none",
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              minWidth: '40px'
-                            }}
-                            title="Download"
-                          >
-                            <Icon.Download size={16} />
-                          </Button>
-
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => document.getElementById('upload-conversation').click()}
-                            style={{
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              minWidth: '40px'
-                            }}
-                            title="Upload"
-                          >
-                            <Icon.Upload size={16} />
-                          </Button>
-
-                          <Button
-                            variant="primary"
-                            onClick={resetConversation}
-                            size="sm"
-                            style={{ 
-                              display: conversation.length > 0 ? "inline-flex" : "none",
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              minWidth: '40px'
-                            }}
-                            title="New Conversation"
-                          >
-                            <Icon.PlusCircle size={16} />
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <ConversationHistory
-                  history={filterDeletedMessages(conversation)}
-                  onDelete={deleteConversationMessage}
-                  onEdit={startEditing}
-                  editingIndex={editingIndex}
-                  editingPartIndex={editingPartIndex}
-                  editingText={editingText}
-                  onEditingTextChange={setEditingText}
-                  onSave={saveEditing}
-                  onCancel={cancelEditing}
-                />
-              </Col>
-            </Row>
+            <ConversationContainer
+              conversation={conversation}
+              onDelete={deleteConversationMessage}
+              onEdit={startEditing}
+              editingState={{
+                editingIndex,
+                editingPartIndex,
+                editingText,
+                setEditingText,
+              }}
+              onSave={saveEditing}
+              onCancel={cancelEditing}
+              showFloatingMenu={showFloatingMenu}
+              isFloatingMenuOpen={isFloatingMenuOpen}
+              setIsFloatingMenuOpen={setIsFloatingMenuOpen}
+              floatingMenuRef={floatingMenuRef}
+              isOneDriveAvailable={isOneDriveAvailable}
+              conversations={conversations}
+              currentConversationId={currentConversationId}
+              onSwitchConversation={syncHelpers?.switchConversation}
+              onDeleteConversation={syncHelpers?.deleteConversation}
+              isSyncing={isSyncing}
+              isGeneratingTitle={isGeneratingTitle}
+              currentConversationTitle={currentConversationTitle}
+              updateConversationTitle={updateConversationTitle}
+              onDownload={downloadConversation}
+              onUpload={() => document.getElementById('upload-conversation').click()}
+              onReset={resetConversation}
+              setIsConversationSelectorOpen={setIsConversationSelectorOpen}
+            />
             <Row>
               <Col>
                 <FollowUpQuestions
@@ -932,88 +726,11 @@ function AppContent() {
       </div>
 
       {/* Floating tabs buttons - appear when original tabs are scrolled out of view */}
-      {showFloatingTabs && (
-        <div
-          className="floating-tabs-container"
-          style={{
-            position: "fixed",
-            top: "16px",
-            left: "16px",
-            right: "16px",
-            zIndex: 1000,
-            display: "flex",
-            justifyContent: "center",
-            maxWidth: "fit-content",
-            margin: "0 auto",
-            backgroundColor: "rgba(255, 255, 255, 0.7)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
-            padding: "8px",
-            borderRadius: "12px",
-            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
-            border: "1px solid rgba(255, 255, 255, 0.18)",
-            gap: "8px"
-          }}
-        >
-          <Button
-            variant={currentTab === "chatbot" ? "primary" : "outline-primary"}
-            size="sm"
-            onClick={() => setCurrentTab("chatbot")}
-            style={{
-              backgroundColor: currentTab === "chatbot" 
-                ? "rgba(13, 110, 253, 0.8)" 
-                : "rgba(255, 255, 255, 0.5)",
-              borderColor: currentTab === "chatbot" 
-                ? "rgba(13, 110, 253, 0.8)" 
-                : "rgba(13, 110, 253, 0.3)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              transition: "all 0.3s ease",
-              color: currentTab === "chatbot" ? "white" : "rgba(13, 110, 253, 0.9)"
-            }}
-          >
-            Chatbot
-          </Button>
-          <Button
-            variant={currentTab === "markdown" ? "primary" : "outline-primary"}
-            size="sm"
-            onClick={() => setCurrentTab("markdown")}
-            style={{
-              backgroundColor: currentTab === "markdown" 
-                ? "rgba(13, 110, 253, 0.8)" 
-                : "rgba(255, 255, 255, 0.5)",
-              borderColor: currentTab === "markdown" 
-                ? "rgba(13, 110, 253, 0.8)" 
-                : "rgba(13, 110, 253, 0.3)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              transition: "all 0.3s ease",
-              color: currentTab === "markdown" ? "white" : "rgba(13, 110, 253, 0.9)"
-            }}
-          >
-            Co-Edit
-          </Button>
-          <Button
-            variant={currentTab === "memory" ? "primary" : "outline-primary"}
-            size="sm"
-            onClick={() => setCurrentTab("memory")}
-            style={{
-              backgroundColor: currentTab === "memory" 
-                ? "rgba(13, 110, 253, 0.8)" 
-                : "rgba(255, 255, 255, 0.5)",
-              borderColor: currentTab === "memory" 
-                ? "rgba(13, 110, 253, 0.8)" 
-                : "rgba(13, 110, 253, 0.3)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              transition: "all 0.3s ease",
-              color: currentTab === "memory" ? "white" : "rgba(13, 110, 253, 0.9)"
-            }}
-          >
-            Memory
-          </Button>
-        </div>
-      )}
+      <FloatingTabs
+        currentTab={currentTab}
+        onTabChange={setCurrentTab}
+        showFloatingTabs={showFloatingTabs}
+      />
     </Container>
   );
 }

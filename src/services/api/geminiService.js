@@ -414,15 +414,16 @@ async function fetchMemoryText() {
 async function getLastConversationSummaries() {
   try {
     // Dynamically import to avoid circular dependencies
-    const conversationSyncService = await import('../../utils/conversationSyncService');
-    const accessToken = await conversationSyncService.default.getOneDriveAccessToken();
+    const { getOneDriveAccessToken } = await import('../../services/sync/onedriveClient');
+    const accessToken = await getOneDriveAccessToken();
     
     if (!accessToken) {
       console.log('[getLastConversationSummaries] No OneDrive access token, returning empty array');
       return [];
     }
     
-    const index = await conversationSyncService.default.fetchConversationsIndex(accessToken);
+    const { fetchConversationsIndex } = await import('../../services/sync/fileService');
+    const index = await fetchConversationsIndex(accessToken);
     if (!index || !index.conversations || !Array.isArray(index.conversations)) {
       return [];
     }
