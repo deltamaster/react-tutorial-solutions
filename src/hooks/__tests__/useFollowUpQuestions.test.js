@@ -1,6 +1,6 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useFollowUpQuestions } from "../useFollowUpQuestions";
-import { generateFollowUpQuestions } from "../../utils/apiUtils";
+import { generateFollowUpQuestions } from "../../services/api/geminiService";
 
 // Mock the API utility
 jest.mock("../../utils/apiUtils", () => ({

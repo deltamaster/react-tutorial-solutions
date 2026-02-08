@@ -1,4 +1,4 @@
-import { ApiError } from "../utils/apiUtils";
+import { ApiError } from "../services/api/apiClient";
 
 /**
  * Error handling service

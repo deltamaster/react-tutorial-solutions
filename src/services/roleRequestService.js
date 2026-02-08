@@ -1,7 +1,8 @@
 import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { normalizeBeginMarker } from "../utils/responseUtils";
 import { extractMentionedRolesFromParts } from "../utils/textProcessing/mentionUtils";
-import { fetchFromApi, toolbox, postProcessModelResponse } from "../utils/apiUtils";
+import { fetchFromApi, postProcessModelResponse } from "../services/api/geminiService";
+import { toolbox } from "../services/api/financialService";
 import { generatePartUUID } from "../services/conversationService";
 
 /**

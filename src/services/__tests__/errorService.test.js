@@ -1,5 +1,5 @@
 import { buildUserFacingErrorMessage } from "../errorService";
-import { ApiError } from "../../utils/apiUtils";
+import { ApiError } from "../../services/api/apiClient";
 
 describe("errorService", () => {
   describe("buildUserFacingErrorMessage", () => {

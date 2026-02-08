@@ -4,7 +4,7 @@
  */
 
 import { msalInstance, onedriveScopes, isMsalConfigured, msalConfig } from '../config/msalConfig';
-import { generateFollowUpQuestions, generateConversationMetadata } from './apiUtils';
+import { generateFollowUpQuestions, generateConversationMetadata } from '../services/api/geminiService';
 import { createExportData, generatePartUUID } from '../services/conversationService';
 import { getAllTrackedFiles } from './fileTrackingService';
 
@@ -761,7 +761,7 @@ export async function generateConversationMetadataFromConversation(conversation)
       };
     }
     
-    // Use the combined metadata generation function from apiUtils
+    // Use the combined metadata generation function from geminiService
     const metadata = await generateConversationMetadata(finalContents);
     return metadata;
   } catch (error) {

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { compressImageForDisplay } from "../services/fileUploadService";
-import { uploadFile } from "../utils/apiUtils";
+import { uploadFile } from "../services/api/fileUploadService";
 import { trackFile } from "../utils/fileTrackingService";
 
 /**

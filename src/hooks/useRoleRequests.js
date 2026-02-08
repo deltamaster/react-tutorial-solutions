@@ -5,7 +5,7 @@ import {
   createRoleRequestTask,
   MAX_CONCURRENT_ROLE_REQUESTS,
 } from "../services/roleRequestService";
-import { ApiError } from "../utils/apiUtils";
+import { ApiError } from "../services/api/apiClient";
 import { markFileExpired, extractFileIdFromError, removeExpiredFilesFromContents } from "../utils/fileTrackingService";
 
 /**

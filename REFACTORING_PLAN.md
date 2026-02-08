@@ -9,63 +9,121 @@ This document outlines a comprehensive refactoring plan to address code maintain
 3. **Eliminate duplication** - Create reusable utilities and services
 4. **Improve testability** - Make logic testable independently of UI
 
+**Last Updated:** February 8, 2026
+
+---
+
+## Current State Analysis
+
+### Progress Summary
+
+**Completed Refactoring:**
+- ✅ `ConversationHistory.js`: Reduced from 1195 lines → **386 lines** (68% reduction)
+- ✅ Text processing utilities extracted
+- ✅ TTS logic extracted to hooks and components
+- ✅ File handling logic extracted
+- ✅ Conversation management extracted
+- ✅ Role request management extracted
+- ✅ Mermaid rendering extracted
+- ✅ Utility functions extracted
+
+**Remaining Issues:**
+- ⚠️ `AppContent.js`: Still **1021 lines** (target: ~400 lines)
+- ⚠️ `apiUtils.js`: **2988 lines** (critical - needs immediate attention)
+- ⚠️ `conversationSyncService.js`: **1257 lines** (new large file)
+- ⚠️ `Memory.js`: **638 lines** (moderate size, could be improved)
+
 ---
 
 ## Current Issues Analysis
 
-### Issue 1: Components with Too Much Logic
+### Issue 1: Large Utility Files
 
-#### `ConversationHistory.js` (1195 lines)
+#### `apiUtils.js` (2988 lines) - **CRITICAL**
 **Problems:**
-- Contains complex text processing logic (`escapeCurrencyDollars`, `replaceMentions`, `renderTextContent`)
-- Embeds TTS (Text-to-Speech) logic with complex state management (~200 lines)
-- Includes Mermaid diagram rendering logic
-- Contains avatar/voice mapping logic
-- Mixes presentation with business logic
+- Contains all API-related functions in a single file
+- Mixes multiple concerns: Gemini API, financial APIs, caching, memory compression
+- Includes complex request/response handling logic
+- Contains generation configuration logic
+- Mixes API calls with data transformation
 
 **Impact:**
-- Difficult to test text processing independently
-- TTS logic cannot be reused elsewhere
-- Hard to maintain and modify rendering logic
+- Extremely difficult to navigate and maintain
+- Hard to test individual API functions
+- High risk of merge conflicts
+- Difficult to understand dependencies
 
-#### `AppContent.js` (1484 lines)
+**Recommended Structure:**
+```
+src/services/api/
+├── geminiService.js          # Gemini API calls
+├── financialService.js       # AlphaVantage/Finnhub APIs
+├── ttsService.js            # TTS API calls
+├── generationConfig.js       # Generation configurations
+├── apiCache.js              # Caching logic
+└── apiClient.js             # Base API client utilities
+```
+
+#### `conversationSyncService.js` (1257 lines)
 **Problems:**
-- Contains API request queue management (~300 lines)
-- Embeds file upload and compression logic (~150 lines)
-- Includes role request handling logic (~200 lines)
-- Mixes conversation state management with UI rendering
-- Contains complex error handling logic
+- Contains all OneDrive sync logic in one file
+- Mixes folder management, file operations, and sync orchestration
+- Includes metadata generation logic
+- Contains complex error handling and retry logic
 
 **Impact:**
-- Business logic tightly coupled to React component lifecycle
-- Difficult to test API request logic independently
-- File handling logic cannot be reused
+- Difficult to test individual sync operations
+- Hard to maintain sync logic separately from file operations
+- Complex state management
 
-### Issue 2: Files Exceeding 1000 Lines
+**Recommended Structure:**
+```
+src/services/sync/
+├── onedriveClient.js         # OneDrive API client
+├── folderService.js          # Folder operations
+├── fileService.js           # File operations
+├── syncOrchestrator.js      # Sync coordination
+└── metadataService.js       # Title/summary generation
+```
 
-| File | Lines | Primary Issues |
-|------|-------|----------------|
-| `ConversationHistory.js` | 1195 | Multiple responsibilities, embedded logic |
-| `AppContent.js` | 1484 | Too many concerns, complex state management |
+### Issue 2: Components Still Too Large
 
-### Issue 3: Duplicate Logic
+#### `AppContent.js` (1021 lines)
+**Current State:** Reduced from 1484 lines, but still exceeds target of ~400 lines
 
-**File Validation Logic:**
-- Image validation appears in `QuestionInput.js` and `AppContent.js`
-- PDF validation duplicated in multiple places
-- File size checks repeated
+**Remaining Issues:**
+- Contains complex UI orchestration logic
+- Mixes multiple concerns: tabs, floating menus, conversation management
+- Includes OneDrive sync integration logic
+- Contains follow-up questions integration
+- Has complex state management for UI visibility
 
-**Error Handling:**
-- Error message formatting duplicated
-- API error handling patterns repeated
+**Recommended Actions:**
+1. Extract floating menu logic to `useFloatingMenu` hook
+2. Extract tab management to `useTabs` hook
+3. Extract OneDrive sync UI logic to separate component
+4. Create `ConversationContainer` component for chatbot tab content
+5. Extract action buttons to `ConversationActions` component
 
-**Avatar/Voice Mapping:**
-- Voice mapping logic in `ConversationHistory.js`
-- Avatar logic scattered across components
+#### `Memory.js` (638 lines)
+**Problems:**
+- Contains memory CRUD operations mixed with UI
+- Includes OneDrive sync logic
+- Mixes memory management with sync state management
 
-**Text Processing:**
-- Text transformation logic embedded in components
-- Mention replacement logic not reusable
+**Recommended Actions:**
+1. Extract memory operations to `useMemory` hook
+2. Extract sync logic to `useMemorySync` hook
+3. Break down into smaller sub-components
+
+### Issue 3: Files Exceeding 1000 Lines
+
+| File | Lines | Status | Priority |
+|------|-------|--------|----------|
+| `apiUtils.js` | 2988 | ⚠️ Critical | High |
+| `conversationSyncService.js` | 1257 | ⚠️ Needs refactoring | High |
+| `AppContent.js` | 1021 | ⚠️ In progress | Medium |
+| `Memory.js` | 638 | ⚠️ Moderate | Low |
 
 ---
 
@@ -102,306 +160,370 @@ This document outlines a comprehensive refactoring plan to address code maintain
 
 ## Proposed Refactoring Structure
 
-### New Directory Structure
+### Current Directory Structure (After Phase 1-8)
 
 ```
 src/
 ├── components/
 │   ├── conversation/
-│   │   ├── ConversationHistory.js          # Main container (simplified)
-│   │   ├── MessageBubble.js               # Individual message display
-│   │   ├── MessagePart.js                  # Individual part rendering
-│   │   ├── TextPart.js                     # Text rendering component
-│   │   ├── CodeBlock.js                    # Code block component
-│   │   ├── ExpandableHtmlBlock.js          # HTML block component
-│   │   ├── InlineImage.js                  # Image display component
-│   │   ├── PdfPlaceholder.js               # PDF placeholder component
-│   │   ├── GroundingData.js                # Sources display component
-│   │   ├── CodeExecutionResult.js          # Execution result component
-│   │   └── MessageActions.js               # Edit/Delete/Speak buttons
+│   │   ├── ConversationHistory.js          # ✅ 386 lines (reduced from 1195)
+│   │   ├── TextPart.js                     # ✅ Extracted
+│   │   ├── CodeBlock.js                    # ✅ Extracted
+│   │   ├── ExpandableHtmlBlock.js         # ✅ Extracted
+│   │   ├── InlineImage.js                  # ✅ Extracted
+│   │   ├── PdfPlaceholder.js               # ✅ Extracted
+│   │   ├── GroundingData.js                # ✅ Extracted
+│   │   ├── CodeExecutionResult.js          # ✅ Extracted
+│   │   ├── EditButton.js                   # ✅ Extracted
+│   │   └── EditForm.js                     # ✅ Extracted
 │   ├── tts/
-│   │   ├── TtsPlayer.js                    # TTS playback component
-│   │   └── SpeakerButton.js               # Speaker button component
-│   ├── input/
-│   │   └── QuestionInput.js                # (keep, already reasonable)
+│   │   ├── TtsPlayer.js                    # ✅ Extracted
+│   │   └── SpeakerButton.js               # ✅ Extracted
+│   ├── AppContent.js                       # ⚠️ 1021 lines (needs work)
+│   ├── Memory.js                           # ⚠️ 638 lines (could improve)
 │   └── ... (other components)
 ├── hooks/
-│   ├── useConversation.js                  # Conversation state management
-│   ├── useRoleRequests.js                  # Role request queue management
-│   ├── useFileUpload.js                    # File upload logic
-│   ├── useTts.js                          # TTS playback logic
-│   ├── useMermaid.js                      # Mermaid rendering logic
-│   └── useConversationExport.js           # Export/import logic
+│   ├── useConversation.js                  # ✅ Extracted
+│   ├── useRoleRequests.js                  # ✅ Extracted
+│   ├── useFileUpload.js                    # ✅ Extracted
+│   ├── useTts.js                          # ✅ Extracted
+│   ├── useMermaid.js                      # ✅ Extracted
+│   ├── useConversationExport.js           # ✅ Extracted
+│   ├── useFollowUpQuestions.js            # ✅ Extracted
+│   ├── useSettings.js                     # ✅ Extracted
+│   ├── useChromeContent.js               # ✅ Extracted
+│   ├── useMessageEditing.js               # ✅ Extracted
+│   └── useConversationSync.js             # ✅ Extracted
 ├── services/
-│   ├── conversationService.js              # Conversation CRUD operations
-│   ├── roleRequestService.js               # Role request queue service
-│   ├── fileUploadService.js                # File upload/compression service
-│   ├── ttsService.js                      # TTS generation service
-│   └── errorService.js                    # Error handling utilities
+│   ├── conversationService.js              # ✅ Extracted
+│   ├── roleRequestService.js               # ✅ Extracted
+│   ├── fileUploadService.js                # ✅ Extracted
+│   └── errorService.js                    # ✅ Extracted
 ├── utils/
 │   ├── textProcessing/
-│   │   ├── textTransform.js               # Text transformation utilities
-│   │   ├── mentionUtils.js                # Mention processing
-│   │   └── markdownUtils.js               # Markdown processing
-│   ├── fileUtils.js                       # File validation utilities
-│   ├── avatarUtils.js                     # Avatar/voice mapping
-│   ├── timestampUtils.js                  # Timestamp formatting
-│   └── ... (existing utilities)
+│   │   ├── textTransform.js               # ✅ Extracted
+│   │   ├── mentionUtils.js                # ✅ Extracted
+│   │   └── markdownUtils.js               # ✅ Extracted
+│   ├── fileUtils.js                       # ✅ Extracted
+│   ├── avatarUtils.js                     # ✅ Extracted
+│   ├── timestampUtils.js                  # ✅ Extracted
+│   ├── apiUtils.js                        # ⚠️ 2988 lines (CRITICAL)
+│   └── conversationSyncService.js         # ⚠️ 1257 lines (needs work)
 └── ... (existing structure)
+```
+
+### Proposed New Structure (After Remaining Refactoring)
+
+```
+src/
+├── services/
+│   ├── api/
+│   │   ├── geminiService.js               # Gemini API calls
+│   │   ├── financialService.js            # AlphaVantage/Finnhub APIs
+│   │   ├── ttsService.js                 # TTS API calls
+│   │   ├── generationConfig.js           # Generation configurations
+│   │   ├── apiCache.js                   # Caching logic
+│   │   └── apiClient.js                  # Base API client utilities
+│   ├── sync/
+│   │   ├── onedriveClient.js             # OneDrive API client
+│   │   ├── folderService.js              # Folder operations
+│   │   ├── fileService.js               # File operations
+│   │   ├── syncOrchestrator.js          # Sync coordination
+│   │   └── metadataService.js           # Title/summary generation
+│   └── ... (existing services)
+├── hooks/
+│   ├── useFloatingMenu.js                # Floating menu logic
+│   ├── useTabs.js                        # Tab management
+│   ├── useMemory.js                      # Memory operations
+│   └── useMemorySync.js                  # Memory sync logic
+└── components/
+    ├── ConversationContainer.js          # Chatbot tab content
+    ├── ConversationActions.js            # Action buttons
+    └── ... (existing components)
 ```
 
 ---
 
 ## Detailed Refactoring Plan
 
-### Phase 1: Extract Text Processing Logic
+### Phase 9: Refactor apiUtils.js (CRITICAL)
 
-#### 1.1 Create `src/utils/textProcessing/textTransform.js`
+#### 9.1 Create `src/services/api/generationConfig.js`
 **Extract:**
-- `escapeCurrencyDollars` function
-- `replaceMentions` function
-- Text filtering logic (BEGIN marker removal)
+- `generationConfigs` object
+- `getGenerationConfig` function
+- Safety settings configuration
+- Generation config selection logic
+
+**Target Size:** ~150 lines
 
 **Benefits:**
-- Reusable text processing
+- Centralized configuration
+- Easier to modify generation settings
+- Testable configuration logic
+
+#### 9.2 Create `src/services/api/apiClient.js`
+**Extract:**
+- Base API request utilities
+- Common request/response handling
+- Error handling patterns
+- Request retry logic
+
+**Target Size:** ~300 lines
+
+**Benefits:**
+- Reusable API client utilities
+- Consistent error handling
+- Testable API patterns
+
+#### 9.3 Create `src/services/api/apiCache.js`
+**Extract:**
+- Caching logic for API responses
+- Cache key generation
+- Cache invalidation logic
+- Cache storage management
+
+**Target Size:** ~200 lines
+
+**Benefits:**
+- Isolated caching logic
+- Testable cache behavior
+- Reusable caching utilities
+
+#### 9.4 Create `src/services/api/geminiService.js`
+**Extract:**
+- Gemini API calls (`generateContent`, `streamGenerateContent`)
+- Request formatting for Gemini
+- Response parsing for Gemini
+- Tool/function calling logic
+
+**Target Size:** ~600 lines
+
+**Benefits:**
+- Focused Gemini API service
+- Easier to maintain Gemini-specific logic
 - Testable independently
-- Clear separation of concerns
 
-#### 1.2 Create `src/utils/textProcessing/markdownUtils.js`
+#### 9.5 Create `src/services/api/financialService.js`
 **Extract:**
-- `renderTextContent` logic (code block parsing, mermaid detection)
-- Markdown rendering configuration
-- Code block extraction logic
+- AlphaVantage API calls
+- Finnhub API calls
+- Financial data formatting
+- Stock quote processing
+
+**Target Size:** ~400 lines
 
 **Benefits:**
-- Centralized markdown processing
-- Easier to modify rendering behavior
-- Testable markdown transformations
+- Isolated financial API logic
+- Easier to add new financial APIs
+- Testable financial operations
 
-#### 1.3 Create `src/utils/textProcessing/mentionUtils.js`
+#### 9.6 Create `src/services/api/ttsService.js`
 **Extract:**
-- Mention extraction logic (`extractMentionedRolesFromParts`)
-- Mention replacement logic
-- Role mapping utilities
+- TTS API calls
+- Audio generation logic
+- Text chunking for TTS
+- Audio format handling
+
+**Target Size:** ~300 lines
 
 **Benefits:**
-- Reusable mention processing
-- Consistent mention handling across app
-
-### Phase 2: Extract TTS Logic
-
-#### 2.1 Create `src/hooks/useTts.js`
-**Extract from `ConversationHistory.js`:**
-- TTS state management (audio segments, playing state, etc.)
-- Audio playback logic (`playSegmentAtIndex`, `stopAudio`)
-- Audio generation handling (`handleSpeakerClick`)
-
-**Benefits:**
-- Reusable TTS hook
+- Focused TTS service
+- Reusable TTS utilities
 - Testable TTS logic
-- Cleaner component code
 
-#### 2.2 Create `src/components/tts/TtsPlayer.js`
+**Result:**
+- `apiUtils.js` reduced from 2988 lines to ~200 lines (utilities only)
+- Clear separation of API concerns
+- Better testability
+
+### Phase 10: Refactor conversationSyncService.js
+
+#### 10.1 Create `src/services/sync/onedriveClient.js`
 **Extract:**
-- TTS player component with all audio controls
-- Progress indicator
-- Error display
+- OneDrive API client functions
+- Token management
+- Base API request methods
+- Error handling for OneDrive API
+
+**Target Size:** ~300 lines
 
 **Benefits:**
-- Isolated TTS UI
-- Reusable TTS component
+- Reusable OneDrive client
+- Testable API calls
+- Clear API interface
 
-#### 2.3 Create `src/components/tts/SpeakerButton.js`
+#### 10.2 Create `src/services/sync/folderService.js`
 **Extract:**
-- Speaker button component (already exists but can be moved)
+- Folder creation logic
+- Folder ID caching
+- Folder lookup operations
+- Folder management utilities
+
+**Target Size:** ~200 lines
 
 **Benefits:**
-- Better organization
-- Clearer component structure
+- Focused folder operations
+- Testable folder logic
+- Reusable folder utilities
 
-### Phase 3: Extract File Handling Logic
-
-#### 3.1 Create `src/utils/fileUtils.js`
+#### 10.3 Create `src/services/sync/fileService.js`
 **Extract:**
-- File validation logic (image types, PDF types, size checks)
-- File type detection
-- File size formatting
+- File upload operations
+- File download operations
+- File update operations
+- File deletion operations
+
+**Target Size:** ~300 lines
 
 **Benefits:**
-- Single source of truth for file validation
-- Eliminates duplication
-- Easier to maintain validation rules
+- Focused file operations
+- Testable file logic
+- Reusable file utilities
 
-#### 3.2 Create `src/services/fileUploadService.js`
-**Extract from `AppContent.js`:**
-- `compressImageForDisplay` function
-- `convertFileToBase64` function
-- File upload orchestration logic
-
-**Benefits:**
-- Reusable file upload service
-- Testable file processing
-- Clear separation of concerns
-
-#### 3.3 Create `src/hooks/useFileUpload.js`
+#### 10.4 Create `src/services/sync/metadataService.js`
 **Extract:**
-- File upload state management
-- Upload progress tracking
-- Error handling for uploads
+- Title generation logic
+- Summary generation logic
+- Next questions generation
+- Combined metadata generation
+
+**Target Size:** ~200 lines
 
 **Benefits:**
-- Reusable upload hook
-- Cleaner component code
-
-### Phase 4: Extract Conversation Management
-
-#### 4.1 Create `src/services/conversationService.js`
-**Extract from `AppContent.js`:**
-- Conversation CRUD operations
-- Message appending logic
-- Conversation export/import logic
-- Conversation filtering logic
-
-**Benefits:**
-- Centralized conversation operations
-- Testable conversation logic
-- Reusable conversation utilities
-
-#### 4.2 Create `src/hooks/useConversation.js`
-**Extract:**
-- Conversation state management
-- Conversation ref management
-- Conversation update logic
-
-**Benefits:**
-- Reusable conversation hook
-- Cleaner component code
-- Better state management
-
-#### 4.3 Create `src/hooks/useConversationExport.js`
-**Extract:**
-- Export conversation logic (`downloadConversation`)
-- Import conversation logic (`uploadConversation`)
-- Format conversion logic
-
-**Benefits:**
-- Isolated export/import logic
+- Isolated metadata generation
 - Testable independently
-- Reusable export functionality
+- Reusable metadata utilities
 
-### Phase 5: Extract Role Request Management
-
-#### 5.1 Create `src/services/roleRequestService.js`
-**Extract from `AppContent.js`:**
-- Request queue management
-- Request deduplication logic
-- Request cancellation logic
-- Request priority handling
-
-**Benefits:**
-- Centralized request management
-- Testable request logic
-- Reusable request service
-
-#### 5.2 Create `src/hooks/useRoleRequests.js`
+#### 10.5 Create `src/services/sync/syncOrchestrator.js`
 **Extract:**
-- Role request state management
-- Request queue refs
-- Active request tracking
-- Request processing logic
+- Sync coordination logic
+- Sync state management
+- Sync error handling
+- Sync retry logic
+
+**Target Size:** ~300 lines
 
 **Benefits:**
-- Reusable request hook
-- Cleaner component code
-- Better separation of concerns
+- Clear sync orchestration
+- Testable sync flow
+- Better error handling
 
-### Phase 6: Extract Mermaid Rendering
+**Result:**
+- `conversationSyncService.js` reduced from 1257 lines to ~200 lines (orchestration only)
+- Clear separation of sync concerns
+- Better maintainability
 
-#### 6.1 Create `src/hooks/useMermaid.js`
-**Extract from `ConversationHistory.js`:**
-- Mermaid initialization
-- Mermaid rendering logic
-- Mermaid error handling
+### Phase 11: Further Refactor AppContent.js
+
+#### 11.1 Create `src/hooks/useFloatingMenu.js`
+**Extract:**
+- Floating menu state management
+- Scroll detection logic
+- Click outside handling
+- Menu visibility logic
+
+**Target Size:** ~100 lines
 
 **Benefits:**
-- Reusable Mermaid hook
-- Testable rendering logic
+- Reusable floating menu hook
+- Testable menu logic
 - Cleaner component code
 
-#### 6.2 Create `src/components/conversation/MermaidDiagram.js`
+#### 11.2 Create `src/hooks/useTabs.js`
 **Extract:**
-- Mermaid diagram component (already exists, just move)
+- Tab state management
+- Floating tabs logic
+- Tab visibility detection
+- Tab switching logic
+
+**Target Size:** ~100 lines
 
 **Benefits:**
-- Better organization
-- Clearer component structure
+- Reusable tab hook
+- Testable tab logic
+- Cleaner component code
 
-### Phase 7: Extract Utility Functions
-
-#### 7.1 Create `src/utils/avatarUtils.js`
+#### 11.3 Create `src/components/ConversationContainer.js`
 **Extract:**
-- Avatar mapping logic (`VOICE_MAP`)
-- Avatar path resolution
-- Voice selection logic
+- Chatbot tab content
+- Conversation history display
+- Follow-up questions display
+- Question input integration
+
+**Target Size:** ~200 lines
 
 **Benefits:**
-- Single source of truth for avatars
-- Eliminates duplication
+- Focused conversation UI
+- Reusable conversation container
+- Easier to test
+
+#### 11.4 Create `src/components/ConversationActions.js`
+**Extract:**
+- Download/Upload buttons
+- Reset conversation button
+- Action button styling
+- Button visibility logic
+
+**Target Size:** ~150 lines
+
+**Benefits:**
+- Focused action buttons
+- Reusable action component
 - Easier to maintain
 
-#### 7.2 Create `src/utils/timestampUtils.js`
+**Result:**
+- `AppContent.js` reduced from 1021 lines to ~400 lines
+- Better component organization
+- Improved maintainability
+
+### Phase 12: Refactor Memory.js
+
+#### 12.1 Create `src/hooks/useMemory.js`
 **Extract:**
-- `formatTimestamp` function
-- Date formatting utilities
+- Memory CRUD operations
+- Memory state management
+- Memory loading logic
+- Memory validation
+
+**Target Size:** ~200 lines
 
 **Benefits:**
-- Reusable timestamp formatting
-- Testable date logic
-- Consistent formatting
+- Reusable memory hook
+- Testable memory operations
+- Cleaner component code
 
-#### 7.3 Create `src/services/errorService.js`
-**Extract from `AppContent.js`:**
-- `buildUserFacingErrorMessage` function
-- Error type handling
-- Error formatting utilities
+#### 12.2 Create `src/hooks/useMemorySync.js`
+**Extract:**
+- Memory sync logic
+- OneDrive sync operations
+- Auto-sync management
+- Sync state handling
+
+**Target Size:** ~200 lines
 
 **Benefits:**
-- Centralized error handling
-- Consistent error messages
-- Testable error logic
-
-### Phase 8: Break Down Large Components
-
-#### 8.1 Refactor `ConversationHistory.js`
-**Target:** Reduce from 1195 lines to ~300 lines
-
-**Actions:**
-1. Extract sub-components to separate files
-2. Move TTS logic to `useTts` hook
-3. Move text processing to utilities
-4. Move Mermaid logic to `useMermaid` hook
-5. Extract message rendering to `MessageBubble` component
-
-**Result:**
-- Main component focuses on orchestration
-- Sub-components handle specific rendering
-- Logic extracted to hooks and utilities
-
-#### 8.2 Refactor `AppContent.js`
-**Target:** Reduce from 1484 lines to ~400 lines
-
-**Actions:**
-1. Extract role request logic to `useRoleRequests` hook
-2. Move file upload logic to `useFileUpload` hook
-3. Extract conversation management to `useConversation` hook
-4. Move export/import to `useConversationExport` hook
-5. Extract error handling to `errorService`
-6. Move file compression to `fileUploadService`
-
-**Result:**
-- Main component focuses on UI orchestration
-- Business logic in hooks and services
+- Reusable sync hook
+- Testable sync logic
 - Better separation of concerns
+
+#### 12.3 Break down Memory.js into sub-components
+**Extract:**
+- `MemoryList` component
+- `MemoryForm` component
+- `SyncControls` component
+
+**Target Size:** ~200 lines (main component)
+
+**Benefits:**
+- Smaller, focused components
+- Better component organization
+- Easier to test
+
+**Result:**
+- `Memory.js` reduced from 638 lines to ~200 lines
+- Better component structure
+- Improved maintainability
 
 ---
 
@@ -450,52 +572,49 @@ src/
 
 ## Priority Order
 
-### High Priority (Do First)
-1. ✅ Extract text processing utilities (`textTransform.js`, `mentionUtils.js`)
-2. ✅ Extract file validation utilities (`fileUtils.js`)
-3. ✅ Extract avatar/voice utilities (`avatarUtils.js`)
-4. ✅ Extract timestamp utilities (`timestampUtils.js`)
-5. ✅ Extract error handling service (`errorService.js`)
+### Critical Priority (Do Immediately)
+1. ⚠️ Refactor `apiUtils.js` (2988 lines) - **CRITICAL**
+   - This is the largest file and highest risk
+   - Blocks other improvements
+   - High maintenance burden
 
-**Reason:** These are pure functions, easiest to extract, and eliminate immediate duplication.
+2. ⚠️ Refactor `conversationSyncService.js` (1257 lines)
+   - New large file that needs attention
+   - Important for OneDrive sync functionality
+   - High complexity
 
-### Medium Priority (Do Second)
-1. ✅ Extract TTS hook (`useTts.js`)
-2. ✅ Extract file upload service (`fileUploadService.js`)
-3. ✅ Extract conversation service (`conversationService.js`)
-4. ✅ Extract Mermaid hook (`useMermaid.js`)
+### High Priority (Do Next)
+1. ⚠️ Further refactor `AppContent.js` (1021 lines)
+   - Still exceeds target size
+   - Contains complex UI logic
+   - Important for main application flow
 
-**Reason:** These require more careful extraction but significantly reduce component complexity.
-
-### Lower Priority (Do Third)
-1. ✅ Extract role request service (`roleRequestService.js`)
-2. ✅ Extract role request hook (`useRoleRequests.js`)
-3. ✅ Extract conversation hooks (`useConversation.js`, `useConversationExport.js`)
-4. ✅ Break down large components
-
-**Reason:** These are more complex refactorings that require careful state management.
+### Medium Priority (Do After)
+1. ⚠️ Refactor `Memory.js` (638 lines)
+   - Moderate size, less critical
+   - Can be improved incrementally
 
 ---
 
 ## Success Metrics
 
 ### Code Quality Metrics
-- ✅ No files exceed 500 lines
-- ✅ Components have single responsibility
-- ✅ Business logic separated from UI
-- ✅ No duplicate logic
-- ✅ Test coverage > 80% for utilities/services
+- ⚠️ No files exceed 1000 lines (currently: 3 files exceed this)
+- ✅ Components have single responsibility (mostly achieved)
+- ✅ Business logic separated from UI (mostly achieved)
+- ✅ No duplicate logic (mostly achieved)
+- ⚠️ Test coverage > 80% for utilities/services (in progress)
 
 ### Maintainability Metrics
-- ✅ Average file size < 300 lines
-- ✅ Cyclomatic complexity < 10 per function
-- ✅ Clear separation of concerns
-- ✅ Easy to locate specific functionality
+- ⚠️ Average file size < 300 lines (currently: ~400 lines average)
+- ⚠️ No files exceed 500 lines (currently: 4 files exceed this)
+- ✅ Clear separation of concerns (mostly achieved)
+- ✅ Easy to locate specific functionality (mostly achieved)
 
 ### Performance Metrics
-- ✅ No performance regressions
-- ✅ Bundle size not significantly increased
-- ✅ Runtime performance maintained or improved
+- ✅ No performance regressions (maintained)
+- ✅ Bundle size not significantly increased (maintained)
+- ✅ Runtime performance maintained or improved (maintained)
 
 ---
 
@@ -529,89 +648,84 @@ src/
 - Code reviews
 - Regular refactoring
 
+### Risk 5: Large Refactoring Scope
+**Mitigation:**
+- Break down into smaller phases
+- Focus on one file at a time
+- Test thoroughly after each phase
+- Don't rush the process
+
 ---
 
 ## Implementation Checklist
 
-### Phase 1: Text Processing
-- [x] Create `src/utils/textProcessing/textTransform.js`
-- [x] Create `src/utils/textProcessing/markdownUtils.js`
-- [x] Create `src/utils/textProcessing/mentionUtils.js`
-- [x] Update `ConversationHistory.js` to use new utilities
-- [x] Write tests for text processing utilities
+### Phase 1-8: Completed ✅
+- [x] Extract text processing utilities
+- [x] Extract TTS logic
+- [x] Extract file handling logic
+- [x] Extract conversation management
+- [x] Extract role request management
+- [x] Extract Mermaid rendering
+- [x] Extract utility functions
+- [x] Break down ConversationHistory.js
 
-### Phase 2: TTS Logic
-- [x] Create `src/hooks/useTts.js`
-- [x] Create `src/components/tts/TtsPlayer.js`
-- [x] Create `src/components/tts/SpeakerButton.js`
-- [x] Update `ConversationHistory.js` to use TTS hook
-- [x] Write tests for TTS hook (basic structure created)
+### Phase 9: Refactor apiUtils.js (CRITICAL) ⚠️
+- [x] Create `src/services/api/generationConfig.js` ✅
+- [x] Create `src/services/api/apiClient.js` ✅
+- [x] Create `src/services/api/apiCache.js` ✅
+- [ ] Create `src/services/api/geminiService.js` (in progress - needs: fetchFromApiCore, fetchFromApi, generateFollowUpQuestions, generateConversationMetadata, ApiError, helper functions)
+- [ ] Create `src/services/api/financialService.js` (in progress - needs: callAlphaVantageAPI, callFinnhubAPI, filterTimeSeriesData, validateCurrencySymbol, toolbox object)
+- [ ] Create `src/services/api/fileUploadService.js` (extract uploadFile function)
+- [ ] Update imports across codebase
+- [ ] Write tests for new API services
+- [ ] Remove old code from `apiUtils.js`
 
-### Phase 3: File Handling
-- [x] Create `src/utils/fileUtils.js`
-- [x] Create `src/services/fileUploadService.js`
-- [x] Create `src/hooks/useFileUpload.js`
-- [x] Update `AppContent.js` and `QuestionInput.js` to use new utilities
-- [x] Write tests for file utilities
+**Progress Note:** Foundation services created. Remaining work involves extracting large functions (fetchFromApi ~700 lines, toolbox ~1000 lines) which require careful dependency management.
 
-### Phase 4: Conversation Management
-- [x] Create `src/services/conversationService.js`
-- [x] Create `src/hooks/useConversation.js`
-- [x] Create `src/hooks/useConversationExport.js`
-- [x] Update `AppContent.js` to use new hooks/services
-- [x] Write tests for conversation utilities
+### Phase 10: Refactor conversationSyncService.js ⚠️
+- [ ] Create `src/services/sync/onedriveClient.js`
+- [ ] Create `src/services/sync/folderService.js`
+- [ ] Create `src/services/sync/fileService.js`
+- [ ] Create `src/services/sync/metadataService.js`
+- [ ] Create `src/services/sync/syncOrchestrator.js`
+- [ ] Update imports across codebase
+- [ ] Write tests for new sync services
+- [ ] Remove old code from `conversationSyncService.js`
 
-### Phase 5: Role Request Management
-- [x] Create `src/services/roleRequestService.js`
-- [x] Create `src/hooks/useRoleRequests.js`
-- [x] Update `AppContent.js` to use new hook/service
-- [x] Write tests for role request utilities (basic structure created)
+### Phase 11: Further Refactor AppContent.js ⚠️
+- [ ] Create `src/hooks/useFloatingMenu.js`
+- [ ] Create `src/hooks/useTabs.js`
+- [ ] Create `src/components/ConversationContainer.js`
+- [ ] Create `src/components/ConversationActions.js`
+- [ ] Update `AppContent.js` to use new hooks/components
+- [ ] Write tests for new hooks/components
+- [ ] Verify AppContent.js reduced to ~400 lines
 
-### Phase 6: Mermaid Rendering
-- [x] Create `src/hooks/useMermaid.js`
-- [x] Create `src/components/conversation/MermaidDiagram.js` (included in useMermaid.js)
-- [x] Update `ConversationHistory.js` to use Mermaid hook
-- [x] Write tests for Mermaid hook (basic structure created)
-
-### Phase 7: Utility Functions
-- [x] Create `src/utils/avatarUtils.js`
-- [x] Create `src/utils/timestampUtils.js`
-- [x] Create `src/services/errorService.js`
-- [x] Update components to use new utilities
-- [x] Write tests for utilities
-
-### Phase 8: Component Breakdown
-- [x] Break down `ConversationHistory.js` into sub-components
-  - [x] Extract `ExpandableHtmlBlock.js`
-  - [x] Extract `CodeBlock.js`
-  - [x] Extract `EditButton.js`
-  - [x] Extract `EditForm.js`
-  - [x] Extract `GroundingData.js`
-  - [x] Extract `CodeExecutionResult.js`
-  - [x] Extract `InlineImage.js`
-  - [x] Extract `PdfPlaceholder.js`
-  - [x] Extract `TextPart.js`
-- [x] Break down `AppContent.js` into smaller components (reduced from 722 to 518 lines)
-  - [x] Extract `useFollowUpQuestions` hook
-  - [x] Extract `useSettings` hook
-  - [x] Extract `useChromeContent` hook
-  - [x] Extract `useMessageEditing` hook
-- [x] Update imports across codebase
-- [x] Remove old code from `ConversationHistory.js`
-- [x] Final testing and cleanup (test files created)
+### Phase 12: Refactor Memory.js ⚠️
+- [ ] Create `src/hooks/useMemory.js`
+- [ ] Create `src/hooks/useMemorySync.js`
+- [ ] Break down Memory.js into sub-components
+- [ ] Update Memory.js to use new hooks
+- [ ] Write tests for new hooks/components
+- [ ] Verify Memory.js reduced to ~200 lines
 
 ---
 
 ## Conclusion
 
-This refactoring plan provides a systematic approach to improving code maintainability. By following these principles and phases, we can:
+Significant progress has been made in refactoring the codebase:
+- ✅ `ConversationHistory.js` reduced by 68%
+- ✅ Most utility functions extracted
+- ✅ Most hooks extracted
+- ✅ Component breakdown mostly complete
 
-1. **Reduce complexity** - Smaller, focused files
-2. **Improve testability** - Separated logic is easier to test
-3. **Eliminate duplication** - Shared utilities and services
-4. **Enhance maintainability** - Clear structure and separation of concerns
+However, critical work remains:
+- ⚠️ `apiUtils.js` (2988 lines) needs immediate attention
+- ⚠️ `conversationSyncService.js` (1257 lines) needs refactoring
+- ⚠️ `AppContent.js` (1021 lines) still needs work
+- ⚠️ `Memory.js` (638 lines) could be improved
 
-The incremental approach minimizes risk while maximizing benefits. Each phase builds on the previous one, ensuring a smooth transition to a more maintainable codebase.
+The incremental approach has proven successful. Continuing with the same methodology will ensure a smooth transition to a fully maintainable codebase.
 
 ---
 
@@ -622,3 +736,4 @@ The incremental approach minimizes risk while maximizing benefits. Each phase bu
 - Consider performance implications of each change
 - Document all changes thoroughly
 - Maintain backward compatibility where possible
+- Focus on `apiUtils.js` first as it's the highest risk file

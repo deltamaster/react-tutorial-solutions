@@ -1,4 +1,4 @@
-import { postProcessModelResponse } from "../apiUtils";
+import { postProcessModelResponse } from "../../services/api/geminiService";
 
 describe("postProcessModelResponse", () => {
   describe("impersonation removal", () => {

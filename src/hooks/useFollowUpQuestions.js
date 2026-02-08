@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { generateFollowUpQuestions, generateConversationMetadata } from "../utils/apiUtils";
+import { generateFollowUpQuestions, generateConversationMetadata } from "../services/api/geminiService";
 
 /**
  * Custom hook for managing follow-up questions
