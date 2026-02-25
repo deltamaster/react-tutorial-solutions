@@ -3,6 +3,7 @@
  * Container for conversation history with floating menu support
  */
 
+import { useMemo } from "react";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
 import Button from "react-bootstrap/Button";
@@ -71,6 +72,12 @@ export default function ConversationContainer({
     editingText,
     setEditingText,
   } = editingState || {};
+
+  // Memoize to preserve reference when conversation unchanged - enables ConversationHistory memo
+  const history = useMemo(
+    () => filterDeletedMessages(conversation || []),
+    [conversation]
+  );
 
   return (
     <Row>
@@ -174,7 +181,7 @@ export default function ConversationContainer({
         )}
 
         <ConversationHistory
-          history={filterDeletedMessages(conversation)}
+          history={history}
           onDelete={onDelete}
           onEdit={onEdit}
           editingIndex={editingIndex}

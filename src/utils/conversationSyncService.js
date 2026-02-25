@@ -39,7 +39,6 @@ export {
 // Re-export from metadataService
 export {
   generateConversationMetadataFromConversation,
-  generateConversationTitle,
 } from '../services/sync/metadataService';
 
 // Re-export from syncOrchestrator
@@ -56,7 +55,6 @@ import {
 } from '../services/sync/fileService';
 
 import {
-  generateConversationTitle,
   generateConversationMetadataFromConversation,
 } from '../services/sync/metadataService';
 
@@ -78,7 +76,6 @@ export default {
   uploadConversation,
   deleteConversation,
   createNewConversation,
-  generateConversationTitle,
   generateConversationMetadataFromConversation,
   isConversationSyncConfigured,
   getOrCreateConversationsFolder,

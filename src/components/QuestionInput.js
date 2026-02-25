@@ -286,10 +286,10 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
     const newValue = e.target.value;
     setLocalQuestion(newValue);
     adjustHeight();
-    if (onChange) {
-      onChange(newValue);
-    }
-  }, [onChange, adjustHeight]);
+    // Don't call onChange on every keystroke - it triggers AppContent re-render
+    // and cascades to re-render the entire conversation (expensive Markdown/SyntaxHighlighter).
+    // onChange is only called on submit (to clear) or when value flows down from follow-up clicks.
+  }, [adjustHeight]);
 
   const handlePaste = (event) => {
     if (!event.clipboardData || disabled) {
