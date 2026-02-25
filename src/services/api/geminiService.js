@@ -749,19 +749,32 @@ export const generateFollowUpQuestions = async (contents) => {
 };
 
 /**
- * Generate conversation metadata (title, summary, and next questions) in a single API call.
+ * Generate conversation metadata (title, summary, tags, and next questions) in a single API call.
  * @param {Array} contents - The conversation history.
- * @returns {Promise<Object>} - A promise that resolves to an object with { title, summary, nextQuestions }.
+ * @param {Object} options - Optional parameters for existing metadata.
+ * @param {string} [options.currentTitle] - The current conversation title (model should preserve if still suitable).
+ * @param {string[]} [options.currentTags] - The current conversation tags.
+ * @returns {Promise<Object>} - A promise that resolves to an object with { title, summary, tags, nextQuestions }.
  */
-export const generateConversationMetadata = async (contents) => {
+export const generateConversationMetadata = async (contents, options = {}) => {
+  const { currentTitle, currentTags = [] } = options;
   const finalContents = await prepareContentsForRequest(contents);
+
+  const referenceSection = (currentTitle || currentTags?.length > 0)
+    ? "\n\nFor reference, the conversation currently has:\n" +
+      (currentTitle ? `- Current title: \"${currentTitle}\"\n` : "") +
+      (currentTags?.length > 0 ? `- Current tags: [${currentTags.map(t => `"${t}"`).join(", ")}]\n` : "") +
+      "\nImportant: Keep the title unchanged if it is still suitable for the conversation. Only suggest a new title when the discussion has clearly shifted to a different topic."
+    : "";
+
   const response = await fetchFromApiCore(
     "gemini-2.5-flash-lite",
     {
       systemInstruction: {
-        role: "system", 
+        role: "system",
         parts: [{
-          text: "You are a helpful assistant that generates conversation metadata. Return your response as a JSON object with 'title' (concise, descriptive, less than 7 words), 'summary' (one sentence summary of the conversation), and 'nextQuestions' (array of up to 3 predicted follow-up questions the user might ask)."
+          text: "You are a helpful assistant that generates conversation metadata. Return your response as a JSON object with 'title' (concise, descriptive, less than 7 words), 'summary' (one sentence summary of the conversation), 'tags' (array of one-word tags), and 'nextQuestions' (array of up to 3 predicted follow-up questions the user might ask). " +
+            "Each tag must be exactly one word reflecting: the topic being discussed, keywords repeatedly mentioned, or the user's sentiment."
         }]
       },
       contents: [...finalContents, {
@@ -770,10 +783,12 @@ export const generateConversationMetadata = async (contents) => {
           {
             text:
               "Based on this conversation, generate:\n" +
-              "1. A concise title (less than 7 words, descriptive)\n" +
-              "2. A summary of the conversation (less than 150 words): What was the main topic, what were the key takeways, and what do you know about the user from the conversation?\n" +
-              "3. Up to 3 predicted follow-up questions the user might ask\n\n" +
-              "Return as JSON: { \"title\": \"...\", \"summary\": \"...\", \"nextQuestions\": [\"...\", \"...\", \"...\"] }"
+              "1. A concise title (less than 7 words, descriptive). Do NOT update the title if the current title is still suitable for the conversation.\n" +
+              "2. A summary of the conversation (less than 150 words): What was the main topic, what were the key takeaways, and what do you know about the user from the conversation?\n" +
+              "3. Up to 8 one-word tags. Each tag should reflect: the topic being discussed, a keyword repeatedly mentioned, or the user's sentiment.\n" +
+              "4. Up to 3 predicted follow-up questions the user might ask\n\n" +
+              referenceSection + "\n\n" +
+              "Return as JSON: { \"title\": \"...\", \"summary\": \"...\", \"tags\": [\"...\", \"...\"], \"nextQuestions\": [\"...\", \"...\", \"...\"] }"
           },
         ],
       }],
@@ -806,9 +821,16 @@ export const generateConversationMetadata = async (contents) => {
       if (parsed.title && typeof parsed.title === 'string' &&
           parsed.summary && typeof parsed.summary === 'string' &&
           Array.isArray(parsed.nextQuestions)) {
+        const tags = Array.isArray(parsed.tags)
+          ? parsed.tags
+              .filter(t => typeof t === 'string' && t.trim())
+              .map(t => t.trim().split(/\s+/)[0]) // Ensure one word per tag
+              .slice(0, 8)
+          : [];
         return {
           title: parsed.title.trim(),
           summary: parsed.summary.trim(),
+          tags,
           nextQuestions: parsed.nextQuestions
             .filter(q => typeof q === 'string' && q.trim())
             .slice(0, 3)

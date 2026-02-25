@@ -68,6 +68,11 @@ const generationConfigs = {
       properties: {
         title: { type: "string" },
         summary: { type: "string" },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 8
+        },
         nextQuestions: {
           type: "array",
           items: { type: "string" },

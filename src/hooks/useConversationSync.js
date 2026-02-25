@@ -1243,23 +1243,34 @@ export const useConversationSync = (conversation = [], setConversation = null) =
         return;
       }
       
-      // Generate title, summary, and next questions using combined API call
-      console.log('[Auto-title] Generating conversation metadata (title, summary, next questions)...', { 
+      // Generate title, summary, tags, and next questions using combined API call
+      const currentTitle = conversationEntry?.name;
+      const currentTags = conversationEntry?.tags || [];
+      console.log('[Auto-title] Generating conversation metadata (title, summary, tags, next questions)...', {
         conversationLength: currentConv.length,
         conversationId: conversationIdToUse,
+        currentTitle,
+        currentTags,
         usingRef: true
       });
-      const metadata = await conversationSyncService.generateConversationMetadataFromConversation(currentConv);
+      const metadata = await conversationSyncService.generateConversationMetadataFromConversation(currentConv, {
+        currentTitle,
+        currentTags
+      });
       console.log('[Auto-title] Generated metadata:', {
         title: metadata.title,
         summary: metadata.summary,
+        tagsCount: metadata.tags?.length || 0,
         nextQuestionsCount: metadata.nextQuestions?.length || 0
       });
+
+      const metadataTags = Array.isArray(metadata.tags) ? metadata.tags : [];
       
-      // Update title and summary in index
+      // Update title, summary, and tags in index
       if (conversationEntry) {
         conversationEntry.name = metadata.title;
         conversationEntry.summary = metadata.summary; // Save summary to index.json
+        conversationEntry.tags = metadataTags;
         // Don't update updatedAt for title/summary changes - updatedAt should reflect content timestamps only
         conversationEntry.autoTitle = true; // Ensure autoTitle is set
       } else {
@@ -1273,7 +1284,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
           updatedAt: new Date().toISOString(),
           fileId: null,
           size: 0,
-          tags: []
+          tags: metadataTags
         });
       }
       

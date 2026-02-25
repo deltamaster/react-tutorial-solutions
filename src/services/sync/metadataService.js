@@ -6,11 +6,14 @@
 import { generateConversationMetadata } from '../api/geminiService';
 
 /**
- * Generate conversation metadata (title, summary, and next questions) using combined API call
+ * Generate conversation metadata (title, summary, tags, and next questions) using combined API call
  * @param {Array} conversation - The conversation array
- * @returns {Promise<Object>} - Object with { title, summary, nextQuestions }
+ * @param {Object} options - Optional parameters for existing metadata
+ * @param {string} [options.currentTitle] - The current conversation title (model should preserve if still suitable)
+ * @param {string[]} [options.currentTags] - The current conversation tags
+ * @returns {Promise<Object>} - Object with { title, summary, tags, nextQuestions }
  */
-export async function generateConversationMetadataFromConversation(conversation) {
+export async function generateConversationMetadataFromConversation(conversation, options = {}) {
   try {
     // Prepare contents - filter out thoughts and hidden parts, keep only text
     const finalContents = conversation
@@ -27,18 +30,23 @@ export async function generateConversationMetadataFromConversation(conversation)
       return {
         title: "New Conversation",
         summary: "",
+        tags: [],
         nextQuestions: []
       };
     }
     
     // Use the combined metadata generation function from geminiService
-    const metadata = await generateConversationMetadata(finalContents);
+    const metadata = await generateConversationMetadata(finalContents, {
+      currentTitle: options.currentTitle,
+      currentTags: options.currentTags || []
+    });
     return metadata;
   } catch (error) {
     console.error("Error generating conversation metadata:", error);
     return {
       title: "New Conversation",
       summary: "",
+      tags: [],
       nextQuestions: []
     };
   }
