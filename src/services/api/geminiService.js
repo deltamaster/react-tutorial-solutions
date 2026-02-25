@@ -774,7 +774,8 @@ export const generateConversationMetadata = async (contents, options = {}) => {
         role: "system",
         parts: [{
           text: "You are a helpful assistant that generates conversation metadata. Return your response as a JSON object with 'title' (concise, descriptive, less than 7 words), 'summary' (one sentence summary of the conversation), 'tags' (array of one-word tags), and 'nextQuestions' (array of up to 3 predicted follow-up questions the user might ask). " +
-            "Each tag must be exactly one word reflecting: the topic being discussed, keywords repeatedly mentioned, or the user's sentiment."
+            "Tag formatting: All tags must be lowercase only. Each tag must be a single word with no spaces. If a concept requires multiple words, concatenate them (e.g., 'projectmanagement' not 'Project Management'). " +
+            "Cover multiple granularity levels: macro (broad domain/industry, e.g., career, technology); meso (specific sub-field or professional context, e.g., leadership, sdlc); micro (exact topic or action, e.g., presentation, china); entity (people, projects, or specific systems, e.g., faisal, secdb, chinacore)."
         }]
       },
       contents: [...finalContents, {
@@ -785,7 +786,7 @@ export const generateConversationMetadata = async (contents, options = {}) => {
               "Based on this conversation, generate:\n" +
               "1. A concise title (less than 7 words, descriptive). Do NOT update the title if the current title is still suitable for the conversation.\n" +
               "2. A summary of the conversation (less than 150 words): What was the main topic, what were the key takeaways, and what do you know about the user from the conversation?\n" +
-              "3. Up to 8 one-word tags. Each tag should reflect: the topic being discussed, a keyword repeatedly mentioned, or the user's sentiment.\n" +
+              "3. 3 to 8 one-word tags. Formatting: lowercase only, single word with no spaces. Concatenate multi-word concepts (e.g., projectmanagement). Prefer single word over concatenated words. Cover granularity: macro (e.g., career, technology), meso (e.g., leadership, sdlc), micro (e.g., presentation, china), entity (e.g., people/projects/systems).\n" +
               "4. Up to 3 predicted follow-up questions the user might ask\n\n" +
               referenceSection + "\n\n" +
               "Return as JSON: { \"title\": \"...\", \"summary\": \"...\", \"tags\": [\"...\", \"...\"], \"nextQuestions\": [\"...\", \"...\", \"...\"] }"
@@ -824,7 +825,8 @@ export const generateConversationMetadata = async (contents, options = {}) => {
         const tags = Array.isArray(parsed.tags)
           ? parsed.tags
               .filter(t => typeof t === 'string' && t.trim())
-              .map(t => t.trim().split(/\s+/)[0]) // Ensure one word per tag
+              .map(t => t.trim().toLowerCase().replace(/\s+/g, '')) // Lowercase, concatenate (no spaces)
+              .filter(t => t.length > 0)
               .slice(0, 8)
           : [];
         return {
