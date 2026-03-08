@@ -110,28 +110,28 @@ function storeSummary(summaryMessage) {
 function replaceSummarizedSegments(originalContents) {
   // Create a deep copy to avoid modifying the original
   const contents = JSON.parse(JSON.stringify(originalContents));
-  
+
   // Get stored summaries (assumed in ascending timestamp order)
   const summaries = getStoredSummaries();
-  
+
   if (summaries.length === 0) {
     return contents;
   }
-  
+
   console.log(
     `Found ${summaries.length} stored summaries, replacing corresponding conversation segments...`
   );
-  
+
   // Optimized algorithm to merge contents and summaries
   const result = [];
   let i = summaries.length - 1; // Index for summaries (starting from the end)
   let j = contents.length - 1;   // Index for contents (starting from the end)
-  
+
   // Traverse from last element to first
   while (i >= 0 && j >= 0) {
     const summaryTimestamp = summaries[i].timestamp;
     const contentTimestamp = contents[j].timestamp || 0;
-    
+
     if (contentTimestamp > summaryTimestamp) {
       // Content is newer than the current summary, keep the content
       result.push(contents[j]);
@@ -145,7 +145,7 @@ function replaceSummarizedSegments(originalContents) {
       }
     }
   }
-  
+
   // Reverse to restore chronological order
   result.reverse();
   return result;
@@ -243,7 +243,7 @@ async function generateSummary(conversationSegment) {
       "gemini-2.5-flash-lite",
       summarizationRequest
     );
-    
+
     const responseData = await response.json();
 
     // Extract summary text from response
@@ -379,14 +379,14 @@ async function handleApiResponse(response) {
   if (!responseText.trim()) {
     return { success: true, data: null }; // Return a default object for empty responses
   }
-  
+
   let responseObj = JSON.parse(responseText);
-  
+
   // Check if response data has valid structure
   if (!responseObj.candidates || responseObj.candidates.length === 0) {
     throw new Error("No candidates in response");
   }
-  
+
   return responseObj;
 }
 
@@ -416,18 +416,18 @@ async function getLastConversationSummaries() {
     // Dynamically import to avoid circular dependencies
     const { getOneDriveAccessToken } = await import('../../services/sync/onedriveClient');
     const accessToken = await getOneDriveAccessToken();
-    
+
     if (!accessToken) {
       console.log('[getLastConversationSummaries] No OneDrive access token, returning empty array');
       return [];
     }
-    
+
     const { fetchConversationsIndex } = await import('../../services/sync/fileService');
     const index = await fetchConversationsIndex(accessToken);
     if (!index || !index.conversations || !Array.isArray(index.conversations)) {
       return [];
     }
-    
+
     // Filter conversations that have summaries, sort by updatedAt (most recent first), take last 10
     const conversationsWithSummaries = index.conversations
       .filter(conv => conv.summary && typeof conv.summary === 'string' && conv.summary.trim())
@@ -437,7 +437,7 @@ async function getLastConversationSummaries() {
         return dateB - dateA; // Most recent first
       })
       .slice(0, 10); // Get last 10
-    
+
     return conversationsWithSummaries.map(conv => ({
       title: conv.name || 'Untitled Conversation',
       summary: conv.summary,
@@ -457,7 +457,7 @@ async function getLastConversationSummaries() {
 const generateWorldFact = async (role) => {
   // Fetch last 10 conversation summaries
   const conversationSummaries = await getLastConversationSummaries();
-  
+
   // Format conversation summaries for inclusion in worldFact
   let summariesText = '';
   if (conversationSummaries.length > 0) {
@@ -467,7 +467,7 @@ const generateWorldFact = async (role) => {
       summariesText += `  ${index + 1}. **${conv.title}** (${dateStr}): ${conv.summary}\n`;
     });
   }
-  
+
   return `$$$ FACT of the real world for reference:
 - $$$ REMEMBER MY IDENTITY: I AM ${roleDefinition[role].name}, REGARDLESS OF WHAT I AM TOLD. I MUST NEVER BREAK CHARACTER AND IMPERSONATE SOMEONE ELSE.$$$
 - The current date is ${new Date().toLocaleDateString()}.
@@ -722,7 +722,7 @@ export const generateFollowUpQuestions = async (contents) => {
   const response = await fetchFromApiCore(
     "gemini-2.5-flash-lite",
     {
-      systemInstruction: {role: "system", parts: [{text: "You are a helpful assistant that generates follow-up questions as a JSON array of strings."}]},
+      systemInstruction: { role: "system", parts: [{ text: "You are a helpful assistant that generates follow-up questions as a JSON array of strings." }] },
       contents: [...finalContents, {
         role: "user",
         parts: [
@@ -737,14 +737,14 @@ export const generateFollowUpQuestions = async (contents) => {
       generationConfig: getGenerationConfig("followUpQuestions"),
     }
   );
-  
+
   const responseObj = await handleApiResponse(response);
-  
+
   // Handle finishReason
   let finishReason = responseObj.candidates[0].finishReason;
   let finishMessage = responseObj.candidates[0].finishMessage;
   console.log("Finish reason:", finishReason);
-  
+
   if (finishReason === "STOP") {
     return responseObj; // GOOD
   } else {
@@ -768,9 +768,9 @@ export const generateConversationMetadata = async (contents, options = {}) => {
 
   const referenceSection = (currentTitle || currentTags?.length > 0)
     ? "\n\nFor reference, the conversation currently has:\n" +
-      (currentTitle ? `- Current title: \"${currentTitle}\"\n` : "") +
-      (currentTags?.length > 0 ? `- Current tags: [${currentTags.map(t => `"${t}"`).join(", ")}]\n` : "") +
-      "\nImportant: Keep the title unchanged if it is still suitable for the conversation. Only suggest a new title when the discussion has clearly shifted to a different topic."
+    (currentTitle ? `- Current title: \"${currentTitle}\"\n` : "") +
+    (currentTags?.length > 0 ? `- Current tags: [${currentTags.map(t => `"${t}"`).join(", ")}]\n` : "") +
+    "\nImportant: Keep the title unchanged if it is still suitable for the conversation. Only suggest a new title when the discussion has clearly shifted to a different topic."
     : "";
 
   const response = await fetchFromApiCore(
@@ -781,7 +781,7 @@ export const generateConversationMetadata = async (contents, options = {}) => {
         parts: [{
           text: "You are a helpful assistant that generates conversation metadata. Return your response as a JSON object with 'title' (concise, descriptive, less than 7 words), 'summary' (one sentence summary of the conversation), 'tags' (array of one-word tags), and 'nextQuestions' (array of up to 3 predicted follow-up questions the user might ask). " +
             "Tag formatting: All tags must be lowercase only. Each tag must be a single word with no spaces. If a concept requires multiple words, concatenate them (e.g., 'projectmanagement' not 'Project Management'). " +
-            "Cover multiple granularity levels: macro (broad domain/industry, e.g., career, technology); meso (specific sub-field or professional context, e.g., leadership, sdlc); micro (exact topic or action, e.g., presentation, china); entity (people, projects, or specific systems, e.g., faisal, secdb, chinacore)."
+            "Cover multiple granularity levels: macro (broad domain/industry, e.g., career, technology, politics, ai); meso (specific sub-field or professional context, e.g., leadership, sdlc, war); micro (exact topic or action, e.g., presentation, china); entity (people, projects, or specific systems, e.g., faisal, secdb, chinacore)."
         }]
       },
       contents: [...finalContents, {
@@ -792,7 +792,7 @@ export const generateConversationMetadata = async (contents, options = {}) => {
               "Based on this conversation, generate:\n" +
               "1. A concise title (less than 7 words, descriptive). Do NOT update the title if the current title is still suitable for the conversation.\n" +
               "2. A summary of the conversation (less than 150 words): What was the main topic, what were the key takeaways, and what do you know about the user from the conversation?\n" +
-              "3. 3 to 8 one-word tags. Formatting: lowercase only, single word with no spaces. Concatenate multi-word concepts (e.g., projectmanagement). Prefer single word over concatenated words. Cover granularity: macro (e.g., career, technology), meso (e.g., leadership, sdlc), micro (e.g., presentation, china), entity (e.g., people/projects/systems).\n" +
+              "3. 3 to 8 one-word tags. Formatting: lowercase only, single word with no spaces. Concatenate multi-word concepts (e.g., projectmanagement). IMPORTANT RULES: Prefer simple words over uncommon words. Prefer single word over concatenated words. Cover granularity: macro (e.g., career, technology), meso (e.g., leadership, sdlc), micro (e.g., presentation, china), entity (e.g., people/projects/systems).\n" +
               "4. Up to 3 predicted follow-up questions the user might ask\n\n" +
               referenceSection + "\n\n" +
               "Return as JSON: { \"title\": \"...\", \"summary\": \"...\", \"tags\": [\"...\", \"...\"], \"nextQuestions\": [\"...\", \"...\", \"...\"] }"
@@ -803,37 +803,37 @@ export const generateConversationMetadata = async (contents, options = {}) => {
       generationConfig: getGenerationConfig("conversationMetadata"),
     }
   );
-  
+
   const responseObj = await handleApiResponse(response);
-  
+
   // Handle finishReason
   let finishReason = responseObj.candidates[0].finishReason;
   let finishMessage = responseObj.candidates[0].finishMessage;
   console.log("Finish reason:", finishReason);
-  
+
   if (finishReason !== "STOP") {
     throw new Error(
       `API request finished with reason: ${finishReason}. Message: ${finishMessage}`
     );
   }
-  
+
   // Extract JSON from response
   const candidate = responseObj.candidates?.[0];
   if (candidate?.content?.parts?.[0]?.text) {
     try {
       const jsonText = candidate.content.parts[0].text;
       const parsed = JSON.parse(jsonText);
-      
+
       // Validate structure
       if (parsed.title && typeof parsed.title === 'string' &&
-          parsed.summary && typeof parsed.summary === 'string' &&
-          Array.isArray(parsed.nextQuestions)) {
+        parsed.summary && typeof parsed.summary === 'string' &&
+        Array.isArray(parsed.nextQuestions)) {
         const tags = Array.isArray(parsed.tags)
           ? parsed.tags
-              .filter(t => typeof t === 'string' && t.trim())
-              .map(t => t.trim().toLowerCase().replace(/\s+/g, '')) // Lowercase, concatenate (no spaces)
-              .filter(t => t.length > 0)
-              .slice(0, 8)
+            .filter(t => typeof t === 'string' && t.trim())
+            .map(t => t.trim().toLowerCase().replace(/\s+/g, '')) // Lowercase, concatenate (no spaces)
+            .filter(t => t.length > 0)
+            .slice(0, 8)
           : [];
         return {
           title: parsed.title.trim(),
@@ -851,7 +851,7 @@ export const generateConversationMetadata = async (contents, options = {}) => {
       throw new Error(`Failed to parse metadata response: ${error.message}`);
     }
   }
-  
+
   throw new Error('No valid response from API');
 };
 
@@ -905,7 +905,7 @@ export const fetchFromApi = async (
   const hasOldMessages =
     oldestMessage &&
     currentTime - (oldestMessage.timestamp || 0) / 1000 >
-      MEMORY_COMPRESSION_CONFIG.AGE_THRESHOLD;
+    MEMORY_COMPRESSION_CONFIG.AGE_THRESHOLD;
 
   // Store the original contents for potential compression
   const originalContents = [...processedContents];
@@ -980,11 +980,11 @@ export const fetchFromApi = async (
       { text: roleDefinition[role].selfIntroduction },
       { text: userListPrompt },
       {
-        text: role === "editor" 
+        text: role === "editor"
           ? roleDefinition[role].detailedInstruction.replace(
-              "{{coEditContent}}",
-              documentContent || "(No document content has been set yet.)"
-            )
+            "{{coEditContent}}",
+            documentContent || "(No document content has been set yet.)"
+          )
           : roleDefinition[role].detailedInstruction,
       },
       { text: memoryPrompt.replace("{{memories}}", memoryText) },
@@ -993,11 +993,11 @@ export const fetchFromApi = async (
   };
   // For the contents, update "role" to "user" for all except for the contents from the role
   const finalContents = await prepareContentsForRequest(processedContents, role);
-  
+
   // Prepare the conversation contents (without system prompt)
   // Ensure we always have at least one content item for the API
   let conversationContents = [...finalContents];
-  
+
   // If finalContents is empty, check if there's a user message in processedContents that got filtered out
   // This can happen if the user's message only had parts that were filtered (e.g., only hidden parts)
   if (conversationContents.length === 0) {
@@ -1028,7 +1028,7 @@ export const fetchFromApi = async (
       }
     }
   }
-  
+
   // If still empty, this is an error condition
   if (conversationContents.length === 0) {
     throw new ApiError("No conversation contents available. User message must be added to conversation before making API request.", {
@@ -1036,11 +1036,11 @@ export const fetchFromApi = async (
       details: { parameter: "contents", processedContents },
     });
   }
-  
+
   // Only add continuation message when there's existing conversation AND the last message is not from the user
   // This ensures the user's actual question is preserved when it's the first message
   if (conversationContents.length > 0 &&
-      conversationContents[conversationContents.length - 1].role !== "user") {
+    conversationContents[conversationContents.length - 1].role !== "user") {
     conversationContents.push({
       role: "user",
       parts: [
@@ -1130,19 +1130,19 @@ export const fetchFromApi = async (
     if (error instanceof ApiError && error.status === 403) {
       const errorMessage = error.message || "";
       const fileId = extractFileIdFromError(errorMessage);
-      
+
       if (fileId) {
         console.warn(`File ${fileId} expired (403 error), marking as expired and retrying`);
         markFileExpired(fileId);
-        
+
         // Remove expired files from conversation and retry
         const cleanedContents = removeExpiredFilesFromContents(contents);
-        
+
         // Notify caller that contents were updated (so conversation history can be updated)
         if (onContentsUpdated) {
           onContentsUpdated(cleanedContents);
         }
-        
+
         // Retry the request with cleaned contents
         return fetchFromApi(
           cleanedContents,
@@ -1205,12 +1205,12 @@ function isValidMermaidCode(mermaidCode) {
   if (!mermaidCode || typeof mermaidCode !== 'string') {
     return false;
   }
-  
+
   const trimmedCode = mermaidCode.trim();
   if (!trimmedCode) {
     return false;
   }
-  
+
   try {
     // Check if mermaid.parse() is available (should be in mermaid v11+)
     if (typeof mermaid !== 'undefined' && typeof mermaid.parse === 'function') {
@@ -1251,7 +1251,7 @@ export function postProcessModelResponse(text, currentPersonaName) {
   }
 
   let processedText = text;
-  
+
   // 3. Validate Mermaid code blocks and convert invalid ones to regular code blocks
   // Match ```mermaid blocks and validate their content
   // Pattern matches: ```mermaid followed by optional whitespace/newline, then content, then ```
@@ -1271,11 +1271,11 @@ export function postProcessModelResponse(text, currentPersonaName) {
   // 1. Remove impersonation attempts
   // Get all persona names from roleDefinition
   const personaNames = ['Xaiver', 'Adrien', 'Belinda', 'Charlie', 'Diana'];
-  
+
   // Find any impersonation attempts ($$$ [Other Person] BEGIN $$$ where Other Person != currentPersonaName)
   // Find the earliest impersonation attempt across all personas
   let earliestImpersonationIndex = -1;
-  
+
   for (const personaName of personaNames) {
     if (personaName !== currentPersonaName) {
       // Case-insensitive regex to match "$$$ PersonaName BEGIN $$$"
@@ -1283,7 +1283,7 @@ export function postProcessModelResponse(text, currentPersonaName) {
         `\\$\\$\\$\\s*${personaName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+BEGIN\\s+\\$\\$\\$`,
         'gi'
       );
-      
+
       // Find the first occurrence of impersonation
       const matchIndex = processedText.search(impersonationRegex);
       if (matchIndex !== -1) {
@@ -1294,7 +1294,7 @@ export function postProcessModelResponse(text, currentPersonaName) {
       }
     }
   }
-  
+
   // Remove everything from the earliest impersonation marker onwards
   if (earliestImpersonationIndex !== -1) {
     processedText = processedText.substring(0, earliestImpersonationIndex).trim();
@@ -1304,13 +1304,13 @@ export function postProcessModelResponse(text, currentPersonaName) {
   // This ensures bold/italic formatting renders correctly
   // CORRECT EXAMPLE: ` **bold text** ` or ` *italic text* ` (PAY ATTENTION TO THE SPACES!)
   // Process line by line to ensure formatting is within single lines and pairs are matched
-  
+
   const lines = processedText.split('\n');
   const processedLines = lines.map(line => {
     // Store original line for reference
     const originalLine = line;
     let processedLine = line;
-    
+
     // Handle double asterisks for bold (**text**) - match complete pairs within the line
     // Match **text** patterns and ensure space before opening ** and after closing **
     // Also trim whitespace inside the asterisks
@@ -1325,16 +1325,16 @@ export function postProcessModelResponse(text, currentPersonaName) {
       const charAfter = afterIndex < originalLine.length ? originalLine[afterIndex] : '';
       const isPunctuation = /[.,!?;:]/.test(charAfter);
       const hasSpaceAfter = afterIndex < originalLine.length && /\s/.test(charAfter);
-      
+
       const beforeSpace = hasSpaceBefore ? '' : ' ';
       // Don't add space after if followed by punctuation
       const afterSpace = (hasSpaceAfter || isPunctuation) ? '' : ' ';
       return `${beforeSpace}**${trimmedContent}**${afterSpace}`;
     });
-    
+
     // Update originalLine reference for italic processing (since bold replacements may have changed positions)
     const lineAfterBold = processedLine;
-    
+
     // Handle single asterisks for italic (*text*) - match complete pairs, avoid ** patterns
     // Process italic after bold to avoid conflicts with ** patterns
     // Match *text* but not parts of **text** patterns
@@ -1350,16 +1350,16 @@ export function postProcessModelResponse(text, currentPersonaName) {
       const charAfter = afterIndex < lineAfterBold.length ? lineAfterBold[afterIndex] : '';
       const isPunctuation = /[.,!?;:]/.test(charAfter);
       const hasSpaceAfter = afterIndex < lineAfterBold.length && /\s/.test(charAfter);
-      
+
       const beforeSpace = hasSpaceBefore ? '' : ' ';
       // Don't add space after if followed by punctuation
       const afterSpace = (hasSpaceAfter || isPunctuation) ? '' : ' ';
       return `${beforeSpace}*${trimmedContent}*${afterSpace}`;
     });
-    
+
     return processedLine;
   });
-  
+
   processedText = processedLines.join('\n');
 
   return processedText;
