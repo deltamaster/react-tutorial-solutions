@@ -38,7 +38,7 @@ export const MEMORY_COMPRESSION_CONFIG = {
 };
 
 // Supported models
-const SUPPORTED_MODELS = ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash-lite"];
+const SUPPORTED_MODELS = ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"];
 
 // Flag to track if memory compression is already running in background
 let isMemoryCompressionRunning = false;
@@ -240,7 +240,7 @@ async function generateSummary(conversationSegment) {
 
   try {
     const response = await fetchFromApiCore(
-      "gemini-2.5-flash-lite",
+      "gemini-3.1-flash-lite-preview",
       summarizationRequest
     );
 
@@ -720,7 +720,7 @@ export const fetchFromApiCore = async (model, requestBody) => {
 export const generateFollowUpQuestions = async (contents) => {
   const finalContents = await prepareContentsForRequest(contents);
   const response = await fetchFromApiCore(
-    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
     {
       systemInstruction: { role: "system", parts: [{ text: "You are a helpful assistant that generates follow-up questions as a JSON array of strings." }] },
       contents: [...finalContents, {
@@ -774,7 +774,7 @@ export const generateConversationMetadata = async (contents, options = {}) => {
     : "";
 
   const response = await fetchFromApiCore(
-    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
     {
       systemInstruction: {
         role: "system",
