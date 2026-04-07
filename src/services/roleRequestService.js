@@ -31,6 +31,7 @@ export const processRoleRequest = async (
     onError,
     onMentionedRolesFound,
     onRequestComplete,
+    isOneDriveAvailable = false,
   } = callbacks;
 
   const { role } = task;
@@ -50,7 +51,11 @@ export const processRoleRequest = async (
         conversationSnapshot,
         "default",
         true,
-        role
+        role,
+        false,
+        0,
+        null,
+        isOneDriveAvailable
       );
     } catch (error) {
       if (onError) {

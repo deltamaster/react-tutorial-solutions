@@ -4,7 +4,11 @@
  */
 
 import { getSubscriptionKey, getSystemPrompt, getModel } from '../../utils/settingsService';
-import { roleDefinition } from '../../utils/roleConfig';
+import {
+  roleDefinition,
+  getToolsForRole,
+  adrienOneDriveSavedConversationsInstruction,
+} from '../../utils/roleConfig';
 import { getGenerationConfig, safetySettings } from './generationConfig';
 import { removeExpiredFilesFromContents, markFileExpired, extractFileIdFromError } from '../../utils/fileTrackingService';
 import memoryService from '../../utils/memoryService';
@@ -864,6 +868,7 @@ export const generateConversationMetadata = async (contents, options = {}) => {
  * @param {boolean} ignoreSystemPrompts - Whether to ignore system prompts
  * @param {number} depth - Current retry depth
  * @param {Function} onContentsUpdated - Callback when contents are updated
+ * @param {boolean} isOneDriveAvailable - When true, Adrien receives OneDrive saved-conversation tools (must match sync state)
  * @returns {Promise<Object>} API response
  */
 export const fetchFromApi = async (
@@ -873,7 +878,8 @@ export const fetchFromApi = async (
   role = "general",
   ignoreSystemPrompts = false,
   depth = 0,
-  onContentsUpdated = null
+  onContentsUpdated = null,
+  isOneDriveAvailable = false
 ) => {
   if (depth >= 3) {
     throw Error("Hit Max Retry");
@@ -973,23 +979,33 @@ export const fetchFromApi = async (
 
   // Get the system prompt for the specified role, defaulting to 'general'
   const worldFact = await generateWorldFact(role);
+  const detailedText =
+    role === "editor"
+      ? roleDefinition[role].detailedInstruction.replace(
+          "{{coEditContent}}",
+          documentContent || "(No document content has been set yet.)"
+        )
+      : roleDefinition[role].detailedInstruction;
+
+  const systemInstructionParts = [
+    { text: worldFact },
+    { text: roleDefinition[role].selfIntroduction },
+    { text: userListPrompt },
+    { text: detailedText },
+  ];
+  if (role === "general" && isOneDriveAvailable) {
+    systemInstructionParts.push({
+      text: adrienOneDriveSavedConversationsInstruction,
+    });
+  }
+  systemInstructionParts.push(
+    { text: memoryPrompt.replace("{{memories}}", memoryText) },
+    { text: getSystemPrompt() }
+  );
+
   const systemPrompts = {
     role: "system",
-    parts: [
-      { text: worldFact },
-      { text: roleDefinition[role].selfIntroduction },
-      { text: userListPrompt },
-      {
-        text: role === "editor"
-          ? roleDefinition[role].detailedInstruction.replace(
-            "{{coEditContent}}",
-            documentContent || "(No document content has been set yet.)"
-          )
-          : roleDefinition[role].detailedInstruction,
-      },
-      { text: memoryPrompt.replace("{{memories}}", memoryText) },
-      { text: getSystemPrompt() },
-    ],
+    parts: systemInstructionParts,
   };
   // For the contents, update "role" to "user" for all except for the contents from the role
   const finalContents = await prepareContentsForRequest(processedContents, role);
@@ -1060,9 +1076,12 @@ export const fetchFromApi = async (
     generationConfig: getGenerationConfig(requestType),
   };
 
-  // Configure tools based on role
+  // Configure tools based on role (Adrien: add saved-conversation tools only when OneDrive sync is available)
   if (includeTools) {
-    requestBody.tools = roleDefinition[role].tools;
+    const tools = getToolsForRole(role, { isOneDriveAvailable });
+    if (tools) {
+      requestBody.tools = tools;
+    }
   }
 
   try {
@@ -1118,7 +1137,9 @@ export const fetchFromApi = async (
         includeTools,
         role,
         ignoreSystemPrompts,
-        depth + 1
+        depth + 1,
+        null,
+        isOneDriveAvailable
       );
     } else {
       throw new Error(
@@ -1151,7 +1172,8 @@ export const fetchFromApi = async (
           role,
           ignoreSystemPrompts,
           depth + 1,
-          onContentsUpdated
+          onContentsUpdated,
+          isOneDriveAvailable
         );
       }
     }

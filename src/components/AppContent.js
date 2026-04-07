@@ -127,6 +127,7 @@ function AppContent() {
 
   // Use role requests hook for managing request queue
   const { activeTypers, enqueueRoleRequests } = useRoleRequests({
+    isOneDriveAvailable,
     conversationRef,
     setConversation,
     appendMessage: (message) => {

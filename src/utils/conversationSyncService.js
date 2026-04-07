@@ -44,6 +44,15 @@ export {
 // Re-export from syncOrchestrator
 export { mergeConversations } from '../services/sync/syncOrchestrator';
 
+// OneDrive-backed conversation history search (for tools / Adrien)
+export {
+  listConversationTitlesFromOneDrive,
+  searchConversationTitlesFromOneDrive,
+  searchConversationPartsByKeywordFromOneDrive,
+  searchConversationPartsByTimeRangeFromOneDrive,
+  getConversationPartFromOneDrive,
+} from './conversationHistoryOneDrive';
+
 // Import functions for default export
 import {
   fetchConversationsIndex,
@@ -68,6 +77,14 @@ import { getOrCreateConversationsFolder } from '../services/sync/folderService';
 
 import { mergeConversations } from '../services/sync/syncOrchestrator';
 
+import {
+  listConversationTitlesFromOneDrive,
+  searchConversationTitlesFromOneDrive,
+  searchConversationPartsByKeywordFromOneDrive,
+  searchConversationPartsByTimeRangeFromOneDrive,
+  getConversationPartFromOneDrive,
+} from './conversationHistoryOneDrive';
+
 // Default export for backward compatibility
 export default {
   fetchConversationsIndex,
@@ -82,4 +99,9 @@ export default {
   clearConversationCache,
   getOneDriveAccessToken,
   mergeConversations,
+  listConversationTitlesFromOneDrive,
+  searchConversationTitlesFromOneDrive,
+  searchConversationPartsByKeywordFromOneDrive,
+  searchConversationPartsByTimeRangeFromOneDrive,
+  getConversationPartFromOneDrive,
 };

@@ -19,6 +19,7 @@ import { markFileExpired, extractFileIdFromError, removeExpiredFilesFromContents
  * @param {Function} options.onError - Error handler callback
  * @param {Function} options.onAllRequestsComplete - Callback when all requests complete
  * @param {Object} options.mentionRoleMap - Mention role mapping
+ * @param {boolean} [options.isOneDriveAvailable] - When true, Adrien's API tools include saved cloud conversation search
  * @returns {Object} Role request management functions and state
  */
 export const useRoleRequests = ({
@@ -28,6 +29,7 @@ export const useRoleRequests = ({
   onError,
   onAllRequestsComplete,
   mentionRoleMap,
+  isOneDriveAvailable = false,
 }) => {
   const [activeTypers, setActiveTypers] = useState([]);
 
@@ -106,6 +108,7 @@ export const useRoleRequests = ({
           // Request completed
         },
         getConversationSnapshot: () => conversationRef.current || [],
+        isOneDriveAvailable,
       };
 
       processRoleRequest(task, callbacks, mentionRoleMap)
@@ -137,6 +140,7 @@ export const useRoleRequests = ({
       mentionRoleMap,
       conversationRef,
       onAllRequestsComplete,
+      isOneDriveAvailable,
     ]
   );
 

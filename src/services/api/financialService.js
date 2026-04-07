@@ -1358,4 +1358,95 @@ export const toolbox = {
       };
     }
   },
+
+  list_saved_conversations: async () => {
+    try {
+      const { listConversationTitlesFromOneDrive } = await import(
+        "../../utils/conversationHistoryOneDrive"
+      );
+      return await listConversationTitlesFromOneDrive();
+    } catch (error) {
+      console.error("list_saved_conversations:", error);
+      return { success: false, error: error.message || String(error) };
+    }
+  },
+
+  search_saved_conversations: async (args) => {
+    const validationError = validateRequiredParams(args, ["keyword"]);
+    if (validationError) return validationError;
+    try {
+      const { searchConversationTitlesFromOneDrive } = await import(
+        "../../utils/conversationHistoryOneDrive"
+      );
+      return await searchConversationTitlesFromOneDrive(args.keyword);
+    } catch (error) {
+      console.error("search_saved_conversations:", error);
+      return { success: false, error: error.message || String(error) };
+    }
+  },
+
+  search_saved_conversation_messages: async (args) => {
+    const validationError = validateRequiredParams(args, ["conversation_uuid", "keyword"]);
+    if (validationError) return validationError;
+    try {
+      const { searchConversationPartsByKeywordFromOneDrive } = await import(
+        "../../utils/conversationHistoryOneDrive"
+      );
+      const opts =
+        args.snippet_radius !== undefined && args.snippet_radius !== null
+          ? { snippetRadius: Number(args.snippet_radius) }
+          : {};
+      return await searchConversationPartsByKeywordFromOneDrive(
+        args.conversation_uuid,
+        args.keyword,
+        opts
+      );
+    } catch (error) {
+      console.error("search_saved_conversation_messages:", error);
+      return { success: false, error: error.message || String(error) };
+    }
+  },
+
+  search_saved_conversation_messages_by_time: async (args) => {
+    const validationError = validateRequiredParams(args, [
+      "conversation_uuid",
+      "range_start",
+      "range_end",
+    ]);
+    if (validationError) return validationError;
+    try {
+      const { searchConversationPartsByTimeRangeFromOneDrive } = await import(
+        "../../utils/conversationHistoryOneDrive"
+      );
+      return await searchConversationPartsByTimeRangeFromOneDrive(
+        args.conversation_uuid,
+        args.range_start,
+        args.range_end
+      );
+    } catch (error) {
+      console.error("search_saved_conversation_messages_by_time:", error);
+      return { success: false, error: error.message || String(error) };
+    }
+  },
+
+  get_saved_conversation_message: async (args) => {
+    const validationError = validateRequiredParams(args, ["conversation_uuid", "part_uuid"]);
+    if (validationError) return validationError;
+    try {
+      const { getConversationPartFromOneDrive } = await import(
+        "../../utils/conversationHistoryOneDrive"
+      );
+      const part = await getConversationPartFromOneDrive(args.conversation_uuid, args.part_uuid);
+      if (!part) {
+        return {
+          success: false,
+          error: "Part not found or conversation file is missing.",
+        };
+      }
+      return part;
+    } catch (error) {
+      console.error("get_saved_conversation_message:", error);
+      return { success: false, error: error.message || String(error) };
+    }
+  },
 };

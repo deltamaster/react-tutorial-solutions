@@ -81,6 +81,145 @@ export const deleteMemory = {
   },
 };
 
+/** Saved conversation index (OneDrive `.chatsphere/conversations/index.json`). Only registered when the user has OneDrive / conversation sync available. */
+export const listSavedConversations = {
+  name: "list_saved_conversations",
+  description:
+    "List saved cloud conversation titles from the user's OneDrive backup. Returns title, tags, and conversation UUID for each. Use to discover what past chats exist before searching.",
+  parameters: {
+    type: "object",
+    properties: {},
+    required: [],
+  },
+};
+
+export const searchSavedConversations = {
+  name: "search_saved_conversations",
+  description:
+    "Search saved cloud conversations by keyword in the title or tags (case-insensitive). Returns title, tags, and conversation UUID for each match.",
+  parameters: {
+    type: "object",
+    properties: {
+      keyword: {
+        type: "string",
+        description: "Search text to match against conversation titles and tags.",
+      },
+    },
+    required: ["keyword"],
+  },
+};
+
+export const searchSavedConversationMessages = {
+  name: "search_saved_conversation_messages",
+  description:
+    "Search text within one saved cloud conversation (by conversation UUID). Returns one entry per text part that matches; `parts` is an array of snippets (~15 chars before and after each non-overlapping match in that part). Also returns role, optional speaker name, timestamp, and part UUID. Only searches text parts.",
+  parameters: {
+    type: "object",
+    properties: {
+      conversation_uuid: {
+        type: "string",
+        description: "The saved conversation id (from list_saved_conversations or search_saved_conversations).",
+      },
+      keyword: {
+        type: "string",
+        description: "Text to find inside message parts (case-insensitive).",
+      },
+      snippet_radius: {
+        type: "number",
+        description: "Optional. Characters to include before and after each match (default ~15).",
+      },
+    },
+    required: ["conversation_uuid", "keyword"],
+  },
+};
+
+export const searchSavedConversationMessagesByTime = {
+  name: "search_saved_conversation_messages_by_time",
+  description:
+    "List text parts in one saved cloud conversation whose timestamps fall in a time range (inclusive). Returns role, optional name, part UUID, and timestamp only (no message body).",
+  parameters: {
+    type: "object",
+    properties: {
+      conversation_uuid: {
+        type: "string",
+        description: "The saved conversation id.",
+      },
+      range_start: {
+        type: "string",
+        description: "Range start: ISO 8601 datetime (e.g. 2025-01-15T00:00:00.000Z) or Unix time in milliseconds as a string.",
+      },
+      range_end: {
+        type: "string",
+        description: "Range end: ISO 8601 datetime or Unix milliseconds as a string.",
+      },
+    },
+    required: ["conversation_uuid", "range_start", "range_end"],
+  },
+};
+
+export const getSavedConversationMessage = {
+  name: "get_saved_conversation_message",
+  description:
+    "Load the full text of a single message part from a saved cloud conversation using the part UUID (from search_saved_conversation_messages or search_saved_conversation_messages_by_time).",
+  parameters: {
+    type: "object",
+    properties: {
+      conversation_uuid: {
+        type: "string",
+        description: "The saved conversation id.",
+      },
+      part_uuid: {
+        type: "string",
+        description: "The part UUID inside that conversation file.",
+      },
+    },
+    required: ["conversation_uuid", "part_uuid"],
+  },
+};
+
+/** Adrien's base function tools (memories). OneDrive conversation tools are added only when sync is available. */
+export const adrienBaseFunctionDeclarations = [createMemory, updateMemory, deleteMemory];
+
+/** Extra tools for Adrien when OneDrive conversation backup is available (do not expose otherwise). */
+export const adrienOneDriveConversationDeclarations = [
+  listSavedConversations,
+  searchSavedConversations,
+  searchSavedConversationMessages,
+  searchSavedConversationMessagesByTime,
+  getSavedConversationMessage,
+];
+
+/**
+ * Appended to Adrien's system prompt only when OneDrive conversation sync is available (see geminiService).
+ * Omit entirely when sync is off so the model never sees this capability mentioned.
+ */
+export const adrienOneDriveSavedConversationsInstruction = `## Saved cloud conversations (OneDrive)
+- You can use \`list_saved_conversations\`, \`search_saved_conversations\`, \`search_saved_conversation_messages\`, \`search_saved_conversation_messages_by_time\`, and \`get_saved_conversation_message\` to search titles and message text from the user's cloud-synced chat history.`;
+
+/**
+ * Tools object for Gemini `function_declarations` for a role, optionally including OneDrive saved-conversation tools for Adrien.
+ * @param {string} roleKey - e.g. `general`
+ * @param {{ isOneDriveAvailable?: boolean }} [options]
+ * @returns {{ function_declarations: object[] } | undefined}
+ */
+export function getToolsForRole(roleKey, options = {}) {
+  const { isOneDriveAvailable = false } = options;
+  const def = roleDefinition[roleKey];
+  if (!def?.tools) {
+    return undefined;
+  }
+
+  if (roleKey === "general") {
+    const declarations = [...adrienBaseFunctionDeclarations];
+    if (isOneDriveAvailable) {
+      declarations.push(...adrienOneDriveConversationDeclarations);
+    }
+    return { function_declarations: declarations };
+  }
+
+  return def.tools;
+}
+
 // Function declaration for setting document content
 export const setDocumentContent = {
   name: "set_document_content",
@@ -367,12 +506,9 @@ ${memes.map((meme) => `- path: ${meme.path}, description: ${meme.description}, W
     `,
     // Additional role-specific properties and behaviors can be added here
     canUseFunctions: true,
+    // Base tools only; API requests should use getToolsForRole('general', { isOneDriveAvailable }) to add OneDrive conversation search when sync is available.
     tools: {
-      function_declarations: [
-        createMemory, 
-        updateMemory, 
-        deleteMemory,
-      ],
+      function_declarations: adrienBaseFunctionDeclarations,
     },
   },
   searcher: {
@@ -555,4 +691,13 @@ export const roleUtils = {
   getRoleName: (roleKey) => {
     return roleDefinition[roleKey]?.name || "Adrien";
   },
+
+  /**
+   * Whether saved-conversation (OneDrive) tools should be offered to the model for Adrien.
+   * Mirrors app sync: user signed in and conversation sync / OneDrive available.
+   * @param {boolean} isOneDriveAvailable
+   * @returns {boolean}
+   */
+  shouldExposeAdrienSavedConversationTools: (isOneDriveAvailable) =>
+    Boolean(isOneDriveAvailable),
 };
