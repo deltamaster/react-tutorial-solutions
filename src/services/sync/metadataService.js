@@ -17,7 +17,7 @@ export async function generateConversationMetadataFromConversation(conversation,
   try {
     // Prepare contents - filter out thoughts and hidden parts, keep only text
     const finalContents = conversation
-      .filter(content => content.parts && content.parts.length > 0)
+      .filter(content => !content.usageLedgerOnly && content.parts && content.parts.length > 0)
       .map(content => ({
         role: content.role,
         parts: content.parts

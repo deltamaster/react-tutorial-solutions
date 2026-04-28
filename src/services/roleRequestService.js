@@ -2,6 +2,7 @@ import { roleDefinition, roleUtils } from "../utils/roleConfig";
 import { normalizeBeginMarker } from "../utils/responseUtils";
 import { extractMentionedRolesFromParts } from "../utils/textProcessing/mentionUtils";
 import { fetchFromApi, postProcessModelResponse } from "../services/api/geminiService";
+import { computeGeminiResponseCostUsd, reportApiUsageCost } from "../utils/geminiUsageCost";
 import { toolbox } from "../services/api/financialService";
 import { generatePartUUID } from "../services/conversationService";
 
@@ -67,6 +68,22 @@ export const processRoleRequest = async (
     if (task.cancelled) {
       return;
     }
+
+    const usageCost = computeGeminiResponseCostUsd(
+      responseData.modelVersion,
+      responseData.usageMetadata
+    );
+
+    console.log("[UsageCost] roleRequestService: main chat response", {
+      taskId: task.id,
+      role: task.role,
+      source: "chat",
+      modelVersion: responseData?.modelVersion,
+      hasUsageMetadata: !!responseData?.usageMetadata,
+      usageCost,
+    });
+
+    reportApiUsageCost(responseData, { source: "chat" }, usageCost);
 
     const candidate = responseData?.candidates?.[0];
     if (!candidate || !candidate.content) {
@@ -134,6 +151,7 @@ export const processRoleRequest = async (
           candidate?.groundingMetadata?.groundingChunks || [],
         groundingSupports:
           candidate?.groundingMetadata?.groundingSupports || [],
+        ...(usageCost ? { usageCost } : {}),
       };
 
       if (onMessageAppended) {
@@ -240,6 +258,7 @@ export const processRoleRequest = async (
             },
           })),
           timestamp: Date.now(),
+          ...(textParts.length === 0 && usageCost ? { usageCost } : {}),
         };
 
         if (onMessageAppended) {

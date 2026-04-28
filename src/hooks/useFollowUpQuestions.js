@@ -59,7 +59,7 @@ export const useFollowUpQuestions = ({ conversationRef, activeTypers = [] }) => 
         // Use combined metadata generation function (generates title, summary, and next questions)
         // Prepare contents - filter out thoughts and hidden parts, keep only text
         const finalContents = conversationSnapshot
-          .filter(content => content.parts && content.parts.length > 0)
+          .filter(content => !content.usageLedgerOnly && content.parts && content.parts.length > 0)
           .map(content => ({
             role: content.role,
             parts: content.parts

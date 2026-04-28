@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Container from "react-bootstrap/Container";
 import Row from "react-bootstrap/Row";
 import Col from "react-bootstrap/Col";
@@ -32,6 +33,7 @@ import { useMessageEditing } from "../hooks/useMessageEditing";
 import { useFloatingMenu } from "../hooks/useFloatingMenu";
 import { useTabs } from "../hooks/useTabs";
 import { findFunctionResponseIndices, deleteMessages, filterDeletedMessages, appendMessage, generatePartUUID } from "../services/conversationService";
+import { setUsageCostReporter } from "../utils/geminiUsageCost";
 
 // Main application content component
 function AppContent() {
@@ -74,6 +76,13 @@ function AppContent() {
   // Use conversation hook for state management
   const conversationHookResult = useConversation("conversation");
   const [conversation, setConversation, conversationRef, syncHelpers] = conversationHookResult;
+
+  const conversationUsageTotalUsd = useMemo(() => {
+    return filterDeletedMessages(conversation || []).reduce(
+      (sum, m) => sum + (Number(m.usageCost?.usd) || 0),
+      0
+    );
+  }, [conversation]);
   
   // Extract sync helpers if OneDrive is available
   const currentConversationTitle = syncHelpers?.currentConversationTitle || 'New Conversation';
@@ -113,6 +122,82 @@ function AppContent() {
   }, [originalSaveEditing, syncHelpers]);
 
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [usageCostToast, setUsageCostToast] = useState(null);
+  const usageCostClearRef = useRef(null);
+
+  const handleUsageCost = useCallback((info) => {
+    if (!info || typeof info.usd !== "number" || !Number.isFinite(info.usd)) {
+      console.warn("[UsageCost] AppContent handleUsageCost skipped — invalid payload", {
+        info,
+        typeofUsd: info && typeof info.usd,
+      });
+      return;
+    }
+    const label = `$${info.usd.toFixed(5)}`;
+    console.log("[UsageCost] AppContent showing toast", {
+      label,
+      source: info.source,
+      usd: info.usd,
+      pricingModelKey: info.pricingModelKey,
+      modelVersion: info.modelVersion,
+      tokens: {
+        cached: info.cachedTokens,
+        uncachedInput: info.uncachedInputTokens,
+        output: info.outputTokens,
+      },
+    });
+    setUsageCostToast({ id: Date.now(), label });
+
+    if (info.source && info.source !== "chat") {
+      setConversation((prev) =>
+        appendMessage(prev || [], {
+          role: "model",
+          usageLedgerOnly: true,
+          usageCost: {
+            usd: info.usd,
+            modelVersion: info.modelVersion,
+            pricingModelKey: info.pricingModelKey,
+            cachedTokens: info.cachedTokens,
+            uncachedInputTokens: info.uncachedInputTokens,
+            outputTokens: info.outputTokens,
+            source: info.source,
+          },
+          timestamp: Date.now(),
+          parts: [{ text: "", hide: true, uuid: generatePartUUID() }],
+        })
+      );
+    }
+  }, [setConversation]);
+
+  useEffect(() => {
+    if (!usageCostToast) {
+      return undefined;
+    }
+    console.log("[UsageCost] AppContent toast mounted (portal to document.body)", {
+      label: usageCostToast.label,
+      id: usageCostToast.id,
+    });
+    if (usageCostClearRef.current) {
+      clearTimeout(usageCostClearRef.current);
+    }
+    usageCostClearRef.current = setTimeout(() => {
+      console.log("[UsageCost] AppContent toast cleared after 2s");
+      setUsageCostToast(null);
+      usageCostClearRef.current = null;
+    }, 2000);
+    return () => {
+      if (usageCostClearRef.current) {
+        clearTimeout(usageCostClearRef.current);
+        usageCostClearRef.current = null;
+      }
+    };
+  }, [usageCostToast]);
+
+  useEffect(() => {
+    setUsageCostReporter(handleUsageCost);
+    return () => setUsageCostReporter(null);
+  }, [handleUsageCost]);
 
   // State for controlling visibility of top settings
   const [showTopSettings, setShowTopSettings] = useState(false);
@@ -705,6 +790,7 @@ function AppContent() {
                   onSubmit={handleSubmit}
                   value={question}
                   onChange={setQuestion}
+                  conversationTotalCostUsd={conversationUsageTotalUsd}
                 />
               </Col>
             </Row>
@@ -732,6 +818,19 @@ function AppContent() {
         onTabChange={setCurrentTab}
         showFloatingTabs={showFloatingTabs}
       />
+
+      {usageCostToast &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            key={usageCostToast.id}
+            className="usage-cost-toast"
+            aria-live="polite"
+          >
+            {usageCostToast.label}
+          </div>,
+          document.body
+        )}
     </Container>
   );
 }

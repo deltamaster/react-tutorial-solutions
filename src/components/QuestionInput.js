@@ -9,7 +9,13 @@ import { getThinkingEnabled, setThinkingEnabled } from "../utils/settingsService
 import { validateImageFile, validatePdfFile } from "../utils/fileUtils";
 
 // Question input component
-function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
+function QuestionInput({
+  onSubmit,
+  disabled = false,
+  value = "",
+  onChange,
+  conversationTotalCostUsd = 0,
+}) {
   const [localQuestion, setLocalQuestion] = useState(value);
   // 使用settingsService获取思考模式设置
   const [isThinkingEnabled, setIsThinkingEnabled] = useState(getThinkingEnabled());
@@ -435,17 +441,25 @@ function QuestionInput({ onSubmit, disabled = false, value = "", onChange }) {
           </Col>
         </Row>
         <Row>
-          <Col className="d-flex justify-content-end">
-            <img
-              src="/horse-mini.png"
-              alt="Year of Horse"
-              style={{
-                height: "60px",
-                width: "auto",
-                objectFit: "contain",
-                marginBottom: "0",
-              }}
-            />
+          <Col className="d-flex justify-content-end align-items-end">
+            <div className="d-flex align-items-end flex-shrink-0 gap-2">
+              <div
+                className="conversation-usage-total"
+                title="Estimated Gemini API usage (USD) for this conversation"
+              >
+                ${Number(conversationTotalCostUsd).toFixed(2)}
+              </div>
+              <img
+                src="/horse-mini.png"
+                alt="Year of Horse"
+                style={{
+                  height: "60px",
+                  width: "auto",
+                  objectFit: "contain",
+                  marginBottom: "0",
+                }}
+              />
+            </div>
           </Col>
         </Row>
         <Row style={{ marginTop: "-10px" }}>

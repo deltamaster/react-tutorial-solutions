@@ -91,6 +91,9 @@ function ConversationHistory({
   return (
     <div className="conversation-history" ref={conversationContainerRef}>
       {history.map((content, index) => {
+        if (content.usageLedgerOnly) {
+          return null;
+        }
         // Check if there are elements with text property or image data in content.parts
         const hasValidParts =
           content.parts &&

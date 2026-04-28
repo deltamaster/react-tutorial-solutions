@@ -15,6 +15,7 @@ import memoryService from '../../utils/memoryService';
 import coEditService from '../../utils/coEditService';
 import mermaid from 'mermaid';
 import { ApiError } from './apiClient';
+import { reportApiUsageCost } from '../../utils/geminiUsageCost';
 
 // Re-export ApiError for backward compatibility
 export { ApiError };
@@ -59,6 +60,9 @@ const calculateConversationTokenCount = (conversation) => {
   let totalTokens = 0;
 
   for (const message of conversation) {
+    if (message.usageLedgerOnly) {
+      continue;
+    }
     if (message.parts) {
       for (const part of message.parts) {
         if (part.text) {
@@ -193,6 +197,7 @@ function getLatestSummaryPoint() {
 async function generateSummary(conversationSegment) {
   // Format the conversation segment for summarization
   const formattedConversation = conversationSegment
+    .filter((msg) => !msg.usageLedgerOnly)
     .map((msg) => {
       const role = msg.role === "user" ? "User" : msg.name || "Assistant";
       const content = msg.parts
@@ -249,6 +254,8 @@ async function generateSummary(conversationSegment) {
     );
 
     const responseData = await response.json();
+
+    reportApiUsageCost(responseData, { source: "memoryCompression" });
 
     // Extract summary text from response
     if (
@@ -550,12 +557,6 @@ const prepareContentsForRequest = async (contents, role) => {
       }
     });
   }
-  // Filter contents first: for each content in contents, keep only "role" and "parts"
-  const filteredContents = processedContents.map((content) => ({
-    role: content.role,
-    parts: content.parts,
-  }));
-
   // Helper function to clean parts for API (remove internal fields)
   // Remove uuid, timestamp, lastUpdate, and hide - these are internal fields not recognized by the API
   const cleanPartForApi = (part) => {
@@ -566,9 +567,16 @@ const prepareContentsForRequest = async (contents, role) => {
     return cleanedPart;
   };
 
-  // Filter out thought contents before sending the request and process any image files
+  // Build API turns from local messages (usageLedgerOnly = cost bookkeeping only, never sent)
   const finalContents = [];
-  for (const content of filteredContents) {
+  for (const rawContent of processedContents) {
+    if (rawContent.usageLedgerOnly) {
+      continue;
+    }
+    const content = {
+      role: rawContent.role,
+      parts: rawContent.parts,
+    };
     if (content.parts) {
       // Process each part to handle image files and filter out thoughts
       const processedParts = [];
@@ -744,6 +752,8 @@ export const generateFollowUpQuestions = async (contents) => {
 
   const responseObj = await handleApiResponse(response);
 
+  reportApiUsageCost(responseObj, { source: "followUpQuestions" });
+
   // Handle finishReason
   let finishReason = responseObj.candidates[0].finishReason;
   let finishMessage = responseObj.candidates[0].finishMessage;
@@ -809,6 +819,8 @@ export const generateConversationMetadata = async (contents, options = {}) => {
   );
 
   const responseObj = await handleApiResponse(response);
+
+  reportApiUsageCost(responseObj, { source: "conversationMetadata" });
 
   // Handle finishReason
   let finishReason = responseObj.candidates[0].finishReason;
@@ -1103,8 +1115,22 @@ export const fetchFromApi = async (
       console.log(
         `Token Usage: Prompt=${promptTokenCount}, Candidates=${candidatesTokenCount}, Thoughts=${thoughtsTokenCount} Total=${totalTokenCount}`
       );
+      console.log("[UsageCost] fetchFromApi response includes usageMetadata", {
+        modelVersion: responseObj.modelVersion,
+        promptTokenCount,
+        candidatesTokenCount,
+        thoughtsTokenCount,
+        totalTokenCount,
+        toolUsePromptTokenCount: responseObj.usageMetadata.toolUsePromptTokenCount,
+        cachedContentTokenCount: responseObj.usageMetadata.cachedContentTokenCount,
+      });
     } else {
-      console.log("No usageMetadata available in response");
+      console.warn(
+        "[UsageCost] fetchFromApi: No usageMetadata on response — cost toast will not run. modelVersion=",
+        responseObj.modelVersion,
+        "response keys:",
+        Object.keys(responseObj)
+      );
     }
 
     let finishReason = responseObj.candidates[0].finishReason;

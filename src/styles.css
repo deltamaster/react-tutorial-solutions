@@ -1633,6 +1633,62 @@ button.pdf-image-button:hover:not(:disabled) {
   cursor: pointer;
 }
 
+/* Running total above question input (beside horse) */
+.conversation-usage-total {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #dc2626;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  padding-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
 .html-code-content.expanded {
   cursor: default;
+}
+
+/* Per-response API cost toast — frosted glass (aligned with floating menu) */
+.usage-cost-toast {
+  position: fixed;
+  bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  z-index: 2147483000;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #dc2626;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+  max-width: min(90vw, 360px);
+  text-align: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: usageCostToastFade 2s ease-out forwards;
+}
+
+@keyframes usageCostToastFade {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px);
+  }
 }
