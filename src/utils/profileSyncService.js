@@ -1458,7 +1458,7 @@ export async function syncConfig() {
         localStorage.setItem('userAvatar', remoteConfig.userAvatar || '');
       }
       if (remoteConfig.model !== undefined) {
-        localStorage.setItem('model', remoteConfig.model || 'gemini-3-flash-preview');
+        localStorage.setItem('model', remoteConfig.model || 'gemini-3.5-flash');
       }
       
       setSyncingFromRemote(false);

@@ -43,7 +43,7 @@ export const MEMORY_COMPRESSION_CONFIG = {
 };
 
 // Supported models
-const SUPPORTED_MODELS = ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"];
+const SUPPORTED_MODELS = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite-preview"];
 
 // Flag to track if memory compression is already running in background
 let isMemoryCompressionRunning = false;
@@ -652,7 +652,7 @@ const prepareContentsForRequest = async (contents, role) => {
 
 /**
  * Core API call without retry logic.
- * @param {string} model - The model identifier (supports "gemini-2.5-flash" or "gemini-3-flash-preview").
+ * @param {string} model - The model identifier (supports "gemini-3.5-flash" or "gemini-3.1-pro-preview").
  * @param {object} requestBody - The request body to be sent to the API.
  * @returns {Promise<Response>} The fetch response object if successful.
  * @throws {ApiError} If the API request fails or returns a non-ok status.

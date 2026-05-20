@@ -13,7 +13,7 @@ An AI-first chat workspace built with React 18. The app pairs a conversational a
 - **Image & PDF support**: upload from disk or paste straight from clipboard; files flow through resumable upload protocol with automatic expiration tracking (12 hours).
 - **Text-to-Speech**: Convert any response to audio with role-specific voices. Supports CJK characters and automatic text chunking for long responses.
 - **Thinking mode**: Toggle adaptive thinking mode to see the model's reasoning process (enabled by default).
-- **Model selection**: Choose between Gemini models (gemini-3-flash-preview, gemini-2.5-flash).
+- **Model selection**: Choose between Gemini models (gemini-3.5-flash, gemini-3.1-pro-preview).
 - **Conversation controls**: reset, download, upload, and in-place editing for any message or thought.
 - **Memory management**: store, edit, and sync memories with OneDrive. Auto-sync option keeps memories synchronized across devices.
 - **OneDrive sync**: synchronize memories with OneDrive using Microsoft authentication. Profile data is stored in `.chatsphere/profile.json` in your OneDrive. Supports automatic merging based on timestamps and handles deleted memories.
@@ -55,7 +55,7 @@ The dev server runs at [http://localhost:3000](http://localhost:3000) with hot r
    Open *Settings → Global Settings* and configure:
    - Gemini subscription key
    - System prompt
-   - Model selection (gemini-3-flash-preview or gemini-2.5-flash)
+   - Model selection (gemini-3.5-flash or gemini-3.1-pro-preview)
    - Thinking mode toggle (enabled by default)
    - User avatar (male/female)
    - **Optional**: Login with Microsoft account to enable OneDrive sync for memories
@@ -228,8 +228,8 @@ The APIM gateway centralizes API management, provides a single entry point for a
 ### Model Selection
 
 - **Multiple Models**: Choose between Gemini models:
-  - `gemini-3-flash-preview` (default)
-  - `gemini-2.5-flash`
+  - `gemini-3.5-flash` (default)
+  - `gemini-3.1-pro-preview`
 - **Model Persistence**: Selected model is saved in localStorage and persists across sessions.
 
 ### Content Rendering
@@ -278,7 +278,7 @@ The APIM gateway centralizes API management, provides a single entry point for a
 - **Memory compression**: Automatically triggers when conversation token count exceeds thresholds. Summaries replace old segments but are stored separately for export.
 - **Text-to-Speech**: Requires subscription key. Long responses are automatically chunked. Audio URLs may expire based on API response.
 - **Thinking mode**: Disabled by default for follow-up questions and summarization to reduce latency. Can be toggled in settings.
-- **Model selection**: Default model is `gemini-3-flash-preview`. Model selection persists across sessions.
+- **Model selection**: Default model is `gemini-3.5-flash`. Model selection persists across sessions.
 
 ---
 

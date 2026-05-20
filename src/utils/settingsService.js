@@ -521,10 +521,17 @@ export const setThinkingEnabled = (enabled) => {
 
 /**
  * Get the selected model from localStorage
- * @returns {string} The saved model or "gemini-3-flash-preview" as default
+ * @returns {string} The saved model or "gemini-3.5-flash" as default
  */
+const LEGACY_MODEL_MAP = {
+  'gemini-3-flash-preview': 'gemini-3.5-flash',
+  'gemini-2.5-flash': 'gemini-3.1-pro-preview',
+};
+
 export const getModel = () => {
-  return localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-3-flash-preview';
+  const stored = localStorage.getItem(STORAGE_KEYS.MODEL);
+  const model = stored || 'gemini-3.5-flash';
+  return LEGACY_MODEL_MAP[model] || model;
 };
 
 /**
