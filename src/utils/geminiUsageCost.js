@@ -6,6 +6,7 @@
 const MODEL_PRICING_USD_PER_1M = {
   "gemini-3.5-flash": { cached: 0.15, input: 1.5, output: 9 },
   "gemini-3.1-pro-preview": { cached: 0.2, input: 2, output: 12 },
+  "gemini-3.1-flash-lite": { cached: 0.025, input: 0.25, output: 1.5 },
   "gemini-3.1-flash-lite-preview": { cached: 0.025, input: 0.25, output: 1.5 },
 };
 
