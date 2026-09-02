@@ -16,6 +16,7 @@ import coEditService from '../../utils/coEditService';
 import mermaid from 'mermaid';
 import { ApiError } from './apiClient';
 import { reportApiUsageCost } from '../../utils/geminiUsageCost';
+import { mergeAdjacentThoughtParts } from '../conversationService';
 
 // Re-export ApiError for backward compatibility
 export { ApiError };
@@ -401,6 +402,299 @@ async function handleApiResponse(response) {
   return responseObj;
 }
 
+function createStreamAccumulator() {
+  return {
+    responseMeta: {},
+    candidateMeta: {},
+    partAccumulator: [],
+    responseStarted: false,
+  };
+}
+
+const BEGIN_MARKER_REGEX = /\$\$\$\s+[\w.]+\s+BEGIN\s+\$\$\$\s*\n?/i;
+
+function splitAtBeginMarker(text) {
+  const match = text.match(BEGIN_MARKER_REGEX);
+  if (!match) {
+    return { before: text, after: "", hasMarker: false };
+  }
+  const markerIndex = text.search(BEGIN_MARKER_REGEX);
+  return {
+    before: text.slice(0, markerIndex),
+    after: text.slice(markerIndex + match[0].length),
+    hasMarker: true,
+  };
+}
+
+function getOrCreateThoughtPart(accumulator) {
+  const thoughtIndex = accumulator.partAccumulator.findIndex(
+    (part) => part && part.thought === true
+  );
+  if (thoughtIndex !== -1) {
+    return accumulator.partAccumulator[thoughtIndex];
+  }
+
+  const newIndex = accumulator.partAccumulator.length;
+  accumulator.partAccumulator[newIndex] = {
+    text: "",
+    thought: true,
+  };
+  return accumulator.partAccumulator[newIndex];
+}
+
+function getOrCreateResponsePartIndex(accumulator, preferredIndex) {
+  if (
+    typeof preferredIndex === "number" &&
+    accumulator.partAccumulator[preferredIndex] &&
+    accumulator.partAccumulator[preferredIndex].thought !== true
+  ) {
+    return preferredIndex;
+  }
+
+  const existingIndex = accumulator.partAccumulator.findIndex(
+    (part) => part && part.thought !== true && typeof part.text === "string"
+  );
+  if (existingIndex !== -1) {
+    return existingIndex;
+  }
+
+  return accumulator.partAccumulator.length;
+}
+
+function mergeStreamPartFields(existing, part) {
+  if (part.thought !== undefined) {
+    existing.thought = part.thought;
+  }
+  if (part.thoughtSignature) {
+    existing.thoughtSignature = part.thoughtSignature;
+  }
+  if (part.functionCall) {
+    existing.functionCall = part.functionCall;
+  }
+  if (part.executableCode) {
+    existing.executableCode = part.executableCode;
+  }
+  if (part.codeExecutionResult) {
+    existing.codeExecutionResult = part.codeExecutionResult;
+  }
+  if (part.inlineData) {
+    existing.inlineData = part.inlineData;
+  }
+}
+
+function appendToResponsePart(accumulator, text, partMeta = {}) {
+  if (!text) {
+    return;
+  }
+  const responseIndex = getOrCreateResponsePartIndex(accumulator);
+  if (!accumulator.partAccumulator[responseIndex]) {
+    accumulator.partAccumulator[responseIndex] = {
+      text: "",
+      thought: false,
+    };
+  }
+  const responsePart = accumulator.partAccumulator[responseIndex];
+  responsePart.text = `${responsePart.text || ""}${text}`;
+  responsePart.thought = false;
+  mergeStreamPartFields(responsePart, partMeta);
+  accumulator.responseStarted = true;
+}
+
+function appendStreamText(accumulator, incomingText, partMeta = {}) {
+  if (!incomingText) {
+    return;
+  }
+
+  if (partMeta.thought === false || accumulator.responseStarted) {
+    appendToResponsePart(accumulator, incomingText, partMeta);
+    return;
+  }
+
+  const thoughtPart = getOrCreateThoughtPart(accumulator);
+  const combined = `${thoughtPart.text || ""}${incomingText}`;
+  const { before, after, hasMarker } = splitAtBeginMarker(combined);
+
+  thoughtPart.text = before;
+  thoughtPart.thought = true;
+  mergeStreamPartFields(thoughtPart, partMeta);
+
+  if (hasMarker) {
+    accumulator.responseStarted = true;
+    appendToResponsePart(accumulator, after, partMeta);
+  }
+}
+
+function applyStreamChunk(accumulator, chunk) {
+  if (!chunk || typeof chunk !== "object") {
+    return;
+  }
+
+  accumulator.responseMeta = {
+    ...accumulator.responseMeta,
+    ...(chunk.modelVersion ? { modelVersion: chunk.modelVersion } : {}),
+    ...(chunk.responseId ? { responseId: chunk.responseId } : {}),
+    ...(chunk.usageMetadata ? { usageMetadata: chunk.usageMetadata } : {}),
+  };
+
+  const candidate = chunk.candidates?.[0];
+  if (!candidate) {
+    return;
+  }
+
+  accumulator.candidateMeta = {
+    ...accumulator.candidateMeta,
+    ...(candidate.finishReason ? { finishReason: candidate.finishReason } : {}),
+    ...(candidate.finishMessage ? { finishMessage: candidate.finishMessage } : {}),
+    ...(candidate.groundingMetadata
+      ? { groundingMetadata: candidate.groundingMetadata }
+      : {}),
+  };
+
+  const parts = candidate.content?.parts || [];
+  parts.forEach((part, index) => {
+    if (part.thoughtSignature && !part.text) {
+      const thoughtPart = getOrCreateThoughtPart(accumulator);
+      thoughtPart.thoughtSignature = part.thoughtSignature;
+      thoughtPart.thought = true;
+      return;
+    }
+
+    const hasRenderableContent =
+      part.text ||
+      part.functionCall ||
+      part.executableCode ||
+      part.codeExecutionResult ||
+      part.inlineData;
+    if (!hasRenderableContent) {
+      return;
+    }
+
+    if (part.text) {
+      if (part.thought === true) {
+        appendStreamText(accumulator, part.text, part);
+      } else if (part.thought === false || accumulator.responseStarted) {
+        appendToResponsePart(accumulator, part.text, part);
+      } else {
+        appendStreamText(accumulator, part.text, part);
+      }
+      return;
+    }
+
+    if (!accumulator.partAccumulator[index]) {
+      accumulator.partAccumulator[index] = { ...part };
+      return;
+    }
+
+    mergeStreamPartFields(accumulator.partAccumulator[index], part);
+  });
+}
+
+function buildStreamResponse(accumulator) {
+  if (accumulator.partAccumulator.length === 0 && !accumulator.candidateMeta.finishReason) {
+    return null;
+  }
+
+  const mergedParts = mergeAdjacentThoughtParts(
+    accumulator.partAccumulator.filter(Boolean)
+  );
+
+  return {
+    ...accumulator.responseMeta,
+    candidates: [
+      {
+        ...accumulator.candidateMeta,
+        content: {
+          role: "model",
+          parts: mergedParts,
+        },
+      },
+    ],
+  };
+}
+
+async function readGeminiApiError(response) {
+  let errorMessage = "";
+  let errorDetails = {};
+
+  try {
+    const errorBody = await response.text();
+    if (errorBody) {
+      try {
+        const parsedError = JSON.parse(errorBody);
+        errorMessage = parsedError.error?.message || errorBody;
+        errorDetails = parsedError.error || {};
+      } catch (e) {
+        errorMessage = errorBody;
+      }
+    }
+  } catch (e) {
+    errorMessage = "Unknown error occurred";
+  }
+
+  throw new ApiError(`API request failed: ${errorMessage}`, {
+    status: response.status,
+    statusCode: response.status,
+    errorType: "api_response_error",
+    details: {
+      responseType: response.type,
+      ...errorDetails,
+    },
+  });
+}
+
+async function consumeGeminiSseStream(response, onEvent) {
+  if (!response.body) {
+    throw new Error("Streaming response has no body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) {
+        continue;
+      }
+      const payload = line.slice(6).trim();
+      if (!payload) {
+        continue;
+      }
+      onEvent(JSON.parse(payload));
+    }
+  }
+}
+
+async function handleGeminiStreamingResponse(response, onStreamUpdate) {
+  const accumulator = createStreamAccumulator();
+
+  await consumeGeminiSseStream(response, (chunk) => {
+    applyStreamChunk(accumulator, chunk);
+    if (typeof onStreamUpdate === "function") {
+      const partialResponse = buildStreamResponse(accumulator);
+      if (partialResponse) {
+        onStreamUpdate(partialResponse);
+      }
+    }
+  });
+
+  const responseObj = buildStreamResponse(accumulator);
+  if (!responseObj?.candidates?.length) {
+    throw new Error("No candidates in streaming response");
+  }
+
+  return responseObj;
+}
+
 /**
  * Fetch and format memory text from memory service
  * @returns {Promise<string>} - Formatted memory text
@@ -676,37 +970,50 @@ export const fetchFromApiCore = async (model, requestBody) => {
     if (response.ok) {
       return response;
     }
-    // Try to get error details, but don't fail if response isn't JSON
-    let errorDetails = {};
-    let errorMessage = "";
-
-    try {
-      const errorBody = await response.text();
-      if (errorBody) {
-        try {
-          // Attempt to parse as JSON
-          const parsedError = JSON.parse(errorBody);
-          errorMessage = parsedError.error?.message || errorBody;
-          errorDetails = parsedError.error || {};
-        } catch (e) {
-          // If not JSON, use the text directly
-          errorMessage = errorBody;
-        }
-      }
-    } catch (e) {
-      // If we can't even get text, use default error
-      errorMessage = "Unknown error occurred";
+    await readGeminiApiError(response);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      console.error("API error:", error);
+      throw error;
     }
 
-    throw new ApiError(`API request failed: ${errorMessage}`, {
-      status: response.status,
-      statusCode: response.status,
-      errorType: "api_response_error",
-      details: {
-        responseType: response.type,
-        ...errorDetails,
-      },
+    console.error("Unexpected Error:", error);
+    throw new ApiError(
+      error.message || "Network or unexpected error occurred",
+      {
+        errorType: "unknown",
+        originalError: error,
+      }
+    );
+  }
+};
+
+/**
+ * Streaming API call (SSE) without retry logic.
+ * @param {string} model - The model identifier.
+ * @param {object} requestBody - The request body to be sent to the API.
+ * @returns {Promise<Response>} The fetch response object if successful.
+ */
+export const fetchFromApiStreamCore = async (model, requestBody) => {
+  if (!SUPPORTED_MODELS.includes(model)) {
+    throw new Error(`Model ${model} is not supported. Supported models: ${SUPPORTED_MODELS.join(", ")}`);
+  }
+  const apiRequestUrl = `https://jp-gw2.azure-api.net/gemini/models/${model}:streamGenerateContent?alt=sse`;
+  const requestHeader = {
+    "Content-Type": "application/json",
+    "Ocp-Apim-Subscription-Key": getSubscriptionKey(),
+  };
+
+  try {
+    const response = await fetch(apiRequestUrl, {
+      method: "POST",
+      headers: requestHeader,
+      body: JSON.stringify(requestBody),
     });
+    if (response.ok) {
+      return response;
+    }
+    await readGeminiApiError(response);
   } catch (error) {
     if (error instanceof ApiError) {
       console.error("API error:", error);
@@ -881,6 +1188,7 @@ export const generateConversationMetadata = async (contents, options = {}) => {
  * @param {number} depth - Current retry depth
  * @param {Function} onContentsUpdated - Callback when contents are updated
  * @param {boolean} isOneDriveAvailable - When true, Adrien receives OneDrive saved-conversation tools (must match sync state)
+ * @param {Object|null} [streamOptions] - Optional streaming callbacks: { onStreamUpdate(responseObj) }
  * @returns {Promise<Object>} API response
  */
 export const fetchFromApi = async (
@@ -891,7 +1199,8 @@ export const fetchFromApi = async (
   ignoreSystemPrompts = false,
   depth = 0,
   onContentsUpdated = null,
-  isOneDriveAvailable = false
+  isOneDriveAvailable = false,
+  streamOptions = null
 ) => {
   if (depth >= 3) {
     throw Error("Hit Max Retry");
@@ -1097,12 +1406,19 @@ export const fetchFromApi = async (
   }
 
   try {
-    const response = await fetchFromApiCore(
-      getModel(),
-      requestBody
-    );
+    const model = getModel();
+    let responseObj;
 
-    let responseObj = await handleApiResponse(response);
+    if (streamOptions?.onStreamUpdate) {
+      const response = await fetchFromApiStreamCore(model, requestBody);
+      responseObj = await handleGeminiStreamingResponse(
+        response,
+        streamOptions.onStreamUpdate
+      );
+    } else {
+      const response = await fetchFromApiCore(model, requestBody);
+      responseObj = await handleApiResponse(response);
+    }
 
     // Log token usage statistics in a single line
     if (responseObj.usageMetadata) {
@@ -1165,7 +1481,8 @@ export const fetchFromApi = async (
         ignoreSystemPrompts,
         depth + 1,
         null,
-        isOneDriveAvailable
+        isOneDriveAvailable,
+        streamOptions
       );
     } else {
       throw new Error(
@@ -1199,7 +1516,8 @@ export const fetchFromApi = async (
           ignoreSystemPrompts,
           depth + 1,
           onContentsUpdated,
-          isOneDriveAvailable
+          isOneDriveAvailable,
+          streamOptions
         );
       }
     }

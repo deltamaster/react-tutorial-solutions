@@ -1,8 +1,32 @@
 import React, { useState, useEffect } from 'react';
+import { readConversationFromStorage } from '../services/conversationService';
 
 // Custom hook for Chrome extension storage
 export function useLocalStorage(key, initialValue) {
-  const [storedValue, setStoredValue] = useState(initialValue);
+  const [storedValue, setStoredValue] = useState(() => {
+    if (key === 'conversation') {
+      const storedConversation = readConversationFromStorage(key);
+      if (storedConversation.length > 0) {
+        return storedConversation;
+      }
+    }
+
+    try {
+      if (typeof chrome === 'undefined' || !chrome.storage) {
+        const item = localStorage.getItem(key);
+        if (item !== null) {
+          const parsed = JSON.parse(item);
+          if (parsed !== undefined && parsed !== null && parsed !== 'undefined') {
+            return parsed;
+          }
+        }
+      }
+    } catch {
+      // Fall back to initial value
+    }
+
+    return initialValue;
+  });
 
   // Load value from Chrome storage on component mount
   useEffect(() => {
@@ -27,9 +51,18 @@ export function useLocalStorage(key, initialValue) {
             if (value === "undefined" || (key === "conversation" && !Array.isArray(value))) {
               // Delete corrupted data and use initial value
               chrome.storage.local.remove([key]);
-              setStoredValue(initialValue);
+              setStoredValue((current) =>
+                key === 'conversation' && Array.isArray(current) && current.length > 0
+                  ? current
+                  : initialValue
+              );
             } else {
-              setStoredValue(value);
+              setStoredValue((current) => {
+                if (key === 'conversation' && Array.isArray(current) && current.length > 0) {
+                  return current;
+                }
+                return value;
+              });
             }
           }
         } else {
@@ -42,17 +75,35 @@ export function useLocalStorage(key, initialValue) {
               if (parsed === "undefined" || (key === "conversation" && !Array.isArray(parsed))) {
                 // Delete corrupted data and use initial value
                 localStorage.removeItem(key);
-                setStoredValue(initialValue);
+                setStoredValue((current) =>
+                  key === 'conversation' && Array.isArray(current) && current.length > 0
+                    ? current
+                    : initialValue
+                );
               } else {
-                setStoredValue(parsed);
+                setStoredValue((current) => {
+                  if (key === 'conversation' && Array.isArray(current) && current.length > 0) {
+                    return current;
+                  }
+                  return parsed;
+                });
               }
             } catch (e) {
               // If parsing fails or value is invalid, delete corrupted data
               if (item === "undefined" || (key === "conversation" && item !== null)) {
                 localStorage.removeItem(key);
-                setStoredValue(initialValue);
+                setStoredValue((current) =>
+                  key === 'conversation' && Array.isArray(current) && current.length > 0
+                    ? current
+                    : initialValue
+                );
               } else {
-                setStoredValue(item);
+                setStoredValue((current) => {
+                  if (key === 'conversation' && Array.isArray(current) && current.length > 0) {
+                    return current;
+                  }
+                  return item;
+                });
               }
             }
           }
@@ -63,7 +114,7 @@ export function useLocalStorage(key, initialValue) {
     };
 
     loadValue();
-  }, [key]);
+  }, [key, initialValue]);
 
   const setValue = async (value) => {
     try {
@@ -77,7 +128,7 @@ export function useLocalStorage(key, initialValue) {
           console.warn(`Attempted to save undefined value for key "${key}". Keeping current value.`);
           return currentStoredValue; // Return current value instead of undefined
         }
-        
+
         // For conversation key, ensure it's always an array
         if (key === "conversation" && !Array.isArray(valueToStore)) {
           console.warn(`Attempted to save non-array value for conversation. Using empty array instead.`);
@@ -103,9 +154,6 @@ export function useLocalStorage(key, initialValue) {
           localStorage.removeItem(key);
         } else {
           localStorage.setItem(key, stringified);
-          console.log(`[useLocalStorage] Saved to localStorage synchronously: ${key}`, {
-            length: Array.isArray(valueToStore) ? valueToStore.length : 'N/A'
-          });
         }
       }
       

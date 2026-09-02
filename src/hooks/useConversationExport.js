@@ -63,7 +63,7 @@ export const useConversationExport = (
           parseConversationData(e.target.result);
 
         // Set conversation
-        setConversation(conversationData);
+        setConversation(conversationData, { replace: true });
 
         // Restore conversation_summaries if present
         if (summaries.length > 0) {

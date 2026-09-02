@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import conversationSyncService from '../utils/conversationSyncService';
-import { parseConversationData, filterDeletedMessages } from '../services/conversationService';
+import { parseConversationData, filterDeletedMessages, readConversationFromStorage } from '../services/conversationService';
 import { setTrackedFiles } from '../utils/fileTrackingService';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -53,10 +53,10 @@ function getLatestConversationTimestamp(conversation) {
  * Syncs conversation from localStorage to OneDrive when available
  * localStorage is the primary storage, OneDrive is backup/sync layer
  * 
- * @param {Array} conversation - Current conversation from localStorage (source of truth)
+ * @param {Object} conversationRef - Ref to current conversation (single source of truth)
  * @param {Function} setConversation - Function to update localStorage conversation
  */
-export const useConversationSync = (conversation = [], setConversation = null) => {
+export const useConversationSync = (conversationRef, setConversation = null) => {
   // Get auth context to listen for login events
   let isAuthenticated = false;
   try {
@@ -111,7 +111,6 @@ export const useConversationSync = (conversation = [], setConversation = null) =
   
   const syncTimeoutRef = useRef(null);
   const lastSyncedConversationRef = useRef(null);
-  const conversationRef = useRef([]);
   const retryCountRef = useRef(0);
   const isSyncingRef = useRef(false); // Prevent concurrent syncs
   const syncInProgressRef = useRef(false); // Prevent re-triggering during sync
@@ -233,7 +232,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       isLoadingFromOneDriveRef.current = true;
       
       // Restore conversation to localStorage (localStorage is source of truth)
-      setConversation(remoteConvData || []);
+      setConversation(remoteConvData || [], { replace: true });
       
       // Update lastSyncedConversationRef to match what we just loaded
       lastSyncedConversationRef.current = JSON.stringify(remoteConvData || []);
@@ -357,86 +356,54 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                   return;
                 }
                 
-                // Merge local and remote conversations ONLY if it's the same conversation
-                // (same conversation ID means we might have local changes to merge)
-                // CRITICAL: Read directly from localStorage to ensure we get the latest data
-                // conversationRef.current might be empty at page load before localStorage loads
-                let localConvData = [];
-                try {
-                  const localStorageConv = localStorage.getItem('conversation');
-                  if (localStorageConv) {
-                    const parsed = JSON.parse(localStorageConv);
-                    if (Array.isArray(parsed)) {
-                      localConvData = parsed;
-                    }
+                // Merge into the live conversation (ref), not a stale localStorage snapshot.
+                // This avoids wiping messages the user added while OneDrive was loading.
+                isLoadingFromOneDriveRef.current = true;
+
+                setConversation((current) => {
+                  const merged = conversationSyncService.mergeConversations(
+                    current || [],
+                    remoteConvData || []
+                  );
+                  if (merged.length < (current || []).length) {
+                    console.warn(
+                      "[useConversationSync] Merge would shrink conversation, keeping local",
+                      { localLength: current.length, mergedLength: merged.length }
+                    );
+                    return current;
                   }
-                } catch (error) {
-                  console.error('[useConversationSync] Error reading conversation from localStorage:', error);
-                  // Fallback to ref/prop if localStorage read fails
-                  localConvData = conversationRef.current || conversation || [];
-                }
-                
-                // If localStorage was empty but ref/prop has data, use that instead
-                if (localConvData.length === 0) {
-                  localConvData = conversationRef.current || conversation || [];
-                }
-                
-                const mergedConversation = conversationSyncService.mergeConversations(
-                  localConvData,
-                  remoteConvData || []
-                );
-                
-                // Count thoughts in merged conversation to verify they're preserved
+                  return merged;
+                });
+
+                const mergedConversation =
+                  conversationRef.current || remoteConvData || [];
                 const mergedThoughtCount = (mergedConversation || []).reduce((count, msg) => {
                   return count + (msg.parts || []).filter(part => part.thought === true).length;
                 }, 0);
-                const localThoughtCount = (localConvData || []).reduce((count, msg) => {
+                const localThoughtCount = (conversationRef.current || []).reduce((count, msg) => {
                   return count + (msg.parts || []).filter(part => part.thought === true).length;
                 }, 0);
+                const mergedStr = JSON.stringify(mergedConversation || []);
+                const remoteStr = JSON.stringify(remoteConvData || []);
+                const mergeProducedChanges = mergedStr !== remoteStr;
+
                 console.log('[useConversationSync] Merge result (thoughts):', {
                   localThoughtCount: localThoughtCount,
                   remoteThoughtCount: remoteThoughtCount,
                   mergedThoughtCount: mergedThoughtCount
                 });
-                
-                // Check if merge resulted in changes (local had additional content)
-                const mergedStr = JSON.stringify(mergedConversation || []);
-                const remoteStr = JSON.stringify(remoteConvData || []);
-                const localStr = JSON.stringify(localConvData || []);
-                const hasLocalChanges = localStr !== remoteStr && localStr !== mergedStr;
-                const mergeProducedChanges = mergedStr !== remoteStr;
-                
+
                 console.log('[useConversationSync] Merge result:', {
-                  localLength: localConvData.length,
-                  remoteLength: remoteConvData.length,
+                  localLength: (conversationRef.current || []).length,
+                  remoteLength: remoteConvData?.length || 0,
                   mergedLength: mergedConversation.length,
-                  hasLocalChanges,
                   mergeProducedChanges,
-                  localStr: localStr.substring(0, 200),
-                  remoteStr: remoteStr.substring(0, 200),
-                  mergedStr: mergedStr.substring(0, 200)
                 });
                 
                 // CRITICAL: Set lastSyncedConversationRef to REMOTE version BEFORE updating conversation
                 // This ensures syncCurrentConversation will detect the difference and sync merged changes back
                 lastSyncedConversationRef.current = remoteStr;
-                
-                // Set flag to prevent auto-save when updating localStorage
-                isLoadingFromOneDriveRef.current = true;
-                
-                // CRITICAL: Update localStorage with merged conversation
-                // setConversation will update localStorage synchronously, but we also ensure it here
-                // Verify thoughts are present BEFORE calling setConversation
-                const thoughtsBeforeSet = (mergedConversation || []).reduce((count, msg) => {
-                  return count + (msg.parts || []).filter(part => part.thought === true).length;
-                }, 0);
-                console.log('[useConversationSync] Setting merged conversation to localStorage...', {
-                  mergedLength: mergedConversation.length,
-                  thoughtsBeforeSet: thoughtsBeforeSet,
-                  beforeLocalStorage: localStorage.getItem('conversation')?.substring(0, 100)
-                });
-                setConversation(mergedConversation);
-                
+
                 // Verify thoughts are present AFTER calling setConversation
                 setTimeout(() => {
                   const afterLocalStorage = localStorage.getItem('conversation');
@@ -448,8 +415,8 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                       }, 0);
                       console.log('[useConversationSync] After setConversation, localStorage thoughts:', {
                         thoughtsAfterSet: thoughtsAfterSet,
-                        thoughtsBeforeSet: thoughtsBeforeSet,
-                        thoughtsLost: thoughtsBeforeSet - thoughtsAfterSet
+                        thoughtsBeforeSet: mergedThoughtCount,
+                        thoughtsLost: mergedThoughtCount - thoughtsAfterSet
                       });
                     } catch (error) {
                       console.error('[useConversationSync] Error parsing localStorage after setConversation:', error);
@@ -517,7 +484,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
           }
         } else {
           // No conversation ID in localStorage - check if current conversation is empty
-          const currentConv = conversation || conversationRef.current || [];
+          const currentConv = conversationRef.current || readConversationFromStorage('conversation');
           if (!currentConv || currentConv.length === 0) {
             // Current conversation is empty and no ID in localStorage
             // Load the most recent conversation from OneDrive
@@ -568,20 +535,28 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                     remoteThoughtCount: remoteThoughtCount
                   });
                   
-                  // Verify thoughts are present BEFORE calling setConversation
-                  const thoughtsBeforeSet = (remoteConvData || []).reduce((count, msg) => {
-                    return count + (msg.parts || []).filter(part => part.thought === true).length;
-                  }, 0);
-                  console.log('[useConversationSync] Setting most recent conversation to localStorage...', {
-                    conversationId: mostRecentConversation.id,
-                    remoteLength: remoteConvData?.length || 0,
-                    thoughtsBeforeSet: thoughtsBeforeSet
-                  });
-                  
+                  // User may have started typing while OneDrive was loading — don't replace live content
+                  const localLength = Math.max(
+                    (conversationRef.current || []).length,
+                    readConversationFromStorage("conversation").length
+                  );
+                  if (localLength > 0) {
+                    console.log('[useConversationSync] Skipping most recent conversation load — local conversation already has content', {
+                      localLength,
+                    });
+                    isLoadingFromOneDriveRef.current = false;
+                    return;
+                  }
+
                   // Save conversation ID to localStorage (via setCurrentConversationId)
                   setCurrentConversationId(mostRecentConversation.id);
                   setCurrentConversationTitle(mostRecentConversation.name || 'New Conversation');
-                  setConversation(remoteConvData || []);
+                  setConversation((current) => {
+                    if ((current || []).length > 0) {
+                      return current;
+                    }
+                    return remoteConvData || [];
+                  });
                   
                   // Verify thoughts are present AFTER calling setConversation
                   setTimeout(() => {
@@ -594,8 +569,8 @@ export const useConversationSync = (conversation = [], setConversation = null) =
                         }, 0);
                         console.log('[useConversationSync] After setConversation (most recent), localStorage thoughts:', {
                           thoughtsAfterSet: thoughtsAfterSet,
-                          thoughtsBeforeSet: thoughtsBeforeSet,
-                          thoughtsLost: thoughtsBeforeSet - thoughtsAfterSet
+                          thoughtsBeforeSet: remoteThoughtCount,
+                          thoughtsLost: remoteThoughtCount - thoughtsAfterSet
                         });
                       } catch (error) {
                         console.error('[useConversationSync] Error parsing localStorage after setConversation:', error);
@@ -643,7 +618,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       // Reset flag on error so we can retry later
       hasLoadedConversationsRef.current = false;
     }
-  }, [conversation, setConversation]); // Note: syncCurrentConversation will be passed when calling this function
+  }, [setConversation]);
   
   // Check OneDrive availability function (reusable) - ONLY checks availability, doesn't load conversations
   const checkOneDriveAvailability = useCallback(async () => {
@@ -716,24 +691,6 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       checkOneDriveAvailability();
     }
   }, [isAuthenticated, checkOneDriveAvailability]); // checkOneDriveAvailability is stable (empty deps), safe to include
-  
-  // Update conversationRef when conversation prop changes (from localStorage)
-  // This ensures conversationRef is always in sync with the conversation prop
-  // NOTE: conversationRef should also be updated immediately in setConversation wrapper
-  useEffect(() => {
-    const convArray = Array.isArray(conversation) ? conversation : [];
-    // Only update if different to avoid unnecessary updates and ensure we have latest
-    const currentRefStr = JSON.stringify(conversationRef.current || []);
-    const newConvStr = JSON.stringify(convArray);
-    if (currentRefStr !== newConvStr) {
-      conversationRef.current = convArray;
-      console.log('[useConversationSync] Conversation prop updated, ref synced', {
-        conversationLength: convArray.length,
-        currentConversationId,
-        fromProp: true
-      });
-    }
-  }, [conversation, currentConversationId]);
   
   // DISABLED: Auto-save conversation when it changes
   // This was causing infinite loops with 100+ requests per second
@@ -819,7 +776,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
           await switchConversation(sortedConversations[0].id);
         } else {
           setCurrentConversationId(null); // This will also clear localStorage
-          setConversation([]); // Update localStorage
+          setConversation([], { replace: true });
           setCurrentConversationTitle('New Conversation');
         }
       }
@@ -906,15 +863,13 @@ export const useConversationSync = (conversation = [], setConversation = null) =
     // CRITICAL: Get current conversation from ref RIGHT BEFORE checking if changed
     // This ensures we have the absolute latest conversation state, even if it was just updated
     // Don't cache it early - read it fresh each time we need it
-    let currentConv = conversationRef.current;
+    let currentConv = conversationRef.current || [];
     if (!currentConv || currentConv.length === 0) {
       console.log('[useConversationSync] No conversation to sync');
       return;
     }
     
-    // Check if already synced (prevent duplicate syncs)
-    // CRITICAL: Re-read conversationRef.current right before comparison to ensure we have latest
-    currentConv = conversationRef.current; // Re-read to ensure we have latest
+    currentConv = conversationRef.current || [];
     const conversationStr = JSON.stringify(currentConv);
     const lastSyncedStr = lastSyncedConversationRef.current;
     
@@ -970,7 +925,7 @@ export const useConversationSync = (conversation = [], setConversation = null) =
       
       // CRITICAL: Re-read conversationRef.current RIGHT BEFORE sync to ensure we have absolute latest
       // This handles race conditions where conversation was updated between checks
-      currentConv = conversationRef.current;
+      currentConv = conversationRef.current || [];
       const finalConversationStr = JSON.stringify(currentConv);
       
       console.log('[Sync] Starting OneDrive sync...', { 

@@ -9,6 +9,7 @@ import GroundingData from "./conversation/GroundingData";
 import InlineImage from "./conversation/InlineImage";
 import PdfPlaceholder from "./conversation/PdfPlaceholder";
 import TextPart from "./conversation/TextPart";
+import { mergeAdjacentThoughtPartsForRender } from "../services/conversationService";
 
 // Components are now imported from ./conversation directory
 
@@ -85,6 +86,16 @@ function ConversationHistory({
     };
   }, []); // No dependencies - only set up once when component mounts
 
+  useEffect(() => {
+    if (!history?.some((message) => message.streaming)) {
+      return;
+    }
+    window.scrollTo({
+      top: document.body.scrollHeight,
+      behavior: "instant",
+    });
+  }, [history]);
+
   // Use Mermaid hook for rendering diagrams
   useMermaid([history, editingIndex, editingPartIndex]);
 
@@ -128,13 +139,8 @@ function ConversationHistory({
         const renderedParts =
           content.parts &&
           Array.isArray(content.parts) &&
-          content.parts
-            .map((part, partIndex) => {
-                // Skip parts marked with hide: true
-                if (part.hide === true) {
-                  return null;
-                }
-
+          mergeAdjacentThoughtPartsForRender(content.parts)
+            .map(({ part, partIndex }) => {
                 // Check if this part contains thoughts
                 const isThought = part.thought === true;
 
@@ -208,17 +214,18 @@ function ConversationHistory({
                       <div key={partIndex} className="thought-part">
                         <div className="thought-block">
                           <TextPart
-                            text={part.text}
-                            isEditing={isEditing}
-                            editingText={editingText}
-                            onEditingTextChange={onEditingTextChange}
-                            onSave={onSave}
-                            onCancel={onCancel}
-                            onEdit={() => onEdit(index, partIndex, part.text)}
-                            isThought={true}
-                            position="right"
-                            speakerVoice={speakerVoice}
-                          />
+                          text={part.text}
+                          isEditing={isEditing}
+                          editingText={editingText}
+                          onEditingTextChange={onEditingTextChange}
+                          onSave={onSave}
+                          onCancel={onCancel}
+                          onEdit={() => onEdit(index, partIndex, part.text)}
+                          isThought={true}
+                          position="right"
+                          speakerVoice={speakerVoice}
+                          isStreaming={content.streaming === true}
+                        />
                         </div>
                       </div>
                     );
@@ -236,6 +243,7 @@ function ConversationHistory({
                           isThought={false}
                           position="right"
                           speakerVoice={speakerVoice}
+                          isStreaming={content.streaming === true}
                         />
                       </div>
                     );
@@ -315,7 +323,7 @@ function ConversationHistory({
 
         return (
           <div
-            key={index}
+            key={content.id || content.timestamp || index}
             className={`conversation-container ${
               isUserMessage ? "user" : "model"
             }`}
@@ -353,7 +361,7 @@ function ConversationHistory({
                   <div
                     className={`message-bubble ${
                       isUserMessage ? "user" : "model"
-                    }`}
+                    }${content.streaming ? " message-streaming" : ""}`}
                   >
                     {renderedParts}
                     {content.role === "model" && (

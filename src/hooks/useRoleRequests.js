@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import { roleDefinition } from "../utils/roleConfig";
+import { appendMessage, upsertMessage, readConversationFromStorage } from "../services/conversationService";
 import {
   processRoleRequest,
   createRoleRequestTask,
@@ -70,9 +71,7 @@ export const useRoleRequests = ({
 
           // Update conversation to remove expired files
           setConversation((prevConversation) => {
-            const currentConversation = prevConversation || [];
-            const cleanedConversation = removeExpiredFilesFromContents(currentConversation);
-            conversationRef.current = cleanedConversation;
+            const cleanedConversation = removeExpiredFilesFromContents(prevConversation || []);
             return cleanedConversation;
           });
         }
@@ -98,6 +97,37 @@ export const useRoleRequests = ({
         onMessageAppended: (message) => {
           appendMessage(message);
         },
+        onMessageUpdated: (message, options = {}) => {
+          setConversation((currentConversation) => {
+            const snapshot = Array.isArray(task.conversationSnapshot)
+              ? task.conversationSnapshot
+              : [];
+            let base = currentConversation || [];
+            if (snapshot.length > base.length) {
+              base = snapshot;
+            }
+            const triggerMessageId = task.context?.triggerMessageId;
+            if (triggerMessageId) {
+              const hasTriggerUserMessage = base.some(
+                (entry) =>
+                  entry.role === "user" && entry.timestamp === triggerMessageId
+              );
+              if (!hasTriggerUserMessage) {
+                const snapshotUserMessage = snapshot.find(
+                  (entry) =>
+                    entry.role === "user" && entry.timestamp === triggerMessageId
+                );
+                if (snapshotUserMessage) {
+                  base = appendMessage(base, snapshotUserMessage);
+                }
+              }
+            }
+            if (options.isNew) {
+              return appendMessage(base, message);
+            }
+            return upsertMessage(base, message);
+          });
+        },
         onError: (error) => {
           handleRoleRequestError(error, task);
         },
@@ -107,7 +137,7 @@ export const useRoleRequests = ({
         onRequestComplete: () => {
           // Request completed
         },
-        getConversationSnapshot: () => conversationRef.current || [],
+        getConversationSnapshot: () => [...(conversationRef.current || [])],
         isOneDriveAvailable,
       };
 
@@ -136,6 +166,7 @@ export const useRoleRequests = ({
     [
       updateLoadingState,
       appendMessage,
+      setConversation,
       handleRoleRequestError,
       mentionRoleMap,
       conversationRef,
@@ -211,8 +242,16 @@ export const useRoleRequests = ({
         return;
       }
 
-      // Capture conversation snapshot synchronously to avoid race conditions
-      const conversationSnapshot = conversationRef.current || [];
+      const providedSnapshot = Array.isArray(context.conversationSnapshot)
+        ? context.conversationSnapshot
+        : null;
+      const refSnapshot = conversationRef.current || [];
+      const storedSnapshot = readConversationFromStorage("conversation");
+      const sourceSnapshot =
+        providedSnapshot ||
+        (storedSnapshot.length > refSnapshot.length ? storedSnapshot : refSnapshot);
+      // Copy so API/stream work cannot mutate the live conversation array.
+      const conversationSnapshot = sourceSnapshot.slice();
 
       let tasksAdded = false;
 

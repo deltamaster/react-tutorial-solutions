@@ -17,6 +17,7 @@
 export {
   fetchFromApi,
   fetchFromApiCore,
+  fetchFromApiStreamCore,
   generateFollowUpQuestions,
   generateConversationMetadata,
   extractTextFromResponse,

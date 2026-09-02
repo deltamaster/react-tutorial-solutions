@@ -19,16 +19,20 @@ export function mergeConversations(localConversation = [], remoteConversation = 
   const remoteMessages = new Map();
   
   // Index local messages by timestamp
-  (localConversation || []).forEach(msg => {
+  (localConversation || []).forEach((msg, index) => {
     if (msg.timestamp) {
       localMessages.set(msg.timestamp, msg);
+    } else {
+      localMessages.set(`local-no-ts-${index}`, msg);
     }
   });
   
   // Index remote messages by timestamp
-  (remoteConversation || []).forEach(msg => {
+  (remoteConversation || []).forEach((msg, index) => {
     if (msg.timestamp) {
       remoteMessages.set(msg.timestamp, msg);
+    } else {
+      remoteMessages.set(`remote-no-ts-${index}`, msg);
     }
   });
   
@@ -41,7 +45,20 @@ export function mergeConversations(localConversation = [], remoteConversation = 
   const merged = [];
   
   // Debug: Log the timestamps array
-  const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+  const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => {
+    const aNumeric = typeof a === "number";
+    const bNumeric = typeof b === "number";
+    if (aNumeric && bNumeric) {
+      return a - b;
+    }
+    if (aNumeric) {
+      return -1;
+    }
+    if (bNumeric) {
+      return 1;
+    }
+    return String(a).localeCompare(String(b));
+  });
   console.log('[mergeConversations] Debug info:', {
     localMessagesCount: localMessages.size,
     remoteMessagesCount: remoteMessages.size,

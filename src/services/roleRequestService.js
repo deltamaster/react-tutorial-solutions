@@ -4,7 +4,7 @@ import { extractMentionedRolesFromParts } from "../utils/textProcessing/mentionU
 import { fetchFromApi, postProcessModelResponse } from "../services/api/geminiService";
 import { computeGeminiResponseCostUsd, reportApiUsageCost } from "../utils/geminiUsageCost";
 import { toolbox } from "../services/api/financialService";
-import { generatePartUUID } from "../services/conversationService";
+import { generatePartUUID, mergeAdjacentThoughtParts } from "../services/conversationService";
 
 /**
  * Role Request Service
@@ -29,6 +29,7 @@ export const processRoleRequest = async (
 ) => {
   const {
     onMessageAppended,
+    onMessageUpdated,
     onError,
     onMentionedRolesFound,
     onRequestComplete,
@@ -37,6 +38,44 @@ export const processRoleRequest = async (
 
   const { role } = task;
   let continueProcessing = true;
+  const streamPartUuids = {};
+  const streamMessageId = generatePartUUID();
+
+  const buildStreamingMessage = (partialResponse, streamMessageTimestamp) => {
+    const candidate = partialResponse?.candidates?.[0];
+    if (!candidate?.content?.parts?.length) {
+      return null;
+    }
+
+    const personaName = roleDefinition[role]?.name || "Adrien";
+    const visibleParts = mergeAdjacentThoughtParts(
+      candidate.content.parts.filter(
+        (part) =>
+          (part.text && part.text.trim()) ||
+          part.executableCode ||
+          part.codeExecutionResult ||
+          (part.inlineData && part.inlineData.data && part.inlineData.mimeType)
+      )
+    );
+
+    if (visibleParts.length === 0) {
+      return null;
+    }
+
+    return {
+      id: streamMessageId,
+      role: "model",
+      name: personaName,
+      parts: visibleParts.map((part, index) => ({
+        ...part,
+        uuid: streamPartUuids[index] || (streamPartUuids[index] = generatePartUUID()),
+      })),
+      timestamp: streamMessageTimestamp,
+      streaming: true,
+      groundingChunks: candidate?.groundingMetadata?.groundingChunks || [],
+      groundingSupports: candidate?.groundingMetadata?.groundingSupports || [],
+    };
+  };
 
   while (continueProcessing) {
     if (task.cancelled) {
@@ -44,6 +83,15 @@ export const processRoleRequest = async (
     }
     continueProcessing = false;
     let responseData;
+    const triggerMessageId = task.context?.triggerMessageId;
+    let streamMessageTimestamp = Date.now();
+    while (streamMessageTimestamp === triggerMessageId) {
+      streamMessageTimestamp += 1;
+    }
+    let streamMessageStarted = false;
+    Object.keys(streamPartUuids).forEach((key) => {
+      delete streamPartUuids[key];
+    });
 
     try {
       const conversationSnapshot =
@@ -56,7 +104,25 @@ export const processRoleRequest = async (
         false,
         0,
         null,
-        isOneDriveAvailable
+        isOneDriveAvailable,
+        onMessageUpdated
+          ? {
+              onStreamUpdate: (partialResponse) => {
+                if (task.cancelled) {
+                  return;
+                }
+                const streamingMessage = buildStreamingMessage(
+                  partialResponse,
+                  streamMessageTimestamp
+                );
+                if (!streamingMessage) {
+                  return;
+                }
+                onMessageUpdated(streamingMessage, { isNew: !streamMessageStarted });
+                streamMessageStarted = true;
+              },
+            }
+          : null
       );
     } catch (error) {
       if (onError) {
@@ -137,16 +203,18 @@ export const processRoleRequest = async (
       });
       
       // Ensure all parts have UUIDs
-      const partsWithUUIDs = processedParts.map(part => ({
+      const partsWithUUIDs = mergeAdjacentThoughtParts(processedParts).map((part, index) => ({
         ...part,
-        uuid: part.uuid || generatePartUUID()
+        uuid: streamPartUuids[index] || part.uuid || generatePartUUID(),
       }));
       
       const botResponse = {
+        id: streamMessageStarted ? streamMessageId : generatePartUUID(),
         role: "model",
         name: personaName,
         parts: partsWithUUIDs,
-        timestamp: Date.now(),
+        timestamp: streamMessageStarted ? streamMessageTimestamp : Date.now(),
+        streaming: false,
         groundingChunks:
           candidate?.groundingMetadata?.groundingChunks || [],
         groundingSupports:
@@ -154,7 +222,9 @@ export const processRoleRequest = async (
         ...(usageCost ? { usageCost } : {}),
       };
 
-      if (onMessageAppended) {
+      if (streamMessageStarted && onMessageUpdated) {
+        onMessageUpdated(botResponse, { isNew: false });
+      } else if (onMessageAppended) {
         onMessageAppended(botResponse);
       }
 

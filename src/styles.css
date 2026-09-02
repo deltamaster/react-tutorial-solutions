@@ -277,6 +277,20 @@ input[type="password"]:focus-visible {
   border-top-left-radius: 4px;
 }
 
+.streaming-cursor {
+  display: inline-block;
+  width: 0.55em;
+  margin-left: 2px;
+  color: #64748B;
+  animation: streaming-cursor-blink 1s step-end infinite;
+}
+
+@keyframes streaming-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* Thought expansion styles */
 .thought-content {
   position: relative;

@@ -3,6 +3,71 @@
  * Handles conversation CRUD operations and export/import functionality
  */
 
+export const readConversationFromStorage = (storageKey = "conversation") => {
+  try {
+    const item = localStorage.getItem(storageKey);
+    if (!item) {
+      return [];
+    }
+    const parsed = JSON.parse(item);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+export const getLongestConversation = (...candidates) => {
+  return candidates
+    .filter((candidate) => Array.isArray(candidate))
+    .reduce(
+      (longest, current) =>
+        current.length > longest.length ? current : longest,
+      []
+    );
+};
+
+/**
+ * Resolve the most complete conversation from ref, React state, snapshot, and localStorage.
+ * localStorage wins ties because setConversation writes it synchronously.
+ */
+export const getCurrentConversation = ({
+  storageKey = "conversation",
+  ref = null,
+  state = null,
+  snapshot = null,
+} = {}) => {
+  const fromStorage = readConversationFromStorage(storageKey);
+  const fromRef = ref?.current ?? (Array.isArray(ref) ? ref : null);
+  const fromState = Array.isArray(state) ? state : null;
+  const fromSnapshot = Array.isArray(snapshot) ? snapshot : null;
+
+  const longestLength = getLongestConversation(
+    fromStorage,
+    fromRef,
+    fromState,
+    fromSnapshot
+  ).length;
+
+  if (longestLength === 0) {
+    return [];
+  }
+
+  if (fromStorage.length === longestLength) {
+    return fromStorage;
+  }
+  if (fromRef && fromRef.length === longestLength) {
+    return fromRef;
+  }
+  if (fromSnapshot && fromSnapshot.length === longestLength) {
+    return fromSnapshot;
+  }
+  if (fromState && fromState.length === longestLength) {
+    return fromState;
+  }
+
+  return getLongestConversation(fromStorage, fromRef, fromState, fromSnapshot);
+};
+
 /**
  * Generate a UUID for conversation parts
  * Uses crypto.randomUUID if available, otherwise falls back to a simple implementation
@@ -22,6 +87,91 @@ export const generatePartUUID = () => {
 };
 
 /**
+ * Merge consecutive thought parts into one. Streaming models often emit
+ * multiple thought chunks as separate parts that belong in a single block.
+ *
+ * @param {Array} parts - Message parts
+ * @returns {Array} Parts with adjacent thoughts collapsed
+ */
+export const mergeAdjacentThoughtParts = (parts = []) => {
+  if (!Array.isArray(parts) || parts.length === 0) {
+    return [];
+  }
+
+  const merged = [];
+
+  for (const part of parts) {
+    if (!part) {
+      continue;
+    }
+
+    const isThought = part.thought === true;
+    const previous = merged[merged.length - 1];
+    const previousIsThought = previous && previous.thought === true;
+
+    if (isThought && previousIsThought) {
+      merged[merged.length - 1] = {
+        ...previous,
+        text: `${previous.text || ""}${part.text || ""}`,
+        thoughtSignature: part.thoughtSignature || previous.thoughtSignature,
+        uuid: previous.uuid || part.uuid,
+      };
+      continue;
+    }
+
+    merged.push({ ...part });
+  }
+
+  return merged;
+};
+
+/**
+ * Like mergeAdjacentThoughtParts, but preserves the first original part index
+ * for each rendered group (used by the conversation UI for edit callbacks).
+ *
+ * @param {Array} parts - Message parts
+ * @returns {Array<{part: Object, partIndex: number}>}
+ */
+export const mergeAdjacentThoughtPartsForRender = (parts = []) => {
+  const result = [];
+
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
+    if (!part || part.hide === true) {
+      continue;
+    }
+
+    const last = result[result.length - 1];
+    if (part.thought === true && last && last.part.thought === true) {
+      last.part = {
+        ...last.part,
+        text: `${last.part.text || ""}${part.text || ""}`,
+        thoughtSignature: part.thoughtSignature || last.part.thoughtSignature,
+      };
+      continue;
+    }
+
+    result.push({ part: { ...part }, partIndex: index });
+  }
+
+  return result;
+};
+
+const normalizeMessageParts = (message, messageTimestamp) => {
+  return (message.parts || []).map((part) => {
+    const partTimestamp = part.timestamp || messageTimestamp;
+    const lastUpdate = part.lastUpdate || partTimestamp;
+    const uuid = part.uuid || generatePartUUID();
+    return {
+      ...part,
+      timestamp: partTimestamp,
+      lastUpdate,
+      uuid,
+    };
+  });
+};
+
+/**
  * Appends a message to the conversation
  * Ensures all parts have timestamps and UUIDs
  * 
@@ -32,28 +182,59 @@ export const generatePartUUID = () => {
 export const appendMessage = (conversation, message) => {
   const latestConversation = conversation || [];
   const messageTimestamp = message.timestamp || Date.now();
-  
-  // Ensure all parts have timestamps and UUIDs
+
   const messageWithTimestamps = {
     ...message,
     timestamp: messageTimestamp,
-    parts: (message.parts || []).map(part => {
-      // If part doesn't have timestamp, use message timestamp
-      // If part doesn't have lastUpdate, use timestamp as lastUpdate
-      // If part doesn't have uuid, generate one
-      const partTimestamp = part.timestamp || messageTimestamp;
-      const lastUpdate = part.lastUpdate || partTimestamp;
-      const uuid = part.uuid || generatePartUUID();
-      return {
-        ...part,
-        timestamp: partTimestamp,
-        lastUpdate: lastUpdate,
-        uuid: uuid
-      };
-    })
+    parts: normalizeMessageParts(
+      { ...message, parts: mergeAdjacentThoughtParts(message.parts) },
+      messageTimestamp
+    ),
   };
-  
+
   return [...latestConversation, messageWithTimestamps];
+};
+
+/**
+ * Updates an existing message by timestamp, or appends if not found.
+ *
+ * @param {Array} conversation - Current conversation array
+ * @param {Object} message - Message to upsert
+ * @returns {Array} Updated conversation array
+ */
+export const upsertMessage = (conversation, message) => {
+  const latestConversation = conversation || [];
+  const messageTimestamp = message.timestamp || Date.now();
+  const messageWithTimestamps = {
+    ...message,
+    timestamp: messageTimestamp,
+    parts: normalizeMessageParts(
+      { ...message, parts: mergeAdjacentThoughtParts(message.parts) },
+      messageTimestamp
+    ),
+  };
+
+  let existingIndex = -1;
+  if (message.id) {
+    existingIndex = latestConversation.findIndex((entry) => entry.id === message.id);
+  }
+  if (existingIndex === -1) {
+    existingIndex = latestConversation.findIndex(
+      (entry) =>
+        entry.timestamp === messageTimestamp && entry.role === message.role
+    );
+  }
+  if (existingIndex === -1) {
+    return [...latestConversation, messageWithTimestamps];
+  }
+
+  if (latestConversation[existingIndex].role !== message.role) {
+    return [...latestConversation, messageWithTimestamps];
+  }
+
+  const updatedConversation = [...latestConversation];
+  updatedConversation[existingIndex] = messageWithTimestamps;
+  return updatedConversation;
 };
 
 /**

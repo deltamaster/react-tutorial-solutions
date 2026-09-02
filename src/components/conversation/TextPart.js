@@ -22,6 +22,7 @@ const TextPart = ({
   isThought = false,
   position = "right",
   speakerVoice = null,
+  isStreaming = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -113,8 +114,9 @@ const TextPart = ({
   return (
     <>
       {actionButtons}
-      <div className="markdown-content">
+      <div className={`markdown-content${isStreaming ? " streaming-text" : ""}`}>
         {renderTextContent(normalizedText, ExpandableHtmlBlock)}
+        {isStreaming && <span className="streaming-cursor" aria-hidden="true" />}
       </div>
       <TtsPlayer
         audioSegments={audioSegments}

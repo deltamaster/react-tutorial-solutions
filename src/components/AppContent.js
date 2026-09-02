@@ -83,6 +83,10 @@ function AppContent() {
       0
     );
   }, [conversation]);
+
+  const hasStreamingMessage = useMemo(() => {
+    return (conversation || []).some((message) => message.streaming === true);
+  }, [conversation]);
   
   // Extract sync helpers if OneDrive is available
   const currentConversationTitle = syncHelpers?.currentConversationTitle || 'New Conversation';
@@ -216,11 +220,7 @@ function AppContent() {
     conversationRef,
     setConversation,
     appendMessage: (message) => {
-      // setConversation wrapper already updates conversationRef.current immediately
-      // Use appendMessage service to ensure timestamps are added to parts
-      setConversation((prevConversation) => {
-        return appendMessage(prevConversation || [], message);
-      });
+      setConversation((prev) => appendMessage(prev, message));
     },
     onError: (error) => {
       const userMessage = buildUserFacingErrorMessage(error);
@@ -373,20 +373,26 @@ function AppContent() {
       timestamp: Date.now(),
     };
 
-    // Update conversation - setConversation wrapper will update ref and localStorage immediately
-    const latestConversation = conversationRef.current || [];
-    const updatedConversation = [...latestConversation, newUserMessage];
-    
+    // Append to the conversation currently on screen — not the ref, which can
+    // be empty after Fast Refresh while React state still holds history.
+    const updatedConversation = appendMessage(
+      Array.isArray(conversation) ? conversation : [],
+      newUserMessage
+    );
+    setConversation(updatedConversation);
+    const conversationSnapshot = updatedConversation.map((message) => ({
+      ...message,
+      parts: Array.isArray(message.parts)
+        ? message.parts.map((part) => ({ ...part }))
+        : message.parts,
+    }));
+
     console.log('[AppContent] handleSubmit - updating conversation', {
-      conversationLength: updatedConversation.length,
+      conversationLength: conversationSnapshot.length,
       hasSyncHelpers: !!syncHelpers,
       isOneDriveAvailable: syncHelpers?.isOneDriveAvailable
     });
-    
-    // Update conversation state (this updates localStorage and ref immediately via wrapper)
-    setConversation(updatedConversation);
-    
-    // Explicitly trigger OneDrive sync after user sends message
+
     // Let syncCurrentConversation handle availability check internally
     // Delay sync to ensure conversation state and localStorage are updated first
     if (syncHelpers?.syncCurrentConversation) {
@@ -418,12 +424,15 @@ function AppContent() {
         // Update the user message in conversation with file_data
         // Ensure all parts have UUIDs when updating with file_data
         setConversation((prevConversation) => {
-          const latestConversation = prevConversation || [];
-          const messageIndex = latestConversation.findIndex(
+          const base =
+            (prevConversation?.length || 0) >= conversationSnapshot.length
+              ? prevConversation
+              : conversationSnapshot;
+          const messageIndex = base.findIndex(
             msg => msg.timestamp === newUserMessage.timestamp
           );
           if (messageIndex >= 0) {
-            const updatedConversation = [...latestConversation];
+            const updatedConversation = [...base];
             const existingMessage = updatedConversation[messageIndex];
             
             // Preserve existing UUIDs from the message, generate new ones only if missing
@@ -449,29 +458,42 @@ function AppContent() {
             });
             return updatedConversation;
           }
-          return latestConversation;
+          return base;
         });
 
         // Step 5: Send API request with file_data
         enqueueRoleRequests(rolesToProcess, {
           source: "user",
           triggerMessageId: newUserMessage.timestamp,
+          conversationSnapshot,
         });
       } catch (error) {
         console.error("Error uploading file:", error);
         alert("Failed to upload file. Please try again.");
         // Remove the user message on error
-        setConversation((prevConversation) => {
-          const latestConversation = prevConversation || [];
-          const filteredConversation = latestConversation.filter(
-            msg => msg.timestamp !== newUserMessage.timestamp
-          );
-          // setConversation wrapper will update ref automatically
-          return filteredConversation;
-        });
+        setConversation(
+          (prevConversation) =>
+            prevConversation.filter(
+              (msg) => msg.timestamp !== newUserMessage.timestamp
+            ),
+          { replace: true }
+        );
       }
     })();
-  }, [subscriptionKey, conversationRef, mentionRoleMap, processFilesForUpload, uploadFiles, updatePartsWithFileUris]);
+  }, [
+    subscriptionKey,
+    conversation,
+    conversationRef,
+    setConversation,
+    syncHelpers,
+    cancelPendingFollowUpQuestions,
+    setFollowUpQuestions,
+    mentionRoleMap,
+    processFilesForUpload,
+    uploadFiles,
+    updatePartsWithFileUris,
+    enqueueRoleRequests,
+  ]);
 
   // Handle follow-up question click
   const handleFollowUpClick = useCallback((question) => {
@@ -483,7 +505,7 @@ function AppContent() {
   // Reset conversation history, summaries and predicted questions
   const resetConversation = () => {
     // IMMEDIATELY reset UI and localStorage first (user sees instant feedback)
-    setConversation([]);
+    setConversation([], { replace: true });
     setFollowUpQuestions([]); // Clear predicted questions
     
     // Clear conversation summaries from localStorage
@@ -779,7 +801,7 @@ function AppContent() {
                   </div>
                 )}
 
-                {activeTypers.length > 0 && (
+                {activeTypers.length > 0 && !hasStreamingMessage && (
                   <div className="mb-3 typing-indicator">
                     {activeTypers.length === 1
                       ? `${activeTypers[0]} is typing ...`
