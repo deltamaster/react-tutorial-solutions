@@ -10,7 +10,7 @@ if (!key) {
 }
 
 const url =
-  'https://jp-gw2.azure-api.net/gemini/models/gemini-3.7-flash:streamGenerateContent?alt=sse';
+  'https://jp-gw2.azure-api.net/gemini/models/gemini-3.8-flash:streamGenerateContent?alt=sse';
 const body = {
   contents: [{ role: 'user', parts: [{ text: 'Say hello in exactly three words.' }] }],
 };

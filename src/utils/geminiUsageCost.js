@@ -4,6 +4,7 @@
  */
 
 const MODEL_PRICING_USD_PER_1M = {
+  "gemini-3.8-flash": { cached: 0.075, input: 0.75, output: 3.75 },
   "gemini-3.7-flash": { cached: 0.075, input: 0.75, output: 3.75 },
   "gemini-3.5-flash-lite": { cached: 0.03, input: 0.3, output: 2.5 },
   "gemini-3.5-flash": { cached: 0.15, input: 1.5, output: 9 },
@@ -12,7 +13,7 @@ const MODEL_PRICING_USD_PER_1M = {
   "gemini-3.1-flash-lite-preview": { cached: 0.025, input: 0.25, output: 1.5 },
 };
 
-const DEFAULT_MODEL_KEY = "gemini-3.7-flash";
+const DEFAULT_MODEL_KEY = "gemini-3.8-flash";
 
 const SORTED_MODEL_KEYS = Object.keys(MODEL_PRICING_USD_PER_1M).sort(
   (a, b) => b.length - a.length
