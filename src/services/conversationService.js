@@ -112,7 +112,9 @@ export const mergeAdjacentThoughtParts = (parts = []) => {
     if (isThought && previousIsThought) {
       merged[merged.length - 1] = {
         ...previous,
+        ...part,
         text: `${previous.text || ""}${part.text || ""}`,
+        thought: true,
         thoughtSignature: part.thoughtSignature || previous.thoughtSignature,
         uuid: previous.uuid || part.uuid,
       };

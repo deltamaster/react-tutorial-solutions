@@ -144,6 +144,11 @@ function ConversationHistory({
                 // Check if this part contains thoughts
                 const isThought = part.thought === true;
 
+                // Skip hidden function-call parts; they are executed, not rendered
+                if (part.functionCall) {
+                  return null;
+                }
+
                 // Thoughts are now handled with expandable UI instead of being hidden completely
 
                 // Check if this part is being edited

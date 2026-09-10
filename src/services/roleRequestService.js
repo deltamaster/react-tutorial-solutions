@@ -162,8 +162,12 @@ export const processRoleRequest = async (
 
     const responseParts = candidate.content.parts || [];
 
-    const textParts = responseParts.filter(
+    const functionCallParts = responseParts.filter(
+      (part) => part.functionCall
+    );
+    const messageParts = responseParts.filter(
       (part) =>
+        part.functionCall ||
         part.text ||
         part.executableCode ||
         part.codeExecutionResult ||
@@ -171,16 +175,15 @@ export const processRoleRequest = async (
           part.inlineData.data &&
           part.inlineData.mimeType)
     );
-    const functionCallParts = responseParts.filter(
-      (part) => part.functionCall
-    );
 
-    if (textParts.length > 0) {
+    let botResponse = null;
+
+    if (messageParts.length > 0) {
       if (task.cancelled) {
         return;
       }
       const normalizedParts = normalizeBeginMarker(
-        textParts,
+        messageParts,
         roleDefinition[role]?.name
       );
       
@@ -189,7 +192,7 @@ export const processRoleRequest = async (
       const personaName = roleDefinition[role]?.name || "Adrien";
       const processedParts = normalizedParts.map((part) => {
         // Skip post-processing for code blocks
-        if (part.executableCode || part.codeExecutionResult) {
+        if (part.executableCode || part.codeExecutionResult || part.functionCall) {
           return part;
         }
         // Only process regular text parts
@@ -208,7 +211,7 @@ export const processRoleRequest = async (
         uuid: streamPartUuids[index] || part.uuid || generatePartUUID(),
       }));
       
-      const botResponse = {
+      botResponse = {
         id: streamMessageStarted ? streamMessageId : generatePartUUID(),
         role: "model",
         name: personaName,
@@ -226,6 +229,13 @@ export const processRoleRequest = async (
         onMessageUpdated(botResponse, { isNew: false });
       } else if (onMessageAppended) {
         onMessageAppended(botResponse);
+      }
+
+      if (task.conversationSnapshot && functionCallParts.length > 0) {
+        task.conversationSnapshot = [
+          ...task.conversationSnapshot,
+          botResponse,
+        ];
       }
 
       const mentionedRoles = extractMentionedRolesFromParts(
@@ -328,7 +338,7 @@ export const processRoleRequest = async (
             },
           })),
           timestamp: Date.now(),
-          ...(textParts.length === 0 && usageCost ? { usageCost } : {}),
+          ...(botResponse ? {} : usageCost ? { usageCost } : {}),
         };
 
         if (onMessageAppended) {
